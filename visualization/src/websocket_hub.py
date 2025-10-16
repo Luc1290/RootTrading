@@ -83,11 +83,9 @@ class WebSocketHub:
 
             logger.info(f"Client {client_id} disconnected")
 
-    async def subscribe_client(self,
-                               client_id: str,
-                               channel: str,
-                               params: dict[Any,
-                                            Any] | None = None):
+    async def subscribe_client(
+        self, client_id: str, channel: str, params: dict[Any, Any] | None = None
+    ):
         """Subscribe a client to a channel"""
         if client_id not in self.connections:
             return
@@ -255,7 +253,8 @@ class WebSocketHub:
                     if signals:
                         await self.broadcast_to_channel(
                             # Last 10 signals
-                            channel, {"signals": signals[-10:]}
+                            channel,
+                            {"signals": signals[-10:]},
                         )
 
                 except Exception:

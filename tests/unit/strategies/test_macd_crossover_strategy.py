@@ -19,9 +19,8 @@ class TestMACDCrossoverStrategy:
     def test_init(self, mock_strategy_data):
         """Test d'initialisation de la stratégie MACD."""
         strategy = MACD_Crossover_Strategy(
-            "BTCUSDC",
-            mock_strategy_data["data"],
-            mock_strategy_data["indicators"])
+            "BTCUSDC", mock_strategy_data["data"], mock_strategy_data["indicators"]
+        )
 
         assert strategy.symbol == "BTCUSDC"
         assert strategy.name == "MACD_Crossover_Strategy"
@@ -238,8 +237,7 @@ class TestMACDCrossoverStrategy:
         assert result["confidence"] == 0.0
         assert "Histogram négatif contredit signal BUY" in result["reason"]
 
-    def test_generate_signal_insufficient_strong_conditions(
-            self, mock_strategy_data):
+    def test_generate_signal_insufficient_strong_conditions(self, mock_strategy_data):
         """Test signal rejeté pour manque de conditions fortes."""
         indicators = mock_strategy_data["indicators"].copy()
         indicators.update(
@@ -318,9 +316,8 @@ class TestMACDCrossoverStrategy:
     def test_get_current_values_structure(self, mock_strategy_data):
         """Test que _get_current_values retourne la structure attendue."""
         strategy = MACD_Crossover_Strategy(
-            "BTCUSDC",
-            mock_strategy_data["data"],
-            mock_strategy_data["indicators"])
+            "BTCUSDC", mock_strategy_data["data"], mock_strategy_data["indicators"]
+        )
         values = strategy._get_current_values()
 
         # Vérifier que les clés essentielles sont présentes
@@ -381,13 +378,14 @@ class TestMACDCrossoverStrategy:
             {
                 "macd_line": macd_line,
                 "macd_signal": macd_signal,
-                "macd_histogram": macd_line -
-                macd_signal,
+                "macd_histogram": macd_line - macd_signal,
                 "confluence_score": 70,
                 "market_regime": (
-                    "TRENDING_BULL" if expected_side == "BUY" else "TRENDING_BEAR"),
+                    "TRENDING_BULL" if expected_side == "BUY" else "TRENDING_BEAR"
+                ),
                 "directional_bias": "BULLISH" if expected_side == "BUY" else "BEARISH",
-            })
+            }
+        )
 
         strategy = MACD_Crossover_Strategy(
             "BTCUSDC", mock_strategy_data["data"], indicators

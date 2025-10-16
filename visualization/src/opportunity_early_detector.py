@@ -120,8 +120,7 @@ class OpportunityEarlyDetector:
         )
 
         # === SCORE 4: ORDER FLOW PRESSURE (13 points max) ===
-        order_flow_score = self._score_order_flow(
-            current_data, reasons, warnings)
+        order_flow_score = self._score_order_flow(current_data, reasons, warnings)
 
         # === SCORE 5: EARLY MOMENTUM (15 points max) ===
         early_momentum_score = self._score_early_momentum(
@@ -146,12 +145,12 @@ class OpportunityEarlyDetector:
             confidence = 60.0
         else:
             confidence = 40.0
-            warnings.append(
-                "⚠️ Pas de données historiques - Détection limitée")
+            warnings.append("⚠️ Pas de données historiques - Détection limitée")
 
         # Déterminer niveau de signal
         level, entry_window_seconds, move_completion_pct = self._determine_signal_level(
-            total_score, current_data, historical_data)
+            total_score, current_data, historical_data
+        )
 
         # Générer recommandations
         self._generate_recommendations(
@@ -288,9 +287,7 @@ class OpportunityEarlyDetector:
             # Calculer progression volume
             recent_vols = []
             for h in historical[-3:]:
-                recent_vols.append(
-                    self.safe_float(
-                        h.get("relative_volume"), 1.0))
+                recent_vols.append(self.safe_float(h.get("relative_volume"), 1.0))
             recent_vols.append(rel_vol)
 
             # Volume en progression?
@@ -465,8 +462,7 @@ class OpportunityEarlyDetector:
         break_prob = self.safe_float(current.get("break_probability"), 0.5)
         if break_prob > 0.75:
             score += 3
-            reasons.append(
-                f"🔓 Résistance faible: {break_prob*100:.0f}% break prob")
+            reasons.append(f"🔓 Résistance faible: {break_prob*100:.0f}% break prob")
         elif break_prob > 0.65:
             score += 2
             reasons.append(f"🔓 Break probable: {break_prob*100:.0f}%")
@@ -559,8 +555,7 @@ class OpportunityEarlyDetector:
         # Estimer % du mouvement déjà fait
         rsi = self.safe_float(current.get("rsi_14"))
         rel_vol = self.safe_float(current.get("relative_volume"), 1.0)
-        vol_spike = self.safe_float(
-            current.get("volume_spike_multiplier"), 1.0)
+        vol_spike = self.safe_float(current.get("volume_spike_multiplier"), 1.0)
 
         # Heuristique: RSI et volume spike indiquent avancement
         if rsi > 80 or vol_spike > 4.0:
@@ -601,23 +596,17 @@ class OpportunityEarlyDetector:
     ):
         """Génère recommandations selon niveau."""
         if level == EarlySignalLevel.ENTRY_NOW:
-            recommendations.append(
-                f"🚀 ENTRY WINDOW NOW - Score: {score:.0f}/100")
-            recommendations.append(
-                f"⏱️ Fenêtre entry: {entry_window_seconds}s estimé")
+            recommendations.append(f"🚀 ENTRY WINDOW NOW - Score: {score:.0f}/100")
+            recommendations.append(f"⏱️ Fenêtre entry: {entry_window_seconds}s estimé")
             recommendations.append("💡 Préparer ordre LIMIT à entry_optimal")
 
             if move_completion_pct > 50:
-                warnings.append(
-                    f"⚠️ Mouvement déjà {move_completion_pct:.0f}% avancé")
+                warnings.append(f"⚠️ Mouvement déjà {move_completion_pct:.0f}% avancé")
 
         elif level == EarlySignalLevel.PREPARE:
-            recommendations.append(
-                f"⚡ PRÉPARER ENTRY - Score: {score:.0f}/100")
-            recommendations.append(
-                f"⏱️ Entry estimée dans: ~{entry_window_seconds}s")
-            recommendations.append(
-                "💡 Vérifier entry_optimal et préparer capital")
+            recommendations.append(f"⚡ PRÉPARER ENTRY - Score: {score:.0f}/100")
+            recommendations.append(f"⏱️ Entry estimée dans: ~{entry_window_seconds}s")
+            recommendations.append("💡 Vérifier entry_optimal et préparer capital")
 
         elif level == EarlySignalLevel.WATCH:
             recommendations.append(f"👀 SURVEILLER - Score: {score:.0f}/100")
@@ -625,10 +614,8 @@ class OpportunityEarlyDetector:
 
         elif level == EarlySignalLevel.TOO_LATE:
             recommendations.append(f"⏸️ TROP TARD - Score: {score:.0f}/100")
-            recommendations.append(
-                f"❌ Mouvement {move_completion_pct:.0f}% terminé")
-            recommendations.append(
-                "💡 Attendre pullback ou prochaine opportunité")
+            recommendations.append(f"❌ Mouvement {move_completion_pct:.0f}% terminé")
+            recommendations.append("💡 Attendre pullback ou prochaine opportunité")
 
         else:
             recommendations.append("⏸️ PAS DE SETUP - Continuer scan")

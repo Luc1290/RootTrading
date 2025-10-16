@@ -96,8 +96,7 @@ class KafkaClientPool:
     _instance = None
 
     @classmethod
-    def get_instance(cls, broker: str = KAFKA_BROKER,
-                     group_id: str = KAFKA_GROUP_ID):
+    def get_instance(cls, broker: str = KAFKA_BROKER, group_id: str = KAFKA_GROUP_ID):
         """
         Obtient l'instance unique du client Kafka.
 
@@ -112,8 +111,7 @@ class KafkaClientPool:
             cls._instance = KafkaClientPool(broker, group_id)
         return cls._instance
 
-    def __init__(self, broker: str = KAFKA_BROKER,
-                 group_id: str = KAFKA_GROUP_ID):
+    def __init__(self, broker: str = KAFKA_BROKER, group_id: str = KAFKA_GROUP_ID):
         """
         Initialise le client Kafka.
 
@@ -162,9 +160,7 @@ class KafkaClientPool:
                     # Réinitialiser les métriques
                     self.metrics.reset()
                 except Exception:
-                    logger.exception(
-                        "Erreur dans le thread de statistiques Kafka: "
-                    )
+                    logger.exception("Erreur dans le thread de statistiques Kafka: ")
 
         thread = threading.Thread(target=stats_reporter, daemon=True)
         thread.start()
@@ -190,8 +186,7 @@ class KafkaClientPool:
             Instance AdminClient Kafka
         """
         if self._admin_client is None:
-            self._admin_client = AdminClient(
-                {"bootstrap.servers": self.broker})
+            self._admin_client = AdminClient({"bootstrap.servers": self.broker})
         return self._admin_client
 
     def _create_producer(self) -> Producer:
@@ -226,9 +221,7 @@ class KafkaClientPool:
             producer = Producer(conf)
             logger.info(f"✅ Producteur Kafka créé pour {self.broker}")
         except KafkaException:
-            logger.exception(
-                "❌ Erreur lors de la création du producteur Kafka: "
-            )
+            logger.exception("❌ Erreur lors de la création du producteur Kafka: ")
             raise
         else:
             return producer
@@ -272,9 +265,7 @@ class KafkaClientPool:
                 f"✅ Consommateur Kafka créé pour {self.broker}, topics: {', '.join(topics)}"
             )
         except KafkaException:
-            logger.exception(
-                "❌ Erreur lors de la création du consommateur Kafka: "
-            )
+            logger.exception("❌ Erreur lors de la création du consommateur Kafka: ")
             raise
         else:
             return consumer
@@ -301,8 +292,7 @@ class KafkaClientPool:
                 return self._existing_topics_cache
 
             try:
-                topics = self.admin_client.list_topics(
-                    timeout=10).topics.keys()
+                topics = self.admin_client.list_topics(timeout=10).topics.keys()
                 self._existing_topics_cache = set(topics)
                 self._topics_cache_time = int(current_time)
             except Exception:
@@ -353,11 +343,9 @@ class KafkaClientPool:
 
             if matches:
                 resolved_topics.extend(matches)
-                logger.info(
-                    f"Pattern '{pattern}' résolu en {len(matches)} topics")
+                logger.info(f"Pattern '{pattern}' résolu en {len(matches)} topics")
             else:
-                logger.warning(
-                    f"Aucun topic correspondant au pattern '{pattern}'")
+                logger.warning(f"Aucun topic correspondant au pattern '{pattern}'")
 
         return resolved_topics
 
@@ -469,7 +457,8 @@ class KafkaClientPool:
                 logger.exception("❌ Erreur JSON serialization")
                 # Log le contenu problématique pour déboguer
                 logger.exception(
-                    f"Message data: {type(message)} = {str(message)[:500]}...")
+                    f"Message data: {type(message)} = {str(message)[:500]}..."
+                )
                 raise
 
         # Sérialiser la clé et la valeur
@@ -538,20 +527,16 @@ class KafkaClientPool:
                         "✅ Message reproduit avec succès après recréation du producteur"
                     )
                 except Exception:
-                    logger.exception(
-                        "❌ Échec après recréation du producteur: "
-                    )
+                    logger.exception("❌ Échec après recréation du producteur: ")
                     self.metrics.record_delivery_failure()
                     raise
             else:
-                logger.exception(
-                    "❌ Erreur lors de la production du message: ")
+                logger.exception("❌ Erreur lors de la production du message: ")
                 self.metrics.record_delivery_failure()
                 raise
 
         except Exception:
-            logger.exception(
-                "❌ Erreur lors de la production du message: ")
+            logger.exception("❌ Erreur lors de la production du message: ")
             self.metrics.record_delivery_failure()
             raise
 
@@ -598,8 +583,7 @@ class KafkaClientPool:
         self.ensure_topics_exist(resolved_topics)
 
         # Stocker la correspondance entre les patterns et les topics résolus
-        self.topic_maps[consumer_id] = {
-            "patterns": topics, "resolved": resolved_topics}
+        self.topic_maps[consumer_id] = {"patterns": topics, "resolved": resolved_topics}
 
         # Créer une file d'attente pour les messages (augmentée pour
         # multi-crypto)
@@ -695,8 +679,7 @@ class KafkaClientPool:
                         if msg.error().code() == KafkaError._PARTITION_EOF:
                             # Fin de partition, rien à faire
                             continue
-                        logger.error(
-                            f"❌ Erreur de consommation: {msg.error()}")
+                        logger.error(f"❌ Erreur de consommation: {msg.error()}")
                         continue
 
                     # Mettre le message dans la queue
@@ -725,18 +708,14 @@ class KafkaClientPool:
                             decoded_value = value.decode("utf-8")
 
                             # Essayer de parser le JSON
-                            if decoded_value and (
-                                decoded_value.startswith(("{", "["))
-                            ):
-                                message_data["value"] = json.loads(
-                                    decoded_value)
+                            if decoded_value and (decoded_value.startswith(("{", "["))):
+                                message_data["value"] = json.loads(decoded_value)
                             else:
                                 message_data["value"] = decoded_value
                         else:
                             message_data["value"] = value
                     except Exception as e:
-                        logger.warning(
-                            f"⚠️ Impossible de décoder le message: {e!s}")
+                        logger.warning(f"⚠️ Impossible de décoder le message: {e!s}")
                         message_data["value"] = None
 
                     # Mettre le message dans la queue avec timeout
@@ -750,9 +729,7 @@ class KafkaClientPool:
 
             except (KafkaException, RuntimeError):
                 retry_count += 1
-                logger.exception(
-                    "❌ Erreur Kafka dans le thread de consommation : "
-                )
+                logger.exception("❌ Erreur Kafka dans le thread de consommation : ")
 
                 if retry_count > max_retries:
                     logger.critical(
@@ -779,9 +756,7 @@ class KafkaClientPool:
                     self.metrics.record_reconnection()
                     logger.info(f"✅ Consommateur {consumer_id} reconnecté")
                 except Exception:
-                    logger.exception(
-                        "❌ Échec de reconnexion du consommateur : "
-                    )
+                    logger.exception("❌ Échec de reconnexion du consommateur : ")
 
             except Exception:
                 logger.exception(
@@ -816,8 +791,7 @@ class KafkaClientPool:
 
                 # Extraire le topic et la valeur
                 topic = message_data["topic"]
-                value = message_data.get(
-                    "value", message_data.get("raw_value"))
+                value = message_data.get("value", message_data.get("raw_value"))
 
                 # Appeler le callback
                 try:
@@ -830,9 +804,7 @@ class KafkaClientPool:
                     message_queue.task_done()
 
             except Exception:
-                logger.exception(
-                    "❌ Erreur dans le thread de traitement : "
-                )
+                logger.exception("❌ Erreur dans le thread de traitement : ")
                 time.sleep(0.1)  # Pause pour éviter de surcharger le CPU
 
     def stop_consuming(self, consumer_id: str) -> None:
@@ -871,9 +843,7 @@ class KafkaClientPool:
                 self.consumers[consumer_id].close()
                 logger.info(f"✅ Consommateur {consumer_id} fermé")
             except Exception:
-                logger.exception(
-                    "❌ Erreur lors de la fermeture du consommateur : "
-                )
+                logger.exception("❌ Erreur lors de la fermeture du consommateur : ")
 
         # Nettoyer les ressources
         for container in [

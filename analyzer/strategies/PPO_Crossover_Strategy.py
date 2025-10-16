@@ -22,8 +22,7 @@ class PPO_Crossover_Strategy(BaseStrategy):
     - SELL: PPO croisant en-dessous de 0 avec momentum défavorable
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Seuils PPO OPTIMISÉS WINRATE - Filtrage qualité
         self.bullish_threshold = 0.25  # PPO > 0.25% = signal haussier SIGNIFICATIF
@@ -51,49 +50,65 @@ class PPO_Crossover_Strategy(BaseStrategy):
     def _validate_ppo_data(self) -> tuple[bool, dict[str, Any] | None, float | None]:
         """Valide les données PPO. Returns (is_valid, error_response, ppo_value)."""
         if not self.validate_data():
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Données insuffisantes",
-                "metadata": {},
-            }, None
+            return (
+                False,
+                {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "Données insuffisantes",
+                    "metadata": {},
+                },
+                None,
+            )
 
         values = self._get_current_values()
         ppo = values["ppo"]
         if ppo is None:
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "PPO non disponible",
-                "metadata": {"strategy": self.name},
-            }, None
+            return (
+                False,
+                {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "PPO non disponible",
+                    "metadata": {"strategy": self.name},
+                },
+                None,
+            )
 
         try:
             ppo_val = float(ppo)
         except (ValueError, TypeError):
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Erreur conversion PPO",
-                "metadata": {"strategy": self.name},
-            }, None
+            return (
+                False,
+                {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "Erreur conversion PPO",
+                    "metadata": {"strategy": self.name},
+                },
+                None,
+            )
 
         if abs(ppo_val) < self.neutral_zone:
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"PPO en zone neutre ({ppo_val:.3f}%) - momentum insuffisant",
-                "metadata": {
-                    "strategy": self.name,
-                    "symbol": self.symbol,
-                    "ppo": ppo_val,
-                    "neutral_zone": self.neutral_zone,
+            return (
+                False,
+                {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"PPO en zone neutre ({ppo_val:.3f}%) - momentum insuffisant",
+                    "metadata": {
+                        "strategy": self.name,
+                        "symbol": self.symbol,
+                        "ppo": ppo_val,
+                        "neutral_zone": self.neutral_zone,
+                    },
                 },
-            }, None
+                None,
+            )
 
         return True, None, ppo_val
 
@@ -204,7 +219,9 @@ class PPO_Crossover_Strategy(BaseStrategy):
 
         if signal_side:
             # VALIDATIONS SIGNAL
-            is_valid_signal, rejection_response = self._validate_ppo_signal_requirements(signal_side, values)
+            is_valid_signal, rejection_response = (
+                self._validate_ppo_signal_requirements(signal_side, values)
+            )
             if not is_valid_signal:
                 return rejection_response
 
@@ -267,7 +284,8 @@ class PPO_Crossover_Strategy(BaseStrategy):
             directional_bias = values.get("directional_bias")
             if directional_bias:
                 if (signal_side == "BUY" and directional_bias == "BULLISH") or (
-                        signal_side == "SELL" and directional_bias == "BEARISH"):
+                    signal_side == "SELL" and directional_bias == "BEARISH"
+                ):
                     confidence_boost += 0.1
                     reason += " confirmé par bias directionnel"
                 elif (signal_side == "BUY" and directional_bias == "BEARISH") or (
@@ -340,9 +358,12 @@ class PPO_Crossover_Strategy(BaseStrategy):
                 }
 
             confidence = max(
-                0.0, min(
-                    self.calculate_confidence(
-                        base_confidence, 1.0 + confidence_boost), 1.0, ), )
+                0.0,
+                min(
+                    self.calculate_confidence(base_confidence, 1.0 + confidence_boost),
+                    1.0,
+                ),
+            )
             strength = self.get_strength_from_confidence(confidence)
 
             return {
@@ -368,10 +389,7 @@ class PPO_Crossover_Strategy(BaseStrategy):
             "confidence": 0.0,
             "strength": "weak",
             "reason": f"PPO neutre ({ppo_val:.3f}%) - pas de crossover significatif",
-            "metadata": {
-                "strategy": self.name,
-                "symbol": self.symbol,
-                "ppo": ppo_val},
+            "metadata": {"strategy": self.name, "symbol": self.symbol, "ppo": ppo_val},
         }
 
     def validate_data(self) -> bool:
@@ -385,8 +403,7 @@ class PPO_Crossover_Strategy(BaseStrategy):
         # Utilisation de self.indicators directement (pattern du système)
         for indicator in required_indicators:
             if indicator not in self.indicators:
-                logger.warning(
-                    f"{self.name}: Indicateur manquant: {indicator}")
+                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
                 return False
             if self.indicators[indicator] is None:
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")

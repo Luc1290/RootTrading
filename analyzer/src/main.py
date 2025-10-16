@@ -57,10 +57,7 @@ class AnalyzerService:
         self.timeframes = []
 
         # Intervalle d'analyse
-        self.analysis_interval = int(
-            os.getenv(
-                "ANALYSIS_INTERVAL",
-                "60"))  # secondes
+        self.analysis_interval = int(os.getenv("ANALYSIS_INTERVAL", "60"))  # secondes
 
         # Statistiques globales
         self.cycle_stats = {
@@ -82,7 +79,7 @@ class AnalyzerService:
                 port=int(self.db_config["port"]),
                 database=str(self.db_config["database"]),
                 user=str(self.db_config["user"]),
-                password=str(self.db_config["password"])
+                password=str(self.db_config["password"]),
             )
             logger.info("Connexion à la base de données établie")
         except Exception:
@@ -116,9 +113,7 @@ class AnalyzerService:
 
                 # Extraire symboles et timeframes uniques
                 self.symbols = sorted({row["symbol"] for row in combinations})
-                all_timeframes = sorted(
-                    {row["timeframe"] for row in combinations}
-                )
+                all_timeframes = sorted({row["timeframe"] for row in combinations})
 
                 # Filtrer les timeframes indésirables (supprimer 1m pour
                 # réduire le bruit)
@@ -141,8 +136,7 @@ class AnalyzerService:
                 logger.info(
                     f"Timeframes chargés ({len(self.timeframes)}): {', '.join(self.timeframes)}"
                 )
-                logger.info(
-                    f"Combinaisons valides: {len(self.valid_combinations)}")
+                logger.info(f"Combinaisons valides: {len(self.valid_combinations)}")
 
         except Exception:
             logger.exception("Erreur chargement symboles/timeframes")
@@ -157,9 +151,7 @@ class AnalyzerService:
                 f"Utilisation des valeurs par défaut: {self.symbols} / {self.timeframes}"
             )
 
-    def fetch_latest_data(
-        self, symbol: str, timeframe: str
-    ) -> dict[str, Any] | None:
+    def fetch_latest_data(self, symbol: str, timeframe: str) -> dict[str, Any] | None:
         """
         Récupère les dernières données d'analyse pour un symbole et timeframe.
 
@@ -185,8 +177,7 @@ class AnalyzerService:
 
                 row = cursor.fetchone()
                 if not row:
-                    logger.warning(
-                        f"Aucune donnée trouvée pour {symbol} {timeframe}")
+                    logger.warning(f"Aucune donnée trouvée pour {symbol} {timeframe}")
                     return None
 
                 # Récupération des données OHLCV pour le contexte
@@ -233,8 +224,7 @@ class AnalyzerService:
                             if value is None or value == "":
                                 # Valeur nulle ou vide - garder None pour les
                                 # niveaux critiques
-                                if key in [
-                                        "nearest_support", "nearest_resistance"]:
+                                if key in ["nearest_support", "nearest_resistance"]:
                                     indicators[key] = None
                                 else:
                                     indicators[key] = 0.0
@@ -251,8 +241,7 @@ class AnalyzerService:
                                 ]:
                                     indicators[key] = 0.0
                                 elif value_stripped.lower() in ["true", "false"]:
-                                    indicators[key] = value_stripped.lower(
-                                    ) == "true"
+                                    indicators[key] = value_stripped.lower() == "true"
                                 elif key in [
                                     "support_strength",
                                     "resistance_strength",
@@ -306,7 +295,8 @@ class AnalyzerService:
                                         "UNKNOWN": "UNKNOWN",
                                     }
                                     indicators[key] = market_regime_mapping.get(
-                                        value_stripped.upper(), value_stripped)
+                                        value_stripped.upper(), value_stripped
+                                    )
 
                                 elif key in [
                                     "macd_trend",
@@ -316,8 +306,7 @@ class AnalyzerService:
                                 ]:
                                     # Garder comme string mais normaliser selon
                                     # le schema
-                                    if key in (
-                                            "macd_trend", "directional_bias"):
+                                    if key in ("macd_trend", "directional_bias"):
                                         # BULLISH/BEARISH/NEUTRAL
                                         indicators[key] = value_stripped.upper()
                                     elif key == "bb_breakout_direction":
@@ -413,8 +402,7 @@ class AnalyzerService:
                 }
 
         except Exception:
-            logger.exception(
-                "Erreur récupération données  ")
+            logger.exception("Erreur récupération données  ")
             return None
 
     def _log_strategy_debug(
@@ -440,11 +428,9 @@ class AnalyzerService:
             if "rsi_14" in indicators and indicators["rsi_14"] is not None:
                 debug_info.append(f"RSI: {float(indicators['rsi_14']):.1f}")
             if "williams_r" in indicators and indicators["williams_r"] is not None:
-                debug_info.append(
-                    f"WilliamsR: {float(indicators['williams_r']):.1f}")
+                debug_info.append(f"WilliamsR: {float(indicators['williams_r']):.1f}")
             if "macd_line" in indicators and indicators["macd_line"] is not None:
-                debug_info.append(
-                    f"MACD: {float(indicators['macd_line']):.4f}")
+                debug_info.append(f"MACD: {float(indicators['macd_line']):.4f}")
 
             # Indicateurs spécifiques selon la stratégie
             if (
@@ -458,8 +444,7 @@ class AnalyzerService:
                 and "bb_position" in indicators
                 and indicators["bb_position"] is not None
             ):
-                debug_info.append(
-                    f"BB_Pos: {float(indicators['bb_position']):.3f}")
+                debug_info.append(f"BB_Pos: {float(indicators['bb_position']):.3f}")
             if "Support" in strategy_name or "Resistance" in strategy_name:
                 if (
                     "nearest_support" in indicators
@@ -478,14 +463,12 @@ class AnalyzerService:
 
             # Volume et momentum
             if "volume_ratio" in indicators and indicators["volume_ratio"] is not None:
-                debug_info.append(
-                    f"Vol: {float(indicators['volume_ratio']):.1f}x")
+                debug_info.append(f"Vol: {float(indicators['volume_ratio']):.1f}x")
             if (
                 "momentum_score" in indicators
                 and indicators["momentum_score"] is not None
             ):
-                debug_info.append(
-                    f"Mom: {float(indicators['momentum_score']):.2f}")
+                debug_info.append(f"Mom: {float(indicators['momentum_score']):.2f}")
 
             if debug_info:
                 strategy_logger.debug(
@@ -506,8 +489,7 @@ class AnalyzerService:
         start_time = time.time()
         # FILTRAGE: Ignorer les timeframes 1m (trop de bruit)
         if timeframe in ["1m"]:
-            logger.info(
-                f"Timeframe {timeframe} ignoré pour {symbol} (bruit filtré)")
+            logger.info(f"Timeframe {timeframe} ignoré pour {symbol} (bruit filtré)")
             return
 
         # Récupération des données
@@ -522,8 +504,7 @@ class AnalyzerService:
         strategies_with_signals = 0
         no_signal_reasons = []
 
-        logger.info(
-            f"Analyse de {symbol} {timeframe} ({len(strategies)} stratégies)")
+        logger.info(f"Analyse de {symbol} {timeframe} ({len(strategies)} stratégies)")
 
         for strategy_name, strategy_class in strategies.items():
             strategy_start = time.time()
@@ -581,9 +562,7 @@ class AnalyzerService:
                     no_signal_reasons.append(f"{strategy_name}: {reason[:40]}")
 
             except Exception:
-                logger.exception(
-                    "Erreur stratégie  pour  "
-                )
+                logger.exception("Erreur stratégie  pour  ")
                 no_signal_reasons.append(f"{strategy_name}: ERREUR")
 
         # Statistiques de l'analyse
@@ -596,7 +575,8 @@ class AnalyzerService:
 
         logger.info(
             f"{symbol} {timeframe}: {strategies_with_signals}/{strategies_executed} stratégies ont généré des signaux "
-            f"({success_rate:.1f}%) - {analysis_time*1000:.0f}ms")
+            f"({success_rate:.1f}%) - {analysis_time*1000:.0f}ms"
+        )
 
         # Log des raisons de non-génération en DEBUG
         if logger.isEnabledFor(logging.DEBUG) and no_signal_reasons:
@@ -653,10 +633,8 @@ class AnalyzerService:
 
         # Statistiques du cycle
         cycle_time = time.time() - cycle_start_time
-        cycle_signals = self.cycle_stats["total_signals"] - \
-            cycle_signals_before
-        cycle_analyses = self.cycle_stats["total_analyses"] - \
-            cycle_analyses_before
+        cycle_signals = self.cycle_stats["total_signals"] - cycle_signals_before
+        cycle_analyses = self.cycle_stats["total_analyses"] - cycle_analyses_before
 
         # Calcul des statistiques
         overall_success_rate = (
@@ -688,7 +666,8 @@ class AnalyzerService:
             stats_logger.info(
                 f"Statistiques globales: {self.cycle_stats['total_signals']} signaux totaux, "
                 f"{self.cycle_stats['total_analyses']} analyses totales "
-                f"(taux global: {overall_success_rate:.1f}%)")
+                f"(taux global: {overall_success_rate:.1f}%)"
+            )
 
         # Log des exceptions si présentes
         if exceptions_count > 0:
@@ -702,10 +681,7 @@ class AnalyzerService:
 
         async def health_endpoint(_request):
             """Endpoint de health check."""
-            uptime = (
-                datetime.now(
-                    timezone.utc) -
-                self.start_time).total_seconds()
+            uptime = (datetime.now(timezone.utc) - self.start_time).total_seconds()
             return web.json_response(
                 {
                     "status": "healthy",
@@ -752,16 +728,14 @@ class AnalyzerService:
                             symbol = notification.get("symbol")
                             timeframe = notification.get("timeframe")
 
-                            logger.debug(
-                                f"📬 Trigger reçu: {symbol} {timeframe}")
+                            logger.debug(f"📬 Trigger reçu: {symbol} {timeframe}")
 
                             # Analyser uniquement le symbol/timeframe
                             # spécifique
                             if symbol and timeframe:
                                 await self.analyze_symbol_timeframe(symbol, timeframe)
                             else:
-                                logger.warning(
-                                    "Trigger sans symbol/timeframe - ignoré")
+                                logger.warning("Trigger sans symbol/timeframe - ignoré")
 
                     except Exception:
                         logger.exception("❌ Erreur traitement trigger")

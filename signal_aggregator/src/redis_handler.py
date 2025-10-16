@@ -29,8 +29,7 @@ class RedisHandler:
         )
 
         # Callback pour traitement des signaux
-        self.signal_callback: Callable[[str],
-                                       None] | Callable[[str], Any] | None = None
+        self.signal_callback: Callable[[str], None] | Callable[[str], Any] | None = None
 
         # Statistiques
         self.stats = {
@@ -49,14 +48,12 @@ class RedisHandler:
         """
         try:
             # Client principal pour publication
-            self.redis_client = redis.from_url(
-                redis_url, decode_responses=True)
+            self.redis_client = redis.from_url(redis_url, decode_responses=True)
             if self.redis_client is not None:
                 await self.redis_client.ping()
 
             # Client séparé pour abonnement (recommandé par redis-py)
-            self.subscriber_client = redis.from_url(
-                redis_url, decode_responses=True)
+            self.subscriber_client = redis.from_url(redis_url, decode_responses=True)
             if self.subscriber_client is not None:
                 await self.subscriber_client.ping()
 
@@ -116,10 +113,8 @@ class RedisHandler:
                         )
 
                         # Appeler le callback de traitement
-                        if self.signal_callback and callable(
-                                self.signal_callback):
-                            if asyncio.iscoroutinefunction(
-                                    self.signal_callback):
+                        if self.signal_callback and callable(self.signal_callback):
+                            if asyncio.iscoroutinefunction(self.signal_callback):
                                 await self.signal_callback(signal_data)
                             else:
                                 self.signal_callback(signal_data)
@@ -213,8 +208,7 @@ class RedisHandler:
             # Vérifier la longueur de la liste des signaux en attente
             if self.redis_client is None:
                 return 0
-            count_result = self.redis_client.llen(
-                "roottrading:signals:pending")
+            count_result = self.redis_client.llen("roottrading:signals:pending")
             count = (
                 await count_result
                 if hasattr(count_result, "__await__")
@@ -279,8 +273,7 @@ class RedisHandler:
         try:
             # Note: Redis pub/sub ne stocke pas les messages, donc pas besoin de flush
             # Cette méthode est plutôt pour compatibilité future
-            logger.info(
-                "Flush des canaux Redis (pas d'action nécessaire pour pub/sub)")
+            logger.info("Flush des canaux Redis (pas d'action nécessaire pour pub/sub)")
 
         except Exception:
             logger.exception("Erreur flush canaux")

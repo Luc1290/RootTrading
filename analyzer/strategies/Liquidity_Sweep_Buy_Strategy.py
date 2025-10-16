@@ -25,8 +25,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
     - BUY: Après sweep de support + retour au-dessus + confirmations haussières
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres liquidity sweep - ASSOUPLIS pour plus de signaux
         # 0.6% sous support pour sweep (réaliste crypto)
@@ -36,7 +35,9 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         self.min_volume_spike = 1.5  # Volume 50% au-dessus moyenne
         self.support_strength_min = 0.5  # Force minimum du support (MODERATE+)
 
-    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _create_rejection_signal(
+        self, reason: str, metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Helper to create rejection signals."""
         base_metadata = {"strategy": self.name}
         if metadata:
@@ -71,12 +72,21 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
                         nearest_support = float(np.percentile(recent_lows, 10))
                         support_strength_raw = "WEAK"
                     except (ValueError, TypeError):
-                        return None, None, self._create_rejection_signal(
-                            "Erreur calcul fallback support depuis lows", {}
+                        return (
+                            None,
+                            None,
+                            self._create_rejection_signal(
+                                "Erreur calcul fallback support depuis lows", {}
+                            ),
                         )
                 else:
-                    return None, None, self._create_rejection_signal(
-                        "Pas de support disponible (ni fixe ni fallback) - données insuffisantes", {}
+                    return (
+                        None,
+                        None,
+                        self._create_rejection_signal(
+                            "Pas de support disponible (ni fixe ni fallback) - données insuffisantes",
+                            {},
+                        ),
                     )
 
             support_strength_score = (
@@ -86,37 +96,45 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             )
 
             # Vérification force du support
-            if support_strength_score is not None and support_strength_score < self.support_strength_min:
+            if (
+                support_strength_score is not None
+                and support_strength_score < self.support_strength_min
+            ):
                 logger.info(
                     f"[{self.symbol}] Liquidity_Sweep rejet: support trop faible - strength={support_strength_raw} ({support_strength_score:.2f} < {self.support_strength_min})"
                 )
-                return None, None, self._create_rejection_signal(
-                    f"Support trop faible ({support_strength_raw}) pour liquidity sweep",
-                    {
-                        "symbol": self.symbol,
-                        "support_strength": support_strength_raw,
-                        "support_strength_score": support_strength_score,
-                        "nearest_support": nearest_support,
-                    }
+                return (
+                    None,
+                    None,
+                    self._create_rejection_signal(
+                        f"Support trop faible ({support_strength_raw}) pour liquidity sweep",
+                        {
+                            "symbol": self.symbol,
+                            "support_strength": support_strength_raw,
+                            "support_strength_score": support_strength_score,
+                            "nearest_support": nearest_support,
+                        },
+                    ),
                 )
 
             return nearest_support, support_strength_score, None
 
         except (ValueError, TypeError) as e:
-            return None, None, self._create_rejection_signal(f"Erreur conversion support: {e}", {})
+            return (
+                None,
+                None,
+                self._create_rejection_signal(f"Erreur conversion support: {e}", {}),
+            )
 
     def _convert_support_strength_to_score(
-            self, strength_str: str | int | float) -> float:
+        self, strength_str: str | int | float
+    ) -> float:
         """Convertit support_strength string en score numérique."""
         # Si déjà converti en float par main.py, le retourner directement
         if isinstance(strength_str, int | float):
             return float(strength_str)
 
-        strength_map = {
-            "WEAK": 0.2,
-            "MODERATE": 0.5,
-            "STRONG": 0.8,
-            "MAJOR": 1.0}
+        strength_map = {"WEAK": 0.2, "MODERATE": 0.5, "STRONG": 0.8, "MAJOR": 1.0}
         return strength_map.get(str(strength_str).upper(), 0.3)
 
     def _get_current_price(self) -> float | None:
@@ -170,20 +188,13 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         """Récupère les données de prix et volume pour analyse sweep (7 barres)."""
         try:
             if (
-                self.data and all(
-                    key in self.data for key in [
-                        "close",
-                        "low",
-                        "high",
-                        "volume"]) and all(
-                    isinstance(
-                    self.data[key],
-                    list) and len(
-                        self.data[key]) >= 8 for key in [
-                            "close",
-                            "low",
-                            "high",
-                    "volume"])):  # 8 pour avoir 7 barres précédentes
+                self.data
+                and all(key in self.data for key in ["close", "low", "high", "volume"])
+                and all(
+                    isinstance(self.data[key], list) and len(self.data[key]) >= 8
+                    for key in ["close", "low", "high", "volume"]
+                )
+            ):  # 8 pour avoir 7 barres précédentes
 
                 return {
                     "current_price": float(self.data["close"][-1]),
@@ -204,21 +215,25 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
                 }
         except (IndexError, ValueError, TypeError):
             pass
-        return dict.fromkeys(["current_price",
-                              "current_low",
-                              "current_high",
-                              "current_volume",
-                              "prev_low_1",
-                              "prev_low_2",
-                              "prev_low_3",
-                              "prev_low_4",
-                              "prev_low_5",
-                              "prev_low_6",
-                              "prev_low_7",
-                              "prev_volume_1",
-                              "prev_volume_2",
-                              "prev_close_1",
-                              "prev_close_2"])
+        return dict.fromkeys(
+            [
+                "current_price",
+                "current_low",
+                "current_high",
+                "current_volume",
+                "prev_low_1",
+                "prev_low_2",
+                "prev_low_3",
+                "prev_low_4",
+                "prev_low_5",
+                "prev_low_6",
+                "prev_low_7",
+                "prev_volume_1",
+                "prev_volume_2",
+                "prev_close_1",
+                "prev_close_2",
+            ]
+        )
 
     def _detect_liquidity_sweep_setup(
         self, price_data: dict[str, float | None], support_level: float
@@ -234,12 +249,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         prev_low_1 = price_data["prev_low_1"]
         prev_low_2 = price_data["prev_low_2"]
 
-        if any(
-            v is None for v in [
-                current_price,
-                current_low,
-                prev_low_1,
-                prev_low_2]):
+        if any(v is None for v in [current_price, current_low, prev_low_1, prev_low_2]):
             return {"is_sweep": False, "reason": "Données prix incomplètes"}
 
         # Assertions pour mypy - on sait que les valeurs ne sont pas None
@@ -270,8 +280,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             price_data.get("prev_low_7"),
         ]
         for i, low in enumerate(lows):
-            if low is not None and low < support_level * \
-                    (1 - self.sweep_threshold):
+            if low is not None and low < support_level * (1 - self.sweep_threshold):
                 recent_sweep = True
                 sweep_bars_ago = i
                 break
@@ -300,8 +309,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             }
 
         # Calcul de la force du sweep avec protection contre séquence vide
-        sweep_lows = [
-            low for low in lows if low is not None and low < support_level]
+        sweep_lows = [low for low in lows if low is not None and low < support_level]
         if not sweep_lows:
             max_sweep_distance = 0.0  # Pas de sweep réel
         else:
@@ -326,20 +334,26 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         Génère un signal basé sur les liquidity sweeps haussiers.
         """
         if not self.validate_data():
-            logger.debug(f"[{self.symbol}] Liquidity_Sweep rejet: validate_data() failed")
+            logger.debug(
+                f"[{self.symbol}] Liquidity_Sweep rejet: validate_data() failed"
+            )
             return self._create_rejection_signal("Données insuffisantes", {})
 
         values = self._get_current_values()
         price_data = self._get_price_volume_data()
 
         # Valider support et prix
-        nearest_support, support_strength_score, error_signal = self._validate_support_and_price(values)
+        nearest_support, support_strength_score, error_signal = (
+            self._validate_support_and_price(values)
+        )
         if error_signal:
             return error_signal
 
         current_price = price_data["current_price"]
         if nearest_support is None or current_price is None:
-            return self._create_rejection_signal("Niveau support ou prix non disponibles", {})
+            return self._create_rejection_signal(
+                "Niveau support ou prix non disponibles", {}
+            )
 
         # Détection du liquidity sweep setup
         sweep_analysis = self._detect_liquidity_sweep_setup(price_data, nearest_support)
@@ -353,7 +367,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
                     "symbol": self.symbol,
                     "nearest_support": nearest_support,
                     "current_price": current_price,
-                }
+                },
             )
 
         # Si on a un sweep setup, générer signal BUY
@@ -398,7 +412,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
                     )
                     return self._create_rejection_signal(
                         f"Rejet liquidity sweep: volume trop faible ({vol_ratio:.1f}x < 0.7x)",
-                        {"volume_ratio": vol_ratio}
+                        {"volume_ratio": vol_ratio},
                     )
                 if 0.9 <= vol_ratio < 1.2:
                     confidence_boost += 0.03
@@ -436,7 +450,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
                     )
                     return self._create_rejection_signal(
                         f"Rejet liquidity sweep: RSI trop haut ({rsi:.1f}) pour BUY",
-                        {"rsi": rsi}
+                        {"rsi": rsi},
                     )
                 if 40 <= rsi <= 65:  # RSI neutre - pas de bonus ni malus
                     pass  # Zone neutre
@@ -553,8 +567,8 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
                 pass
 
         confidence = min(
-            1.0, self.calculate_confidence(
-                base_confidence, 1 + confidence_boost))
+            1.0, self.calculate_confidence(base_confidence, 1 + confidence_boost)
+        )
         strength = self.get_strength_from_confidence(confidence)
 
         return {
@@ -594,8 +608,13 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
 
         # Liquidity sweep nécessite un support FIXE ou fallback possible
         if (
-            (self.indicators.get("nearest_support") is None or self.indicators.get("nearest_support") == 0)
-            and (not self.data or "low" not in self.data or not self.data["low"] or len(self.data["low"]) < 8)
+            self.indicators.get("nearest_support") is None
+            or self.indicators.get("nearest_support") == 0
+        ) and (
+            not self.data
+            or "low" not in self.data
+            or not self.data["low"]
+            or len(self.data["low"]) < 8
         ):
             # nearest_support manquant et données low insuffisantes pour fallback
             logger.warning(

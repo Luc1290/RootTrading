@@ -95,10 +95,10 @@ class OpportunityValidator:
 
         # Level 1: Data Quality
         level_results[ValidationLevel.DATA_QUALITY] = self._validate_data_quality(
-            analyzer_data)
+            analyzer_data
+        )
         if not level_results[ValidationLevel.DATA_QUALITY].passed:
-            blocking_issues.append(
-                level_results[ValidationLevel.DATA_QUALITY].reason)
+            blocking_issues.append(level_results[ValidationLevel.DATA_QUALITY].reason)
             return self._create_failed_summary(level_results, blocking_issues)
 
         # Level 2: Market Conditions
@@ -112,7 +112,8 @@ class OpportunityValidator:
 
         # Level 3: Risk Management
         level_results[ValidationLevel.RISK_MANAGEMENT] = self._validate_risk_management(
-            analyzer_data, current_price)
+            analyzer_data, current_price
+        )
         if not level_results[ValidationLevel.RISK_MANAGEMENT].passed:
             blocking_issues.append(
                 level_results[ValidationLevel.RISK_MANAGEMENT].reason
@@ -120,10 +121,10 @@ class OpportunityValidator:
 
         # Level 4: Entry Timing
         level_results[ValidationLevel.ENTRY_TIMING] = self._validate_entry_timing(
-            analyzer_data)
+            analyzer_data
+        )
         if not level_results[ValidationLevel.ENTRY_TIMING].passed:
-            blocking_issues.append(
-                level_results[ValidationLevel.ENTRY_TIMING].reason)
+            blocking_issues.append(level_results[ValidationLevel.ENTRY_TIMING].reason)
 
         # Collecter warnings
         for result in level_results.values():
@@ -140,12 +141,10 @@ class OpportunityValidator:
         # Recommandations
         if all_passed:
             recommendations.append("✅ Toutes les validations passées")
-            recommendations.append(
-                f"Score validation: {overall_score:.0f}/100")
+            recommendations.append(f"Score validation: {overall_score:.0f}/100")
         else:
             recommendations.append("❌ Validation échouée")
-            recommendations.append(
-                f"Problèmes à résoudre: {len(blocking_issues)}")
+            recommendations.append(f"Problèmes à résoudre: {len(blocking_issues)}")
 
         return ValidationSummary(
             all_passed=all_passed,
@@ -302,8 +301,7 @@ class OpportunityValidator:
         # CHANGEMENT: Malus progressif au lieu de rejet binaire
         if bias == "BEARISH":
             score -= 30  # Malus mais pas bloquant
-            warnings.append(
-                f"⚠️⚠️ BIAIS BAISSIER: {bias} - Setup contre-tendance!")
+            warnings.append(f"⚠️⚠️ BIAIS BAISSIER: {bias} - Setup contre-tendance!")
             details["bias_bear_warning"] = True
         elif bias == "NEUTRAL":
             warnings.append("⚠️ Biais neutre - Pas de direction claire")
@@ -403,11 +401,7 @@ class OpportunityValidator:
 
         # Calculer SL distance
         if nearest_support > 0 and current_price > nearest_support:
-            sl_dist = max(
-                0.007,
-                (current_price -
-                 nearest_support) /
-                current_price)
+            sl_dist = max(0.007, (current_price - nearest_support) / current_price)
             sl_basis = "support"
         else:
             sl_dist = max(0.007, atr_percent * 0.7)
@@ -463,8 +457,7 @@ class OpportunityValidator:
 
         # 3. Vérifier résistance
         if nearest_resistance > 0 and current_price > 0:
-            res_dist_pct = (
-                (nearest_resistance - current_price) / current_price) * 100
+            res_dist_pct = ((nearest_resistance - current_price) / current_price) * 100
 
             # Récupérer momentum_score pour contextualiser
             momentum_score = self.safe_float(ad.get("momentum_score"), 50)
@@ -517,13 +510,11 @@ class OpportunityValidator:
         break_prob = self.safe_float(ad.get("break_probability"))
         if break_prob > 0:
             if break_prob < 0.35:  # Abaissé de 0.4 à 0.35
-                warnings.append(
-                    f"⚠️ Probabilité cassure faible: {break_prob*100:.0f}%")
+                warnings.append(f"⚠️ Probabilité cassure faible: {break_prob*100:.0f}%")
                 score -= 10
             elif break_prob < 0.45:
                 # Zone intermédiaire: warning informatif seulement
-                warnings.append(
-                    f"ℹ️ Break probability modérée: {break_prob*100:.0f}%")
+                warnings.append(f"ℹ️ Break probability modérée: {break_prob*100:.0f}%")
                 score -= 3
 
             details["break_probability"] = break_prob * 100
@@ -571,13 +562,11 @@ class OpportunityValidator:
 
         # AJUSTÉ: 2.0x (compromis 20 cryptos: P95 varie de 1.4x à 8.3x)
         is_pump_context = (
-            (vol_spike > 2.0 or rel_volume > 2.0) and market_regime in [
-                "TRENDING_BULL",
-                "BREAKOUT_BULL"] and vol_context in [
-                "CONSOLIDATION_BREAK",
-                "BREAKOUT",
-                "PUMP_START",
-                "HIGH_VOLATILITY"])
+            (vol_spike > 2.0 or rel_volume > 2.0)
+            and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]
+            and vol_context
+            in ["CONSOLIDATION_BREAK", "BREAKOUT", "PUMP_START", "HIGH_VOLATILITY"]
+        )
 
         # 1. Overbought Check (avec tolérance pump)
         rsi = self.safe_float(ad.get("rsi_14"))
@@ -618,8 +607,7 @@ class OpportunityValidator:
             score -= 10
 
         if stoch_k > 90 and stoch_d > 90:
-            overbought_issues.append(
-                f"Stochastic saturé ({stoch_k:.0f}/{stoch_d:.0f})")
+            overbought_issues.append(f"Stochastic saturé ({stoch_k:.0f}/{stoch_d:.0f})")
             score -= 15
 
         if overbought_issues:
@@ -681,8 +669,7 @@ class OpportunityValidator:
             score -= 5
 
         if momentum_score_val < 40:
-            warnings.append(
-                f"⚠️ Momentum score faible: {momentum_score_val:.0f}")
+            warnings.append(f"⚠️ Momentum score faible: {momentum_score_val:.0f}")
             score -= 10
 
         details["macd_trend"] = macd_trend

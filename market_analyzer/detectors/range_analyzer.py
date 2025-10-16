@@ -237,11 +237,13 @@ class RangeAnalyzer:
 
             # 8. Volume aux limites
             volume_at_boundaries = self._calculate_boundary_volume(
-                recent_highs, recent_lows, recent_volumes, range_high, range_low)
+                recent_highs, recent_lows, recent_volumes, range_high, range_low
+            )
 
             # 9. Probabilité de breakout
             breakout_probability = self._calculate_breakout_probability(
-                duration, tests_high, tests_low, efficiency, volume_at_boundaries)
+                duration, tests_high, tests_low, efficiency, volume_at_boundaries
+            )
 
             # 10. Direction préférée
             preferred_direction = self._determine_preferred_direction(
@@ -338,10 +340,7 @@ class RangeAnalyzer:
             logger.exception("Erreur détection breakout")
             return self._empty_breakout_analysis()
 
-    def get_trading_levels(
-            self,
-            range_info: RangeInfo,
-            _current_price: float) -> dict:
+    def get_trading_levels(self, range_info: RangeInfo, _current_price: float) -> dict:
         """
         Retourne les niveaux de trading optimaux pour le range.
 
@@ -523,8 +522,7 @@ class RangeAnalyzer:
             score = 0
 
             # 1. Respect des limites (% de temps dans le range)
-            in_range_count = sum(
-                1 for c in closes if range_low <= c <= range_high)
+            in_range_count = sum(1 for c in closes if range_low <= c <= range_high)
             respect_ratio = in_range_count / len(closes)
             if respect_ratio > 0.9:
                 score += 3
@@ -546,7 +544,8 @@ class RangeAnalyzer:
             false_breakouts = 0
             for _i, (h, low, c) in enumerate(zip(highs, lows, closes)):
                 if (h > range_high and c < range_high) or (
-                        low < range_low and c > range_low):  # Fausse cassure haute
+                    low < range_low and c > range_low
+                ):  # Fausse cassure haute
                     false_breakouts += 1
 
             if false_breakouts == 0:
@@ -629,8 +628,7 @@ class RangeAnalyzer:
 
         for h, low, v in zip(highs, lows, volumes):
             # Test de la résistance
-            if h >= range_high * \
-                    (1 - tolerance) or low <= range_low * (1 + tolerance):
+            if h >= range_high * (1 - tolerance) or low <= range_low * (1 + tolerance):
                 boundary_volumes.append(v)
 
         if not boundary_volumes:
@@ -681,11 +679,7 @@ class RangeAnalyzer:
         recent_volumes = volumes[-10:]
 
         # Tendance des prix
-        price_slope = np.polyfit(
-            range(
-                len(recent_closes)),
-            recent_closes,
-            1)[0]
+        price_slope = np.polyfit(range(len(recent_closes)), recent_closes, 1)[0]
 
         # Tendance du volume
         np.polyfit(range(len(recent_volumes)), recent_volumes, 1)[0]
@@ -712,10 +706,8 @@ class RangeAnalyzer:
 
         # Mouvement depuis la résistance
         price_movement = (
-            (current_price -
-             range_info.range_high) /
-            range_info.range_high *
-            100)
+            (current_price - range_info.range_high) / range_info.range_high * 100
+        )
 
         # Confirmations
         volume_confirmation = current_volume > avg_volume * self.volume_threshold
@@ -773,8 +765,7 @@ class RangeAnalyzer:
 
         # Confirmations
         volume_confirmation = current_volume > avg_volume * self.volume_threshold
-        momentum_confirmation = self._check_momentum_confirmation(
-            closes, False)
+        momentum_confirmation = self._check_momentum_confirmation(closes, False)
 
         # Type de breakout
         if volume_confirmation and momentum_confirmation and price_movement > 1:

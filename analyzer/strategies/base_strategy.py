@@ -13,8 +13,7 @@ logger = logging.getLogger(__name__)
 class BaseStrategy(ABC):
     """Classe de base abstraite pour toutes les stratégies."""
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         """
         Initialise la stratégie avec les données nécessaires.
 
@@ -54,10 +53,7 @@ class BaseStrategy(ABC):
             return False
         return True
 
-    def calculate_confidence(
-            self,
-            base_confidence: float,
-            *factors: float) -> float:
+    def calculate_confidence(self, base_confidence: float, *factors: float) -> float:
         """
         Calcule la confiance finale en multipliant les facteurs.
 

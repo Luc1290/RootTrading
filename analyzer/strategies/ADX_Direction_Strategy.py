@@ -20,8 +20,7 @@ class ADX_Direction_Strategy(BaseStrategy):
     - SELL: ADX > 25 avec -DI > +DI et momentum baissier
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Seuils ADX CRYPTO STRICTS - Anti-faux signaux
         # Tendance minimum CRYPTO (relevé de 15 à 22)
@@ -59,7 +58,9 @@ class ADX_Direction_Strategy(BaseStrategy):
             "market_regime": self.indicators.get("market_regime"),
         }
 
-    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _create_rejection_signal(
+        self, reason: str, metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Helper pour créer un signal de rejet."""
         base_metadata = {"strategy": self.name}
         if metadata:
@@ -72,11 +73,14 @@ class ADX_Direction_Strategy(BaseStrategy):
             "metadata": base_metadata,
         }
 
-    def _validate_adx_indicators(self, values: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, float | None]]:
+    def _validate_adx_indicators(
+        self, values: dict[str, Any]
+    ) -> tuple[dict[str, Any] | None, dict[str, float | None]]:
         """
         Valide les indicateurs ADX. Retourne (None, validated_data) si succès,
         (rejection_signal, {}) si échec.
         """
+
         def _is_valid(x):
             try:
                 x = float(x) if x is not None else None
@@ -97,15 +101,28 @@ class ADX_Direction_Strategy(BaseStrategy):
             return self._create_rejection_signal(f"Erreur conversion ADX: {e}"), {}
 
         # Validation combinée de None et validité
-        if not (_is_valid(adx) and _is_valid(plus_di) and _is_valid(minus_di)) or adx is None or plus_di is None or minus_di is None:
+        if (
+            not (_is_valid(adx) and _is_valid(plus_di) and _is_valid(minus_di))
+            or adx is None
+            or plus_di is None
+            or minus_di is None
+        ):
             return self._create_rejection_signal("Valeurs ADX/DI invalides ou NaN"), {}
 
         # Validation du seuil ADX
         if adx < self.adx_threshold:
-            return self._create_rejection_signal(
-                f"ADX insuffisant ({adx:.1f}) < {self.adx_threshold} - tendance trop faible",
-                {"symbol": self.symbol, "adx": adx, "plus_di": plus_di, "minus_di": minus_di}
-            ), {}
+            return (
+                self._create_rejection_signal(
+                    f"ADX insuffisant ({adx:.1f}) < {self.adx_threshold} - tendance trop faible",
+                    {
+                        "symbol": self.symbol,
+                        "adx": adx,
+                        "plus_di": plus_di,
+                        "minus_di": minus_di,
+                    },
+                ),
+                {},
+            )
 
         # Calcul et validation de la différence entre DI
         di_diff = plus_di - minus_di
@@ -113,11 +130,23 @@ class ADX_Direction_Strategy(BaseStrategy):
 
         # Vérifier écart DI suffisant ET non égal
         if di_diff_abs < self.di_diff_threshold or plus_di == minus_di:
-            reason = "DI égaux : direction neutre, pas de signal ADX" if plus_di == minus_di else f"DI écart insuffisant ({di_diff_abs:.1f}) < {self.di_diff_threshold} - direction incertaine"
-            return self._create_rejection_signal(
-                reason,
-                {"symbol": self.symbol, "adx": adx, "plus_di": plus_di, "minus_di": minus_di}
-            ), {}
+            reason = (
+                "DI égaux : direction neutre, pas de signal ADX"
+                if plus_di == minus_di
+                else f"DI écart insuffisant ({di_diff_abs:.1f}) < {self.di_diff_threshold} - direction incertaine"
+            )
+            return (
+                self._create_rejection_signal(
+                    reason,
+                    {
+                        "symbol": self.symbol,
+                        "adx": adx,
+                        "plus_di": plus_di,
+                        "minus_di": minus_di,
+                    },
+                ),
+                {},
+            )
 
         return None, {
             "adx": adx,
@@ -125,7 +154,7 @@ class ADX_Direction_Strategy(BaseStrategy):
             "minus_di": minus_di,
             "di_diff": di_diff,
             "di_diff_abs": di_diff_abs,
-            "_is_valid": _is_valid
+            "_is_valid": _is_valid,
         }
 
     def _validate_momentum_alignment(
@@ -133,7 +162,7 @@ class ADX_Direction_Strategy(BaseStrategy):
         values: dict[str, Any],
         plus_di: float,
         minus_di: float,
-        _is_valid: callable
+        _is_valid: callable,
     ) -> dict[str, Any] | None:
         """
         Valide l'alignement momentum. Retourne None si OK, sinon signal de rejet.
@@ -146,15 +175,19 @@ class ADX_Direction_Strategy(BaseStrategy):
 
                 adx_direction = "bullish" if plus_di > minus_di else "bearish"
 
-                if adx_direction == "bullish" and momentum_val < (momentum_center - self.min_momentum_alignment):
+                if adx_direction == "bullish" and momentum_val < (
+                    momentum_center - self.min_momentum_alignment
+                ):
                     return self._create_rejection_signal(
                         f"Momentum fortement opposé bullish: {momentum_val:.1f} contre ADX haussier",
-                        {"rejected_reason": "momentum_strongly_opposed"}
+                        {"rejected_reason": "momentum_strongly_opposed"},
                     )
-                if adx_direction == "bearish" and momentum_val > (momentum_center + self.min_momentum_alignment):
+                if adx_direction == "bearish" and momentum_val > (
+                    momentum_center + self.min_momentum_alignment
+                ):
                     return self._create_rejection_signal(
                         f"Momentum fortement opposé bearish: {momentum_val:.1f} contre ADX baissier",
-                        {"rejected_reason": "momentum_strongly_opposed"}
+                        {"rejected_reason": "momentum_strongly_opposed"},
                     )
             except (ValueError, TypeError):
                 pass
@@ -184,7 +217,9 @@ class ADX_Direction_Strategy(BaseStrategy):
         _is_valid = validated_data["_is_valid"]
 
         # Valider l'alignement momentum
-        momentum_rejection = self._validate_momentum_alignment(values, plus_di, minus_di, _is_valid)
+        momentum_rejection = self._validate_momentum_alignment(
+            values, plus_di, minus_di, _is_valid
+        )
         if momentum_rejection:
             return momentum_rejection
 
@@ -259,8 +294,7 @@ class ADX_Direction_Strategy(BaseStrategy):
         if directional_bias:
             # Normaliser les variantes possibles
             bias_str = str(directional_bias).upper().strip()
-            bias_bullish = bias_str in [
-                "BULLISH", "BULL", "UP", "HAUSSIER", "POSITIVE"]
+            bias_bullish = bias_str in ["BULLISH", "BULL", "UP", "HAUSSIER", "POSITIVE"]
             bias_bearish = bias_str in [
                 "BEARISH",
                 "BEAR",
@@ -285,18 +319,16 @@ class ADX_Direction_Strategy(BaseStrategy):
                 # Bonus progressif selon alignement momentum (seuils plus
                 # tolérants)
                 if momentum_val is not None and (
-                    (signal_side == "BUY" and momentum_val > 60) or (
-                        signal_side == "SELL" and momentum_val < 40
-                    )
+                    (signal_side == "BUY" and momentum_val > 60)
+                    or (signal_side == "SELL" and momentum_val < 40)
                 ):
                     confidence_boost += 0.12
                     confirmations_count += 1
                     confirmations_details.append("momentum_strong")
                     reason += f" avec momentum FORT ({momentum_val:.1f})"
                 elif momentum_val is not None and (
-                    (signal_side == "BUY" and momentum_val > 55) or (
-                        signal_side == "SELL" and momentum_val < 45
-                    )
+                    (signal_side == "BUY" and momentum_val > 55)
+                    or (signal_side == "SELL" and momentum_val < 45)
                 ):
                     confidence_boost += 0.08
                     confirmations_count += 1
@@ -315,9 +347,7 @@ class ADX_Direction_Strategy(BaseStrategy):
         if adxr and _is_valid(adxr):
             try:
                 adxr_val = float(adxr)
-                adxr_threshold = max(
-                    self.adx_threshold - 2,
-                    15)  # Seuil plus souple
+                adxr_threshold = max(self.adx_threshold - 2, 15)  # Seuil plus souple
                 if adxr_val > adxr_threshold:
                     confidence_boost += 0.05
                     reason += " (ADXR confirme persistance)"
@@ -380,7 +410,8 @@ class ADX_Direction_Strategy(BaseStrategy):
             elif regime_str in ["TRENDING_BULL", "TRENDING_BEAR"]:
                 # Bonus si aligné avec la tendance
                 if (signal_side == "BUY" and regime_str == "TRENDING_BULL") or (
-                        signal_side == "SELL" and regime_str == "TRENDING_BEAR"):
+                    signal_side == "SELL" and regime_str == "TRENDING_BEAR"
+                ):
                     confidence_boost += 0.15
                     confirmations_count += 1
                     confirmations_details.append("regime_aligned")
@@ -397,11 +428,10 @@ class ADX_Direction_Strategy(BaseStrategy):
                     "rejected_reason": "insufficient_confirmations",
                     "confirmations_count": confirmations_count,
                     "confirmations_details": confirmations_details,
-                }
+                },
             )
 
-        confidence = self.calculate_confidence(
-            base_confidence, 1 + confidence_boost)
+        confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
 
         return {
@@ -438,8 +468,7 @@ class ADX_Direction_Strategy(BaseStrategy):
 
         for indicator in required:
             if indicator not in self.indicators:
-                logger.warning(
-                    f"{self.name}: Indicateur manquant: {indicator}")
+                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
                 return False
             indicator_val = self.indicators.get(indicator)
             if indicator_val is None:

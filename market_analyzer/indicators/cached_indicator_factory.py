@@ -12,15 +12,22 @@ from typing import Any
 from shared.src.indicator_cache import get_indicator_cache
 
 # Import cached indicator functions
-from .momentum.rsi import (calculate_rsi_cached, calculate_rsi_series_cached,
-                           clear_rsi_cache)
+from .momentum.rsi import (
+    calculate_rsi_cached,
+    calculate_rsi_series_cached,
+    clear_rsi_cache,
+)
 from .trend.macd import calculate_macd_series  # Will be enhanced later
-from .trend.moving_averages import (calculate_ema_cached,
-                                    calculate_ema_series_cached,
-                                    calculate_sma_cached, clear_ma_cache,
-                                    get_ma_cross_signal_cached)
-from .volatility.bollinger import \
-    calculate_bollinger_bands_series  # Will be enhanced later
+from .trend.moving_averages import (
+    calculate_ema_cached,
+    calculate_ema_series_cached,
+    calculate_sma_cached,
+    clear_ma_cache,
+    get_ma_cross_signal_cached,
+)
+from .volatility.bollinger import (
+    calculate_bollinger_bands_series,
+)  # Will be enhanced later
 from .volume.obv import calculate_obv_series  # Will be enhanced later
 from .volume.vwap import calculate_vwap_series  # Will be enhanced later
 
@@ -38,8 +45,7 @@ class CachedIndicatorFactory:
     - Cache management and statistics
     """
 
-    def __init__(self, enable_cache: bool = True,
-                 default_symbol: str | None = None):
+    def __init__(self, enable_cache: bool = True, default_symbol: str | None = None):
         """
         Initialize the cached indicator factory.
 
@@ -81,8 +87,7 @@ class CachedIndicatorFactory:
         if not symbol:
             raise ValueError("Symbol required for cached calculations")
 
-        return calculate_rsi_series_cached(
-            prices, symbol, period, self.enable_cache)
+        return calculate_rsi_series_cached(prices, symbol, period, self.enable_cache)
 
     def stochastic_rsi(
         self,
@@ -122,8 +127,7 @@ class CachedIndicatorFactory:
         if not symbol:
             raise ValueError("Symbol required for cached calculations")
 
-        return calculate_ema_series_cached(
-            prices, symbol, period, self.enable_cache)
+        return calculate_ema_series_cached(prices, symbol, period, self.enable_cache)
 
     def sma(
         self,
@@ -163,8 +167,7 @@ class CachedIndicatorFactory:
         signal_period: int = 9,
     ) -> dict[str, list[float | None]]:
         """Calculate MACD (will be enhanced with caching later)."""
-        return calculate_macd_series(
-            prices, fast_period, slow_period, signal_period)
+        return calculate_macd_series(prices, fast_period, slow_period, signal_period)
 
     # ============ VOLATILITY INDICATORS ============
 
@@ -382,11 +385,7 @@ class CachedIndicatorFactory:
 
         try:
             # Pre-calculate common indicators
-            common_periods = {
-                "rsi": [
-                    14, 21], "ema": [
-                    7, 26, 99], "sma": [
-                    20, 50]}
+            common_periods = {"rsi": [14, 21], "ema": [7, 26, 99], "sma": [20, 50]}
 
             for period in common_periods["rsi"]:
                 self.rsi(prices, symbol, period)
@@ -425,9 +424,7 @@ def get_cached_indicators(
     Returns:
         CachedIndicatorFactory instance
     """
-    return CachedIndicatorFactory(
-        enable_cache=enable_cache,
-        default_symbol=symbol)
+    return CachedIndicatorFactory(enable_cache=enable_cache, default_symbol=symbol)
 
 
 def quick_analysis(prices: list[float] | Any, symbol: str) -> dict[str, Any]:

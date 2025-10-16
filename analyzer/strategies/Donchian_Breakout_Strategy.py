@@ -23,8 +23,7 @@ class Donchian_Breakout_Strategy(BaseStrategy):
     Cette stratégie utilise les niveaux de support/résistance comme proxy des canaux.
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres Donchian ASSOUPLIS crypto (signaux réalistes)
         self.breakout_threshold = 0.006  # 0.6% pour breakout confirmé (réduit)
@@ -135,7 +134,9 @@ class Donchian_Breakout_Strategy(BaseStrategy):
 
         return {"donchian_high": None, "donchian_low": None}
 
-    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _create_rejection_signal(
+        self, reason: str, metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Helper pour créer un signal de rejet."""
         base_metadata = {"strategy": self.name}
         if metadata:
@@ -148,11 +149,14 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             "metadata": base_metadata,
         }
 
-    def _validate_and_prepare_data(self, values: dict[str, Any], price_data: dict[str, float | None]) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    def _validate_and_prepare_data(
+        self, values: dict[str, Any], price_data: dict[str, float | None]
+    ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
         """
         Valide et prépare les données. Retourne (None, prepared_data) si succès,
         (rejection_signal, {}) si échec.
         """
+
         def _is_valid(x: Any) -> bool:
             if x is None:
                 return False
@@ -212,14 +216,11 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             "nearest_support": nearest_support,
             "resistance_strength": resistance_strength,
             "support_strength": support_strength,
-            "_is_valid": _is_valid
+            "_is_valid": _is_valid,
         }
 
     def _apply_filters(
-        self,
-        signal_side: str | None,
-        values: dict[str, Any],
-        _is_valid: callable
+        self, signal_side: str | None, values: dict[str, Any], _is_valid: callable
     ) -> dict[str, Any] | None:
         """
         Applique les filtres de marché, volume, ADX et RSI.
@@ -234,7 +235,9 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             market_regime in ["TRENDING_BEAR"]
             and values.get("regime_strength") == "STRONG"
         ):
-            return self._create_rejection_signal("Marché baissier fort - éviter les breakouts haussiers")
+            return self._create_rejection_signal(
+                "Marché baissier fort - éviter les breakouts haussiers"
+            )
 
         # Filtre volume critique
         volume_ratio = values.get("volume_ratio")
@@ -243,7 +246,7 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             if vol_ratio < 0.8:
                 return self._create_rejection_signal(
                     f"Volume critique ({vol_ratio:.2f}x < 0.8x)",
-                    {"volume_ratio": vol_ratio}
+                    {"volume_ratio": vol_ratio},
                 )
 
         # Filtre ADX et RSI combinés
@@ -265,7 +268,9 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         if rsi_14 is not None and _is_valid(rsi_14):
             try:
                 rsi = float(rsi_14)
-                if (signal_side == "BUY" and rsi > 88) or (signal_side == "SELL" and rsi < 12):
+                if (signal_side == "BUY" and rsi > 88) or (
+                    signal_side == "SELL" and rsi < 12
+                ):
                     direction = "haut" if signal_side == "BUY" else "bas"
                     context = "euphorie" if signal_side == "BUY" else "capitulation"
                     return self._create_rejection_signal(
@@ -287,7 +292,9 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         price_data = self._get_current_price_data()
 
         # Valider et préparer les données
-        rejection_signal, prepared_data = self._validate_and_prepare_data(values, price_data)
+        rejection_signal, prepared_data = self._validate_and_prepare_data(
+            values, price_data
+        )
         if rejection_signal:
             return rejection_signal
 
@@ -374,8 +381,7 @@ class Donchian_Breakout_Strategy(BaseStrategy):
 
         # Analyse breakdown en-dessous du support (canal bas)
         if signal_side is None and nearest_support is not None and nearest_support > 0:
-            breakdown_distance = (
-                nearest_support - current_price) / nearest_support
+            breakdown_distance = (nearest_support - current_price) / nearest_support
 
             # Détection crossing ASSOUPLIE (franchissement avec tolérance)
             bear_cross = (
@@ -439,7 +445,11 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         # Calcul pénalité volume pour volume faible (pas critique)
         volume_penalty = 0.0
         volume_ratio = values.get("volume_ratio")
-        if signal_side is not None and volume_ratio is not None and _is_valid(volume_ratio):
+        if (
+            signal_side is not None
+            and volume_ratio is not None
+            and _is_valid(volume_ratio)
+        ):
             vol_ratio = float(volume_ratio)
             if vol_ratio < self.min_volume_breakout:  # Pénalité au lieu de rejet
                 volume_penalty = -0.15
@@ -449,12 +459,10 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         if signal_side is None:
             proximity_info = ""
             if nearest_resistance is not None and nearest_resistance > 0:
-                dist_res = abs(
-                    current_price - nearest_resistance) / nearest_resistance
+                dist_res = abs(current_price - nearest_resistance) / nearest_resistance
                 proximity_info += f"rés: {dist_res*100:.1f}%"
             if nearest_support is not None and nearest_support > 0:
-                dist_sup = abs(
-                    current_price - nearest_support) / nearest_support
+                dist_sup = abs(current_price - nearest_support) / nearest_support
                 if proximity_info:
                     proximity_info += ", "
                 proximity_info += f"sup: {dist_sup*100:.1f}%"
@@ -555,7 +563,9 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         if rsi_14 is not None and _is_valid(rsi_14):
             try:
                 rsi = float(rsi_14)
-                if (signal_side == "BUY" and 55 <= rsi <= 85) or (signal_side == "SELL" and 15 <= rsi <= 45):  # Zone momentum optimale (élargie)
+                if (signal_side == "BUY" and 55 <= rsi <= 85) or (
+                    signal_side == "SELL" and 15 <= rsi <= 45
+                ):  # Zone momentum optimale (élargie)
                     confidence_boost += 0.08
                     reason += f" + RSI momentum ({rsi:.1f})"
             except (ValueError, TypeError):
@@ -586,8 +596,7 @@ class Donchian_Breakout_Strategy(BaseStrategy):
 
         # Volume quality score avec validation NaN
         volume_quality_score = values.get("volume_quality_score")
-        if volume_quality_score is not None and _is_valid(
-                volume_quality_score):
+        if volume_quality_score is not None and _is_valid(volume_quality_score):
             try:
                 volume_quality = float(volume_quality_score)
                 if volume_quality > 70:  # Format 0-100
@@ -665,9 +674,9 @@ class Donchian_Breakout_Strategy(BaseStrategy):
 
         # Calcul confiance MULTIPLICATIF (cohérent avec autres stratégies)
         confidence = max(
-            0.0, min(
-                1.0, self.calculate_confidence(
-                    base_confidence, 1 + confidence_boost)), )
+            0.0,
+            min(1.0, self.calculate_confidence(base_confidence, 1 + confidence_boost)),
+        )
 
         # Ajustement final - Gros breakouts avec validation volume extrême
         if breakout_type == "resistance_breakout" and nearest_resistance is not None:
@@ -685,8 +694,7 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                     confidence = min(confidence * 1.15, 1.0)
                     reason += f" (gros breakout validé vol {float(vol_ratio_val):.1f}x)"
         elif breakout_type == "support_breakdown" and nearest_support is not None:
-            breakdown_strength = (
-                nearest_support - current_price) / nearest_support
+            breakdown_strength = (nearest_support - current_price) / nearest_support
             if breakdown_strength > 0.03:  # Breakdown > 3%
                 # Vérifier volume extrême pour valider le gros breakdown
                 vol_ratio_val = values.get("volume_ratio")
@@ -696,7 +704,9 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                     and float(vol_ratio_val) >= self.extreme_volume_threshold
                 ):
                     confidence = min(confidence * 1.15, 1.0)
-                    reason += f" (gros breakdown validé vol {float(vol_ratio_val):.1f}x)"
+                    reason += (
+                        f" (gros breakdown validé vol {float(vol_ratio_val):.1f}x)"
+                    )
 
         # Pas d'ajustement ATR supplémentaire (déjà traité plus haut)
 
@@ -707,7 +717,7 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         if confidence < 0.25:  # Abaissé de 0.35 à 0.25
             return self._create_rejection_signal(
                 f"Signal trop faible (conf: {confidence:.2f} < 0.25)",
-                {"symbol": self.symbol}
+                {"symbol": self.symbol},
             )
 
         strength = self.get_strength_from_confidence(confidence)
@@ -759,8 +769,7 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             or "low" not in self.data
             or not self.data["low"]
         ):
-            logger.warning(
-                f"{self.name}: Données high/low manquantes pour Donchian")
+            logger.warning(f"{self.name}: Données high/low manquantes pour Donchian")
             return False
 
         return True

@@ -146,8 +146,9 @@ class OrderExecutor:
             symbol = order_data["symbol"]
             side = OrderSide(order_data["side"])
             quantity = float(order_data["quantity"])
-            price = (float(order_data.get("price", 0))
-                     if order_data.get("price") else None)
+            price = (
+                float(order_data.get("price", 0)) if order_data.get("price") else None
+            )
             strategy = order_data.get("strategy", "Manual")
 
             # Ajouter l'ordre au cache de déduplication AVANT l'exécution
@@ -183,8 +184,7 @@ class OrderExecutor:
                 OrderStatus.FILLED,
                 OrderStatus.PARTIALLY_FILLED,
             ]:
-                logger.error(
-                    f"❌ Ordre {order_id} non exécuté: {execution.status}")
+                logger.error(f"❌ Ordre {order_id} non exécuté: {execution.status}")
                 return None
 
             # Sauvegarder en base de données
@@ -225,8 +225,7 @@ class OrderExecutor:
                 cycle_id = self._process_trade_for_cycles(execution, strategy)
                 if cycle_id:
                     # Mettre à jour l'exécution avec le cycle_id
-                    self._update_execution_with_cycle_id(
-                        execution.order_id, cycle_id)
+                    self._update_execution_with_cycle_id(execution.order_id, cycle_id)
             except Exception:
                 logger.exception("❌ Erreur processing cycle")
                 # On ne propage pas l'erreur
@@ -260,29 +259,32 @@ class OrderExecutor:
                         fee = EXCLUDED.fee,
                         timestamp = EXCLUDED.timestamp
                 """,
-                    (execution.order_id,
-                     execution.symbol,
-                     (execution.side.value if hasattr(
-                         execution.side,
-                         "value") else str(
-                         execution.side)),
-                        (execution.status.value if hasattr(
-                            execution.status,
-                            "value") else str(
-                            execution.status)),
+                    (
+                        execution.order_id,
+                        execution.symbol,
+                        (
+                            execution.side.value
+                            if hasattr(execution.side, "value")
+                            else str(execution.side)
+                        ),
+                        (
+                            execution.status.value
+                            if hasattr(execution.status, "value")
+                            else str(execution.status)
+                        ),
                         execution.price,
                         execution.quantity,
                         execution.quote_quantity,
                         execution.fee,
                         execution.fee_asset,
-                        (execution.role.value if execution.role and hasattr(
-                            execution.role,
-                            "value") else (
-                            str(
-                                execution.role) if execution.role else None)),
+                        (
+                            execution.role.value
+                            if execution.role and hasattr(execution.role, "value")
+                            else (str(execution.role) if execution.role else None)
+                        ),
                         execution.timestamp,
                         execution.demo,
-                     ),
+                    ),
                 )
 
             logger.debug(f"✅ Exécution {execution.order_id} sauvegardée")
@@ -375,8 +377,7 @@ class OrderExecutor:
             ),
         }
 
-    def _update_execution_with_cycle_id(
-            self, order_id: str, cycle_id: str) -> None:
+    def _update_execution_with_cycle_id(self, order_id: str, cycle_id: str) -> None:
         """
         Met à jour une exécution existante avec son cycle_id.
 
@@ -396,8 +397,7 @@ class OrderExecutor:
                 )
 
                 if cursor.rowcount > 0:
-                    logger.debug(
-                        f"✅ Exécution {order_id} liée au cycle {cycle_id}")
+                    logger.debug(f"✅ Exécution {order_id} liée au cycle {cycle_id}")
                 else:
                     logger.warning(
                         f"⚠️ Aucune exécution trouvée pour order_id {order_id}"

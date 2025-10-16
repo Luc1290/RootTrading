@@ -26,8 +26,8 @@ if TYPE_CHECKING:
 
 # Configuration du logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger("simple_binance_ws")
 
 
@@ -64,8 +64,7 @@ class SimpleBinanceWebSocket:
         # Générateur de streams pour le WebSocket
         self.stream_paths = self._generate_stream_paths()
 
-        logger.info(
-            "📡 SimpleBinanceWebSocket initialisé - OHLCV brutes uniquement")
+        logger.info("📡 SimpleBinanceWebSocket initialisé - OHLCV brutes uniquement")
         logger.info(f"🎯 Symboles: {', '.join(self.symbols)}")
         logger.info(f"⏱️ Intervalles: {', '.join(self.intervals)}")
 
@@ -140,7 +139,7 @@ class SimpleBinanceWebSocket:
         try:
             # Convertir bytes en string si nécessaire
             if isinstance(message, bytes):
-                message = message.decode('utf-8')
+                message = message.decode("utf-8")
 
             data = json.loads(message)
 
@@ -148,8 +147,7 @@ class SimpleBinanceWebSocket:
             if "k" in data:
                 await self._process_kline_data(data)
             else:
-                logger.debug(
-                    f"⚠️ Message non-kline ignoré: {data.get('e', 'unknown')}")
+                logger.debug(f"⚠️ Message non-kline ignoré: {data.get('e', 'unknown')}")
 
         except json.JSONDecodeError:
             logger.exception("❌ Erreur décodage JSON")
@@ -193,8 +191,7 @@ class SimpleBinanceWebSocket:
                     f"📤 Bougie fermée publiée: {raw_candle['symbol']} @ {raw_candle['close']}"
                 )
             else:
-                logger.debug(
-                    f"⏳ Bougie en cours ignorée: {raw_candle['symbol']}")
+                logger.debug(f"⏳ Bougie en cours ignorée: {raw_candle['symbol']}")
 
         except KeyError:
             logger.exception("❌ Champ manquant dans les données kline")

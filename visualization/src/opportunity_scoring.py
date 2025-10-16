@@ -218,8 +218,7 @@ class OpportunityScoring:
             warnings=warnings,
         )
 
-    def _get_weights_for_regime(
-            self, regime: str) -> dict[ScoreCategory, float]:
+    def _get_weights_for_regime(self, regime: str) -> dict[ScoreCategory, float]:
         """Retourne les pondérations adaptées au régime."""
         return self.REGIME_WEIGHTS.get(regime, self.DEFAULT_WEIGHTS)
 
@@ -331,8 +330,7 @@ class OpportunityScoring:
         regime_conf = self.safe_float(ad.get("regime_confidence"))
 
         if regime in ["TRENDING_BULL", "BREAKOUT_BULL"]:
-            regime_score = 10.0 * \
-                (regime_conf / 100.0) if regime_conf > 0 else 5.0
+            regime_score = 10.0 * (regime_conf / 100.0) if regime_conf > 0 else 5.0
         elif regime in ["TRANSITION", "RANGING"]:
             regime_score = 3.0
         else:
@@ -381,13 +379,11 @@ class OpportunityScoring:
 
         # AJUSTÉ: 2.0x (compromis 20 cryptos: P95 varie de 1.4x à 8.3x)
         is_pump = (
-            (vol_spike > 2.0 or rel_volume > 2.0) and market_regime in [
-                "TRENDING_BULL",
-                "BREAKOUT_BULL"] and vol_context in [
-                "CONSOLIDATION_BREAK",
-                "BREAKOUT",
-                "PUMP_START",
-                "HIGH_VOLATILITY"])
+            (vol_spike > 2.0 or rel_volume > 2.0)
+            and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]
+            and vol_context
+            in ["CONSOLIDATION_BREAK", "BREAKOUT", "PUMP_START", "HIGH_VOLATILITY"]
+        )
 
         # 1. RSI (20 points max)
         rsi_14 = self.safe_float(ad.get("rsi_14"))
@@ -464,8 +460,7 @@ class OpportunityScoring:
                 issues.append(f"Stoch pump ({stoch_k:.0f}/{stoch_d:.0f})")
             elif stoch_k > 80 or stoch_d > 80:
                 stoch_score = 3.0
-                issues.append(
-                    f"Stoch overbought ({stoch_k:.0f}/{stoch_d:.0f})")
+                issues.append(f"Stoch overbought ({stoch_k:.0f}/{stoch_d:.0f})")
             else:
                 stoch_score = 5.0
 
@@ -829,16 +824,14 @@ class OpportunityScoring:
             details["no_resistance_detected"] = 1.0
             issues.append("✅ Pas de résistance détectée = Ciel dégagé!")
         elif nearest_resistance > 0 and current_price > 0:
-            dist_pct = (
-                (nearest_resistance - current_price) / current_price) * 100
+            dist_pct = ((nearest_resistance - current_price) / current_price) * 100
 
             # NOUVEAU: Si break_probability élevée, tolérer résistance proche
             # Une résistance à 0.1% avec break_prob 60%+ est un SETUP, pas un
             # problème
             if break_prob > 0.6 and dist_pct < 1.0:
                 # Résistance proche MAIS cassable = score basé sur break_prob
-                dist_score = min(40.0, float(break_prob * 50)
-                                 )  # break_prob 0.7 → 35pts
+                dist_score = min(40.0, float(break_prob * 50))  # break_prob 0.7 → 35pts
                 details["breakout_setup"] = 1.0
                 issues.append(
                     f"Résistance proche ({dist_pct:.1f}%) mais cassable ({break_prob*100:.0f}%)"
@@ -943,19 +936,14 @@ class OpportunityScoring:
         vol_context = ad.get("volume_context", "").upper()
 
         is_pump = (
-            (vol_spike > 2.5 or rel_volume > 2.5) and market_regime in [
-                "TRENDING_BULL",
-                "BREAKOUT_BULL"] and vol_context in [
-                "CONSOLIDATION_BREAK",
-                "BREAKOUT",
-                "PUMP_START",
-                "HIGH_VOLATILITY"])
+            (vol_spike > 2.5 or rel_volume > 2.5)
+            and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]
+            and vol_context
+            in ["CONSOLIDATION_BREAK", "BREAKOUT", "PUMP_START", "HIGH_VOLATILITY"]
+        )
 
         # Patterns bullish
-        bullish_patterns = [
-            "PRICE_SPIKE_UP",
-            "COMBINED_SPIKE",
-            "VOLUME_SPIKE_UP"]
+        bullish_patterns = ["PRICE_SPIKE_UP", "COMBINED_SPIKE", "VOLUME_SPIKE_UP"]
 
         if pattern in bullish_patterns:
             base_score = 60.0
@@ -1089,7 +1077,13 @@ class OpportunityScoring:
         volume_score = category_scores[ScoreCategory.VOLUME].score
 
         # BUY_NOW: Score >80, confiance >70, trend+momentum+volume >70
-        if score >= 80 and confidence >= 70 and trend_score >= 70 and momentum_score >= 70 and volume_score >= 70:
+        if (
+            score >= 80
+            and confidence >= 70
+            and trend_score >= 70
+            and momentum_score >= 70
+            and volume_score >= 70
+        ):
             reasons.append(
                 f"Score excellent: {score:.0f}/100 (Grade {self._calculate_grade(score)})"
             )

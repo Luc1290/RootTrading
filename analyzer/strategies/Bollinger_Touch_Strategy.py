@@ -20,8 +20,7 @@ class Bollinger_Touch_Strategy(BaseStrategy):
     - SELL: Prix touche la bande haute + indicateurs de retournement baissier
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres Bollinger Bands - OPTIMISÉS CRYPTO SPOT (CORRIGÉ)
         # 0.4% de proximité (plus sensible, corrigé)
@@ -94,7 +93,9 @@ class Bollinger_Touch_Strategy(BaseStrategy):
             pass
         return None
 
-    def _create_no_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _create_no_signal(
+        self, reason: str, metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Crée un dictionnaire de signal négatif standardisé."""
         base_metadata = {"strategy": self.name}
         if metadata:
@@ -109,36 +110,51 @@ class Bollinger_Touch_Strategy(BaseStrategy):
 
     def _validate_bollinger_data(
         self, values: dict[str, float | None], current_price: float | None
-    ) -> tuple[float | None, float | None, float | None, float | None, float | None, str | None]:
+    ) -> tuple[
+        float | None, float | None, float | None, float | None, float | None, str | None
+    ]:
         """
         Valide et retourne les données Bollinger nécessaires.
         Returns: (bb_upper, bb_lower, bb_middle, bb_position, bb_width, error_msg)
         """
         try:
-            bb_upper = (float(values["bb_upper"])
-                        if values["bb_upper"] is not None else None)
-            bb_lower = (float(values["bb_lower"])
-                        if values["bb_lower"] is not None else None)
+            bb_upper = (
+                float(values["bb_upper"]) if values["bb_upper"] is not None else None
+            )
+            bb_lower = (
+                float(values["bb_lower"]) if values["bb_lower"] is not None else None
+            )
             bb_middle = (
-                float(
-                    values["bb_middle"]) if values["bb_middle"] is not None else None)
+                float(values["bb_middle"]) if values["bb_middle"] is not None else None
+            )
             bb_position = (
                 float(values["bb_position"])
                 if values["bb_position"] is not None
                 else None
             )
-            bb_width = (float(values["bb_width"])
-                        if values["bb_width"] is not None else None)
+            bb_width = (
+                float(values["bb_width"]) if values["bb_width"] is not None else None
+            )
         except (ValueError, TypeError) as e:
             return None, None, None, None, None, f"Erreur conversion Bollinger: {e}"
 
         if bb_upper is None or bb_lower is None or current_price is None:
-            return None, None, None, None, None, "Bollinger Bands ou prix non disponibles"
+            return (
+                None,
+                None,
+                None,
+                None,
+                None,
+                "Bollinger Bands ou prix non disponibles",
+            )
 
         return bb_upper, bb_lower, bb_middle, bb_position, bb_width, None
 
     def _check_volume_and_width(
-        self, values: dict[str, float | None], bb_width: float | None, current_price: float | None
+        self,
+        values: dict[str, float | None],
+        bb_width: float | None,
+        current_price: float | None,
     ) -> tuple[float | None, str | None]:
         """
         Vérifie le volume et la largeur des bandes.
@@ -150,7 +166,10 @@ class Bollinger_Touch_Strategy(BaseStrategy):
             try:
                 vol_ratio = float(volume_ratio)
                 if vol_ratio < self.min_volume_ratio:
-                    return None, f"Volume insuffisant ({vol_ratio:.2f}x < {self.min_volume_ratio}x)"
+                    return (
+                        None,
+                        f"Volume insuffisant ({vol_ratio:.2f}x < {self.min_volume_ratio}x)",
+                    )
             except (ValueError, TypeError):
                 pass
 
@@ -158,7 +177,10 @@ class Bollinger_Touch_Strategy(BaseStrategy):
         if bb_width is not None and current_price is not None:
             bb_width_pct = (bb_width / current_price) * 100
             if bb_width_pct < self.bb_width_min_pct:
-                return None, f"BB squeeze trop serré ({bb_width_pct:.2f}% < {self.bb_width_min_pct}%)"
+                return (
+                    None,
+                    f"BB squeeze trop serré ({bb_width_pct:.2f}% < {self.bb_width_min_pct}%)",
+                )
             return bb_width_pct, None
 
         return None, None
@@ -210,11 +232,13 @@ class Bollinger_Touch_Strategy(BaseStrategy):
         current_price = self._get_current_price()
 
         # Validation des données Bollinger et volume/largeur
-        bb_upper, bb_lower, bb_middle, bb_position, bb_width, error_msg = self._validate_bollinger_data(
-            values, current_price
+        bb_upper, bb_lower, bb_middle, bb_position, bb_width, error_msg = (
+            self._validate_bollinger_data(values, current_price)
         )
         if not error_msg:
-            bb_width_pct, error_msg = self._check_volume_and_width(values, bb_width, current_price)
+            bb_width_pct, error_msg = self._check_volume_and_width(
+                values, bb_width, current_price
+            )
         else:
             bb_width_pct = None
 
@@ -239,13 +263,17 @@ class Bollinger_Touch_Strategy(BaseStrategy):
         # Position dans les bandes pour confirmation - ÉTENDUE AUX VALEURS
         # NÉGATIVES/SUPÉRIEURES
         is_extreme_high = (
-            bb_position is not None and bb_position >= self.bb_position_extreme_sell)
+            bb_position is not None and bb_position >= self.bb_position_extreme_sell
+        )
         is_extreme_low = (
-            bb_position is not None and bb_position <= self.bb_position_extreme_buy)
-        is_very_high = (bb_position is not None and bb_position >=
-                        self.bb_position_very_high)
-        is_very_low = (bb_position is not None and bb_position <=
-                       self.bb_position_very_low)
+            bb_position is not None and bb_position <= self.bb_position_extreme_buy
+        )
+        is_very_high = (
+            bb_position is not None and bb_position >= self.bb_position_very_high
+        )
+        is_very_low = (
+            bb_position is not None and bb_position <= self.bb_position_very_low
+        )
 
         # SIGNAL BUY - LOGIQUE SIMPLIFIÉE
         if (is_touching_lower or is_extreme_low or is_very_low) and (
@@ -299,18 +327,21 @@ class Bollinger_Touch_Strategy(BaseStrategy):
                 if bb_width_pct
                 else f"Pas de setup BB (pos: {bb_position:.3f}, distances: {distance_to_upper:.4f}/{distance_to_lower:.4f})"
             )
-            return self._create_no_signal(reason_msg, {
-                "bb_position": bb_position,
-                "distance_to_upper": distance_to_upper,
-                "distance_to_lower": distance_to_lower,
-                "bb_width_pct": bb_width_pct,
-                "is_touching_upper": is_touching_upper,
-                "is_touching_lower": is_touching_lower,
-                "is_extreme_high": is_extreme_high,
-                "is_extreme_low": is_extreme_low,
-                "is_very_high": is_very_high,
-                "is_very_low": is_very_low,
-            })
+            return self._create_no_signal(
+                reason_msg,
+                {
+                    "bb_position": bb_position,
+                    "distance_to_upper": distance_to_upper,
+                    "distance_to_lower": distance_to_lower,
+                    "bb_width_pct": bb_width_pct,
+                    "is_touching_upper": is_touching_upper,
+                    "is_touching_lower": is_touching_lower,
+                    "is_extreme_high": is_extreme_high,
+                    "is_extreme_low": is_extreme_low,
+                    "is_very_high": is_very_high,
+                    "is_very_low": is_very_low,
+                },
+            )
 
         # === CONFIRMATIONS AVEC OSCILLATEURS ===
 
@@ -396,8 +427,8 @@ class Bollinger_Touch_Strategy(BaseStrategy):
 
         # Calcul final de la confiance avec clamp
         confidence = min(
-            1.0, self.calculate_confidence(
-                base_confidence, 1 + confidence_boost))
+            1.0, self.calculate_confidence(base_confidence, 1 + confidence_boost)
+        )
 
         # Filtre final - SEUIL ÉQUILIBRÉ
         if confidence >= 0.45:  # Seuil minimum équilibré
@@ -433,7 +464,7 @@ class Bollinger_Touch_Strategy(BaseStrategy):
             {
                 "rejected_signal": signal_side,
                 "final_confidence": confidence,
-            }
+            },
         )
 
     def validate_data(self) -> bool:
@@ -445,8 +476,7 @@ class Bollinger_Touch_Strategy(BaseStrategy):
 
         for indicator in required:
             if indicator not in self.indicators:
-                logger.warning(
-                    f"{self.name}: Indicateur manquant: {indicator}")
+                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
                 return False
             if self.indicators[indicator] is None:
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")

@@ -14,8 +14,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import psutil  # type: ignore[import-untyped]
-from fastapi import (Depends, FastAPI, HTTPException, Path, Query, Request,
-                     Response)
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
@@ -199,8 +198,7 @@ def _register_health_routes(app: FastAPI):
         from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY
 
         try:
-            account = BinanceAccountManager(
-                BINANCE_API_KEY, BINANCE_SECRET_KEY)
+            account = BinanceAccountManager(BINANCE_API_KEY, BINANCE_SECRET_KEY)
             info = account.get_account_info()
             return {
                 "binance_status": "online",
@@ -217,8 +215,8 @@ def _register_portfolio_routes(app: FastAPI):
 
     @app.get("/summary", response_model=PortfolioSummary)
     async def get_portfolio_summary(
-            response: Response,
-            portfolio: PortfolioModel = Depends(get_portfolio_model)):
+        response: Response, portfolio: PortfolioModel = Depends(get_portfolio_model)
+    ):
         """
         Récupère un résumé du portefeuille avec cache mémoire.
 
@@ -254,8 +252,8 @@ def _register_portfolio_routes(app: FastAPI):
 
     @app.get("/balances", response_model=list[AssetBalance])
     async def get_balances(
-            response: Response,
-            portfolio: PortfolioModel = Depends(get_portfolio_model)):
+        response: Response, portfolio: PortfolioModel = Depends(get_portfolio_model)
+    ):
         """
         Récupère les soldes actuels du portefeuille.
 
@@ -316,8 +314,8 @@ def _register_portfolio_routes(app: FastAPI):
 
     @app.get("/positions/active")
     async def get_active_positions(
-            response: Response,
-            portfolio: PortfolioModel = Depends(get_portfolio_model)):
+        response: Response, portfolio: PortfolioModel = Depends(get_portfolio_model)
+    ):
         """
         Récupère les positions actives avec le PnL réel calculé.
         """
@@ -375,13 +373,11 @@ def _register_portfolio_routes(app: FastAPI):
                 ),
                 "pnl": float(row["pnl"]) if row["pnl"] else 0.0,
                 "pnl_percentage": (
-                    float(
-                        row["pnl_percentage"]) if row["pnl_percentage"] else 0.0
+                    float(row["pnl_percentage"]) if row["pnl_percentage"] else 0.0
                 ),
                 "value": float(row["current_value"]) if row["current_value"] else 0.0,
                 "margin_used": (
-                    float(
-                        row["current_value"]) if row["current_value"] else 0.0
+                    float(row["current_value"]) if row["current_value"] else 0.0
                 ),
                 "timestamp": (
                     row["created_at"].isoformat() if row["created_at"] else None
@@ -399,11 +395,7 @@ def _register_portfolio_routes(app: FastAPI):
     @app.get("/positions/recent")
     async def get_recent_positions(
         response: Response,
-        hours: int = Query(
-            24,
-            ge=1,
-            le=168,
-            description="Nombre d'heures en arrière"),
+        hours: int = Query(24, ge=1, le=168, description="Nombre d'heures en arrière"),
         portfolio: PortfolioModel = Depends(get_portfolio_model),
     ):
         """
@@ -460,8 +452,7 @@ def _register_portfolio_routes(app: FastAPI):
             created_at DESC
         """
 
-        result = portfolio.db.execute_query(
-            query % (hours, hours), fetch_all=True)
+        result = portfolio.db.execute_query(query % (hours, hours), fetch_all=True)
 
         if not result:
             return []
@@ -472,11 +463,11 @@ def _register_portfolio_routes(app: FastAPI):
             is_completed = row["status"] == "completed"
 
             # Gérer les valeurs NULL de la base de données
-            entry_price = (float(row["entry_price"])
-                           if row["entry_price"] is not None else 0.0)
+            entry_price = (
+                float(row["entry_price"]) if row["entry_price"] is not None else 0.0
+            )
             exit_price = row["exit_price"] if is_completed else row["current_price"]
-            current_price = float(
-                exit_price) if exit_price is not None else entry_price
+            current_price = float(exit_price) if exit_price is not None else entry_price
 
             position = {
                 "symbol": row["symbol"],
@@ -525,9 +516,7 @@ def _register_portfolio_routes(app: FastAPI):
         page_size: int = Query(50, ge=1, le=200, description="Taille de la page"),
         symbol: str | None = Query(None, description="Filtrer par symbole"),
         strategy: str | None = Query(None, description="Filtrer par stratégie"),
-        start_date: str | None = Query(
-            None, description="Date de début (format ISO)"
-        ),
+        start_date: str | None = Query(None, description="Date de début (format ISO)"),
         end_date: str | None = Query(None, description="Date de fin (format ISO)"),
         portfolio: PortfolioModel = Depends(get_portfolio_model),
     ):
@@ -593,19 +582,18 @@ def _register_portfolio_routes(app: FastAPI):
         count_result = portfolio.db.execute_query(
             count_query, tuple(params), fetch_one=True
         )
-        total_count = count_result.get(
-            "total", 0) if count_result else len(trades)
+        total_count = count_result.get("total", 0) if count_result else len(trades)
 
         # Configurer les entêtes de cache si les données sont historiques
-        if response and (not start_date_obj or start_date_obj <
-                         datetime.now(tz=timezone.utc) - timedelta(days=1)):
+        if response and (
+            not start_date_obj
+            or start_date_obj < datetime.now(tz=timezone.utc) - timedelta(days=1)
+        ):
             response.headers["Cache-Control"] = "public, max-age=60"
 
         return TradeHistoryResponse(
-            trades=trades,
-            total_count=total_count,
-            page=page,
-            page_size=page_size)
+            trades=trades, total_count=total_count, page=page, page_size=page_size
+        )
 
     @app.get("/performance/{period}", response_model=PerformanceResponse)
     async def get_performance(
@@ -639,9 +627,7 @@ def _register_portfolio_routes(app: FastAPI):
         Utile pour les tests ou les corrections.
         """
         if not balances:
-            raise HTTPException(
-                status_code=400,
-                detail="Liste des soldes vide")
+            raise HTTPException(status_code=400, detail="Liste des soldes vide")
 
         # Convertir en AssetBalance
         asset_balances = []
@@ -666,14 +652,12 @@ def _register_portfolio_routes(app: FastAPI):
         SharedCache.clear("latest_balances")
         SharedCache.clear("portfolio_summary")
 
-        return {
-            "status": "success",
-            "message": f"{len(balances)} soldes mis à jour"}
+        return {"status": "success", "message": f"{len(balances)} soldes mis à jour"}
 
     @app.get("/symbols/traded")
     async def get_all_traded_symbols_with_variations(
-            response: Response,
-            portfolio: PortfolioModel = Depends(get_portfolio_model)):
+        response: Response, portfolio: PortfolioModel = Depends(get_portfolio_model)
+    ):
         """
         Récupère tous les symboles tradés historiquement avec leurs variations de prix 24h.
         """
@@ -705,7 +689,8 @@ def _register_portfolio_routes(app: FastAPI):
         # Récupérer les prix directement depuis la base de données
         balances = portfolio.get_latest_balances()
         balance_dict = {
-            f"{b.asset}USDC": b.value_usdc for b in balances if b.asset != "USDC"}
+            f"{b.asset}USDC": b.value_usdc for b in balances if b.asset != "USDC"
+        }
 
         for symbol in all_symbols:
             try:
@@ -740,8 +725,7 @@ def _register_portfolio_routes(app: FastAPI):
                 LEFT JOIN price_24h_ago p24 ON true
                 """
 
-                result = portfolio.db.execute_query(
-                    query, (symbol,), fetch_one=True)
+                result = portfolio.db.execute_query(query, (symbol,), fetch_one=True)
 
                 if result and result["current_price"]:
                     latest_price = float(result["current_price"])
@@ -792,8 +776,7 @@ def _register_portfolio_routes(app: FastAPI):
                 )
 
         # Trier par balance actuelle décroissante, puis par ordre alphabétique
-        symbols_with_variations.sort(
-            key=lambda x: (-x["current_balance"], x["symbol"]))
+        symbols_with_variations.sort(key=lambda x: (-x["current_balance"], x["symbol"]))
 
         # Cache pour 30 secondes
         response.headers["Cache-Control"] = "public, max-age=30"
@@ -802,8 +785,8 @@ def _register_portfolio_routes(app: FastAPI):
 
     @app.get("/symbols/owned")
     async def get_owned_symbols_with_variations(
-            response: Response,
-            portfolio: PortfolioModel = Depends(get_portfolio_model)):
+        response: Response, portfolio: PortfolioModel = Depends(get_portfolio_model)
+    ):
         """
         Récupère uniquement les symboles possédés actuellement avec leurs variations de prix 24h.
         """
@@ -837,13 +820,13 @@ def _register_diagnostic_routes(app: FastAPI):
             try:
                 db = DBManager()
                 result = db.execute_query(
-                    "SELECT COUNT(*) as count FROM portfolio_balances",
-                    fetch_one=True)
+                    "SELECT COUNT(*) as count FROM portfolio_balances", fetch_one=True
+                )
                 db_stats["balance_count"] = result["count"] if result else 0
 
                 result = db.execute_query(
-                    "SELECT COUNT(*) as count FROM trade_cycles",
-                    fetch_one=True)
+                    "SELECT COUNT(*) as count FROM trade_cycles", fetch_one=True
+                )
                 db_stats["cycle_count"] = result["count"] if result else 0
 
                 # Informations sur les connexions DB
@@ -959,20 +942,21 @@ def _register_diagnostic_routes(app: FastAPI):
 
     @app.delete("/_debug/cache_clear")
     async def clear_cache(
-        prefix: str | None = Query(
-            None,
-            description="Préfixe des clés à effacer")):
+        prefix: str | None = Query(None, description="Préfixe des clés à effacer")
+    ):
         """
         Endpoint de diagnostic pour effacer le cache.
         """
         try:
-            before_count = (len(SharedCache._cache) if hasattr(
-                SharedCache, "_cache") else 0)
+            before_count = (
+                len(SharedCache._cache) if hasattr(SharedCache, "_cache") else 0
+            )
 
             SharedCache.clear(prefix)
 
-            after_count = (len(SharedCache._cache) if hasattr(
-                SharedCache, "_cache") else 0)
+            after_count = (
+                len(SharedCache._cache) if hasattr(SharedCache, "_cache") else 0
+            )
 
             return {
                 "status": "ok",
@@ -1034,9 +1018,8 @@ async def lifespan(_app: FastAPI):
 
                 # Trier les balances par valeur décroissante
                 balances_sorted = sorted(
-                    summary.balances,
-                    key=lambda x: x.value_usdc or 0,
-                    reverse=True)
+                    summary.balances, key=lambda x: x.value_usdc or 0, reverse=True
+                )
 
                 for balance in balances_sorted:
                     if balance.total > 0:

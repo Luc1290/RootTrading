@@ -23,21 +23,28 @@ momentum_analysis = indicators.get_momentum_analysis(closes)
 
 # Import all main indicator functions with caching support
 # Import factory for advanced usage
-from .cached_indicator_factory import (cached_indicators,
-                                       get_cached_indicators, quick_analysis)
+from .cached_indicator_factory import (
+    cached_indicators,
+    get_cached_indicators,
+    quick_analysis,
+)
 from .momentum.cci import calculate_cci, calculate_cci_series
 from .momentum.rsi import calculate_rsi, calculate_rsi_series
-from .oscillators.stochastic import (calculate_stochastic,
-                                     calculate_stochastic_series)
-from .oscillators.williams import (calculate_williams_r,
-                                   calculate_williams_r_series)
+from .oscillators.stochastic import calculate_stochastic, calculate_stochastic_series
+from .oscillators.williams import calculate_williams_r, calculate_williams_r_series
 from .trend.adx import calculate_adx, calculate_adx_series
 from .trend.macd import calculate_macd, calculate_macd_series
-from .trend.moving_averages import (calculate_ema, calculate_ema_series,
-                                    calculate_sma, calculate_sma_series)
+from .trend.moving_averages import (
+    calculate_ema,
+    calculate_ema_series,
+    calculate_sma,
+    calculate_sma_series,
+)
 from .volatility.atr import calculate_atr, calculate_atr_series
-from .volatility.bollinger import (calculate_bollinger_bands,
-                                   calculate_bollinger_bands_series)
+from .volatility.bollinger import (
+    calculate_bollinger_bands,
+    calculate_bollinger_bands_series,
+)
 from .volume.obv import calculate_obv, calculate_obv_series
 from .volume.vwap import calculate_vwap, calculate_vwap_series
 

@@ -26,8 +26,7 @@ class OBV_Crossover_Strategy(BaseStrategy):
     - SELL: OBV croise en-dessous de sa MA + confirmations baissières
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
 
         # Paramètres OBV ASSOUPLIS - Réalistes pour intraday
@@ -94,111 +93,170 @@ class OBV_Crossover_Strategy(BaseStrategy):
             pass
         return None
 
-    def _validate_obv_data(self) -> tuple[bool, dict[str, Any] | None, dict[str, Any] | None, float | None, float | None, float | None]:
+    def _validate_obv_data(
+        self,
+    ) -> tuple[
+        bool,
+        dict[str, Any] | None,
+        dict[str, Any] | None,
+        float | None,
+        float | None,
+        float | None,
+    ]:
         """Valide les données OBV et filtres préliminaires. Returns (is_valid, error_response, values, obv, obv_ma, obv_distance)."""
         if not self.validate_data():
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Données insuffisantes",
-                "metadata": {"strategy": self.name},
-            }, None, None, None, None
+            return (
+                False,
+                {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "Données insuffisantes",
+                    "metadata": {"strategy": self.name},
+                },
+                None,
+                None,
+                None,
+                None,
+            )
 
         values = self._get_current_values()
 
         # Vérification des indicateurs OBV essentiels
         try:
             obv = float(values["obv"]) if values["obv"] is not None else None
-            obv_ma = float(values["obv_ma_10"]) if values["obv_ma_10"] is not None else None
+            obv_ma = (
+                float(values["obv_ma_10"]) if values["obv_ma_10"] is not None else None
+            )
         except (ValueError, TypeError) as e:
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Erreur conversion OBV: {e}",
-                "metadata": {"strategy": self.name},
-            }, None, None, None, None
+            return (
+                False,
+                {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Erreur conversion OBV: {e}",
+                    "metadata": {"strategy": self.name},
+                },
+                None,
+                None,
+                None,
+                None,
+            )
 
         if obv is None or obv_ma is None:
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "OBV ou OBV MA non disponibles",
-                "metadata": {"strategy": self.name},
-            }, None, None, None, None
+            return (
+                False,
+                {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "OBV ou OBV MA non disponibles",
+                    "metadata": {"strategy": self.name},
+                },
+                None,
+                None,
+                None,
+                None,
+            )
 
         # FILTRE: Market regime
         market_regime = values.get("market_regime")
         if market_regime in self.blocked_market_regimes:
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Marché {market_regime} défavorable pour OBV",
-                "metadata": {
-                    "strategy": self.name,
-                    "symbol": self.symbol,
-                    "market_regime": market_regime,
-                    "filter": "market_regime",
+            return (
+                False,
+                {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Marché {market_regime} défavorable pour OBV",
+                    "metadata": {
+                        "strategy": self.name,
+                        "symbol": self.symbol,
+                        "market_regime": market_regime,
+                        "filter": "market_regime",
+                    },
                 },
-            }, None, None, None, None
+                None,
+                None,
+                None,
+                None,
+            )
 
         # FILTRE: Volume minimum critique
         volume_ratio = values.get("volume_ratio")
         if volume_ratio is None or float(volume_ratio) < 0.8:
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Volume insuffisant pour OBV ({volume_ratio}x < 0.8x)",
-                "metadata": {
-                    "strategy": self.name,
-                    "symbol": self.symbol,
-                    "volume_ratio": volume_ratio,
-                    "filter": "volume_critical",
+            return (
+                False,
+                {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Volume insuffisant pour OBV ({volume_ratio}x < 0.8x)",
+                    "metadata": {
+                        "strategy": self.name,
+                        "symbol": self.symbol,
+                        "volume_ratio": volume_ratio,
+                        "filter": "volume_critical",
+                    },
                 },
-            }, None, None, None, None
+                None,
+                None,
+                None,
+                None,
+            )
 
         # FILTRE: Confluence minimum critique
         confluence_score = values.get("confluence_score")
         if confluence_score is None or float(confluence_score) < 30:
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Confluence insuffisante pour OBV ({confluence_score} < 30)",
-                "metadata": {
-                    "strategy": self.name,
-                    "symbol": self.symbol,
-                    "confluence_score": confluence_score,
-                    "filter": "confluence_critical",
+            return (
+                False,
+                {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Confluence insuffisante pour OBV ({confluence_score} < 30)",
+                    "metadata": {
+                        "strategy": self.name,
+                        "symbol": self.symbol,
+                        "confluence_score": confluence_score,
+                        "filter": "confluence_critical",
+                    },
                 },
-            }, None, None, None, None
+                None,
+                None,
+                None,
+                None,
+            )
 
         # FILTRE: Distance OBV/MA raisonnable
         obv_distance = abs(obv - obv_ma) / abs(obv_ma) if obv_ma != 0 else 0
         if obv_distance < self.min_obv_ma_distance:
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Séparation OBV/MA insuffisante ({obv_distance:.3f} < {self.min_obv_ma_distance})",
-                "metadata": {
-                    "strategy": self.name,
-                    "symbol": self.symbol,
-                    "obv": obv,
-                    "obv_ma": obv_ma,
-                    "distance": obv_distance,
-                    "filter": "separation",
+            return (
+                False,
+                {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Séparation OBV/MA insuffisante ({obv_distance:.3f} < {self.min_obv_ma_distance})",
+                    "metadata": {
+                        "strategy": self.name,
+                        "symbol": self.symbol,
+                        "obv": obv,
+                        "obv_ma": obv_ma,
+                        "distance": obv_distance,
+                        "filter": "separation",
+                    },
                 },
-            }, None, None, None, None
+                None,
+                None,
+                None,
+                None,
+            )
 
         return True, None, values, obv, obv_ma, obv_distance
 
-    def _count_confirmations(
-            self, values: dict[str, Any], signal_side: str) -> tuple:
+    def _count_confirmations(self, values: dict[str, Any], signal_side: str) -> tuple:
         """Compte le nombre de confirmations pour le signal et retourne (count, details)."""
         confirmations = 0
         confirmation_details = []
@@ -222,8 +280,10 @@ class OBV_Crossover_Strategy(BaseStrategy):
 
         # 2. Directional Bias - bonus mais pas obligatoire
         directional_bias = values.get("directional_bias")
-        if directional_bias and ((signal_side == "BUY" and directional_bias == "BULLISH") or (
-                signal_side == "SELL" and directional_bias == "BEARISH")):
+        if directional_bias and (
+            (signal_side == "BUY" and directional_bias == "BULLISH")
+            or (signal_side == "SELL" and directional_bias == "BEARISH")
+        ):
             confirmations += 1
             confirmation_details.append(f"bias {directional_bias}")
 
@@ -234,8 +294,7 @@ class OBV_Crossover_Strategy(BaseStrategy):
                 vol_quality = float(volume_quality_score)
                 if vol_quality >= 50:  # Assoupli (65 -> 50)
                     confirmations += 1
-                    confirmation_details.append(
-                        f"volume qualité {vol_quality:.0f}")
+                    confirmation_details.append(f"volume qualité {vol_quality:.0f}")
             except (ValueError, TypeError):
                 pass
 
@@ -248,8 +307,7 @@ class OBV_Crossover_Strategy(BaseStrategy):
                     signal_side == "SELL" and obv_osc < -0.02
                 ):  # Assoupli (0.05 -> 0.02)
                     confirmations += 1
-                    confirmation_details.append(
-                        f"OBV oscillator {obv_osc:.3f}")
+                    confirmation_details.append(f"OBV oscillator {obv_osc:.3f}")
             except (ValueError, TypeError):
                 pass
 
@@ -264,7 +322,8 @@ class OBV_Crossover_Strategy(BaseStrategy):
                 obv_direction = 1 if obv_val > 0 else -1
 
                 if (signal_side == "BUY" and ad_direction == obv_direction == 1) or (
-                        signal_side == "SELL" and ad_direction == obv_direction == -1):
+                    signal_side == "SELL" and ad_direction == obv_direction == -1
+                ):
                     confirmations += 1
                     confirmation_details.append("A/D Line alignée")
             except (ValueError, TypeError):
@@ -306,7 +365,8 @@ class OBV_Crossover_Strategy(BaseStrategy):
             try:
                 rsi = float(rsi_14)
                 if (signal_side == "BUY" and 30 <= rsi <= 65) or (
-                        signal_side == "SELL" and 35 <= rsi <= 70):  # Assoupli (60 -> 65)
+                    signal_side == "SELL" and 35 <= rsi <= 70
+                ):  # Assoupli (60 -> 65)
                     confirmations += 1
                     confirmation_details.append(f"RSI favorable ({rsi:.1f})")
             except (ValueError, TypeError):
@@ -319,7 +379,9 @@ class OBV_Crossover_Strategy(BaseStrategy):
         Génère un signal basé sur les croisements OBV/MA avec filtres équilibrés.
         """
         # VALIDATIONS PRÉLIMINAIRES GROUPÉES
-        is_valid, error_response, values, obv, obv_ma, obv_distance = self._validate_obv_data()
+        is_valid, error_response, values, obv, obv_ma, obv_distance = (
+            self._validate_obv_data()
+        )
         if not is_valid:
             return error_response
 
@@ -489,8 +551,7 @@ class OBV_Crossover_Strategy(BaseStrategy):
         # Appliquer pénalités restantes (les rejets ont été traités en amont)
         confidence_boost += confirmations_penalty + bias_penalty
 
-        confidence = max(0.0, min(base_confidence *
-                         (1 + confidence_boost), 1.0))
+        confidence = max(0.0, min(base_confidence * (1 + confidence_boost), 1.0))
 
         if confidence < self.min_confidence_threshold:
             return {
@@ -539,8 +600,7 @@ class OBV_Crossover_Strategy(BaseStrategy):
 
         for indicator in required:
             if indicator not in self.indicators:
-                logger.warning(
-                    f"{self.name}: Indicateur manquant: {indicator}")
+                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
                 return False
             if self.indicators[indicator] is None:
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")

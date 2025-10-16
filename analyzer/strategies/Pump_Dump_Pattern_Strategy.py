@@ -31,8 +31,7 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
     - SELL: Détection d'un dump débutant (sortir avant la chute)
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
 
         # Seuils pour détection pump - MOMENTUM TRADING OPTIMISÉ (décimaux
@@ -62,7 +61,9 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
         self.min_volatility_regime = 0.7  # Volatilité suffisante pour momentum
         self.min_trade_intensity = 1.3  # Activité trading confirmée
 
-    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _create_rejection_signal(
+        self, reason: str, metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Helper to create rejection signals."""
         base_metadata = {"strategy": self.name}
         if metadata:
@@ -153,8 +154,7 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
                 spike_val = float(volume_spike)
                 if spike_val >= self.extreme_volume_multiplier:
                     pump_score += 0.35
-                    pump_indicators.append(
-                        f"Volume spike extrême ({spike_val:.1f}x)")
+                    pump_indicators.append(f"Volume spike extrême ({spike_val:.1f}x)")
                 elif spike_val >= self.pump_volume_multiplier:
                     pump_score += 0.2
                     pump_indicators.append(f"Volume spike ({spike_val:.1f}x)")
@@ -168,8 +168,7 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
                 wr_val = float(williams_r)
                 if wr_val >= -10:  # Williams %R > -10 = surachat extrême
                     pump_score += 0.15
-                    pump_indicators.append(
-                        f"Williams%R surachat ({wr_val:.1f})")
+                    pump_indicators.append(f"Williams%R surachat ({wr_val:.1f})")
             except (ValueError, TypeError):
                 pass
 
@@ -196,8 +195,7 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
 
                 if roc_val <= extreme_dump_pct:
                     dump_score += 0.3
-                    dump_indicators.append(
-                        f"ROC10 chute extrême ({roc_val:.1f}%)")
+                    dump_indicators.append(f"ROC10 chute extrême ({roc_val:.1f}%)")
                 elif roc_val <= dump_pct:
                     dump_score += 0.15
                     dump_indicators.append(f"ROC10 chute ({roc_val:.1f}%)")
@@ -212,8 +210,7 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
                 # RSI qui décline rapidement indique faiblesse
                 if rsi_val <= self.dump_rsi_threshold:
                     dump_score += 0.25
-                    dump_indicators.append(
-                        f"RSI faiblesse extrême ({rsi_val:.1f})")
+                    dump_indicators.append(f"RSI faiblesse extrême ({rsi_val:.1f})")
                 elif rsi_val <= 45:
                     dump_score += 0.15
                     dump_indicators.append(f"RSI baissier ({rsi_val:.1f})")
@@ -284,8 +281,7 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
         signal_side = None
         reason = ""
         confidence_boost = 0.0
-        metadata: dict[str, Any] = {
-            "strategy": self.name, "symbol": self.symbol}
+        metadata: dict[str, Any] = {"strategy": self.name, "symbol": self.symbol}
 
         if pump_analysis["is_pump"]:
             # Signal BUY - Pump détecté, surfer sur la vague haussière
@@ -331,18 +327,20 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
             # VALIDATION DIRECTIONAL BIAS - REJET si contradictoire
             directional_bias = values.get("directional_bias")
             if directional_bias and (
-                (signal_side == "BUY" and directional_bias == "BEARISH") or
-                (signal_side == "SELL" and directional_bias == "BULLISH")):
+                (signal_side == "BUY" and directional_bias == "BEARISH")
+                or (signal_side == "SELL" and directional_bias == "BULLISH")
+            ):
                 return self._create_rejection_signal(
                     f"Rejet {signal_side}: bias contradictoire ({directional_bias})",
-                    {"directional_bias": directional_bias}
+                    {"directional_bias": directional_bias},
                 )
 
             # VALIDATION MARKET REGIME - MALUS si défavorable
             market_regime = values.get("market_regime")
             if market_regime and (
-                (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or
-                (signal_side == "SELL" and market_regime == "TRENDING_BULL")):
+                (signal_side == "BUY" and market_regime == "TRENDING_BEAR")
+                or (signal_side == "SELL" and market_regime == "TRENDING_BULL")
+            ):
                 confidence_boost -= 0.20  # Malus fort pour régime contradictoire
                 reason += f" MAIS régime contradictoire ({market_regime})"
 
@@ -412,16 +410,19 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
             strength = self.get_strength_from_confidence(confidence)
 
             # Mise à jour des métadonnées
-            metadata.update({"rsi_14": values.get("rsi_14"),
-                             "roc_10": values.get("roc_10"),
-                             "volume_spike_multiplier": values.get("volume_spike_multiplier"),
-                             "relative_volume": values.get("relative_volume"),
-                             "volatility_regime": volatility_regime,
-                             "trade_intensity": trade_intensity,
-                             "pattern_confidence": pattern_confidence,
-                             "confluence_score": confluence_score,
-                             "anomaly_detected": anomaly_detected,
-                             })
+            metadata.update(
+                {
+                    "rsi_14": values.get("rsi_14"),
+                    "roc_10": values.get("roc_10"),
+                    "volume_spike_multiplier": values.get("volume_spike_multiplier"),
+                    "relative_volume": values.get("relative_volume"),
+                    "volatility_regime": volatility_regime,
+                    "trade_intensity": trade_intensity,
+                    "pattern_confidence": pattern_confidence,
+                    "confluence_score": confluence_score,
+                    "anomaly_detected": anomaly_detected,
+                }
+            )
 
             return {
                 "side": signal_side,
@@ -484,9 +485,15 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
 
             # Mapping des régimes vers les scores
             volatility_map = {
-                "high": 3.0, "very_high": 3.0, "extreme": 3.0,
-                "normal": 2.0, "moderate": 2.0, "average": 2.0,
-                "low": 1.0, "very_low": 1.0, "minimal": 1.0,
+                "high": 3.0,
+                "very_high": 3.0,
+                "extreme": 3.0,
+                "normal": 2.0,
+                "moderate": 2.0,
+                "average": 2.0,
+                "low": 1.0,
+                "very_low": 1.0,
+                "minimal": 1.0,
             }
 
             if vol_lower in volatility_map:

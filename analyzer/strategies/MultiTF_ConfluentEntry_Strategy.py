@@ -28,8 +28,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
     - SELL: Confluence baissière sur multiple timeframes + confirmations
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres ASSOUPLIS pour plus de signaux premium
         self.min_confluence_score = 30  # Assoupli (40 -> 30)
@@ -59,7 +58,9 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         self.min_adx_trend = 15  # Assoupli (20 -> 15)
         self.strong_adx_trend = 25  # Assoupli (30 -> 25)
 
-    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _create_rejection_signal(
+        self, reason: str, metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Helper to create rejection signals."""
         base_metadata = {"strategy": self.name}
         if metadata:
@@ -72,7 +73,9 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             "metadata": base_metadata,
         }
 
-    def _validate_initial_conditions(self, values: dict[str, Any]) -> tuple[float | None, dict[str, Any] | None]:
+    def _validate_initial_conditions(
+        self, values: dict[str, Any]
+    ) -> tuple[float | None, dict[str, Any] | None]:
         """Valide les conditions initiales. Retourne (current_price, error_signal)."""
         current_price = self._get_current_price()
         if current_price is None:
@@ -86,14 +89,18 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 else 40.0  # Default optimiste
             )
         except (ValueError, TypeError) as e:
-            return None, self._create_rejection_signal(f"Erreur conversion scores: {e}", {})
+            return None, self._create_rejection_signal(
+                f"Erreur conversion scores: {e}", {}
+            )
 
         # Seuil confluence
-        min_confluence_dynamic = 20 if confluence_score == 40.0 else self.min_confluence_score
+        min_confluence_dynamic = (
+            20 if confluence_score == 40.0 else self.min_confluence_score
+        )
         if confluence_score < min_confluence_dynamic:
             return None, self._create_rejection_signal(
                 f"Confluence insuffisante ({confluence_score:.1f} < {min_confluence_dynamic})",
-                {"confluence_score": confluence_score}
+                {"confluence_score": confluence_score},
             )
 
         return current_price, None
@@ -258,8 +265,10 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
 
         # Hull MA pour confirmation (très réactive)
         hull_20 = mas.get("hull_20")
-        if hull_20 and ((direction == "bullish" and current_price > hull_20) or (
-                direction == "bearish" and current_price < hull_20)):
+        if hull_20 and (
+            (direction == "bullish" and current_price > hull_20)
+            or (direction == "bearish" and current_price < hull_20)
+        ):
             alignment_score = min(alignment_score + 0.1, 0.95)
 
         return {
@@ -358,15 +367,12 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             }
 
         # Calcul de la confluence avec pondération
-        oversold_count = sum(
-            1 for v in oscillators.values() if v == "oversold")
-        overbought_count = sum(
-            1 for v in oscillators.values() if v == "overbought")
+        oversold_count = sum(1 for v in oscillators.values() if v == "oversold")
+        overbought_count = sum(1 for v in oscillators.values() if v == "overbought")
         total_count = len(oscillators)
 
         # Seuils ASSOUPLIS pour plus de signaux (50%)
-        if oversold_count >= total_count * \
-                0.5:  # 50% des oscillateurs (assoupli)
+        if oversold_count >= total_count * 0.5:  # 50% des oscillateurs (assoupli)
             return {
                 "confluence": "oversold",
                 "strength": oversold_count / total_count,
@@ -379,10 +385,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 "count": total_count,
             }
         # Pas de consensus majoritaire
-        return {
-            "confluence": "insufficient",
-            "strength": 0.0,
-            "count": total_count}
+        return {"confluence": "insufficient", "strength": 0.0, "count": total_count}
 
     def generate_signal(self) -> dict[str, Any]:
         """
@@ -405,7 +408,9 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 if values["confluence_score"] is not None
                 else 40.0
             )
-            signal_strength = values["signal_strength"]  # STRING: WEAK/MODERATE/STRONG/VERY_STRONG
+            signal_strength = values[
+                "signal_strength"
+            ]  # STRING: WEAK/MODERATE/STRONG/VERY_STRONG
             trend_alignment = (
                 float(values["trend_alignment"])
                 if values["trend_alignment"] is not None
@@ -418,8 +423,9 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
 
         # Signal_strength ULTRA-ASSOUPLI avec fallback
         valid_strengths = ["WEAK", "MODERATE", "STRONG", "VERY_STRONG"]
-        signal_strength_str = str(
-            signal_strength) if signal_strength is not None else ""
+        signal_strength_str = (
+            str(signal_strength) if signal_strength is not None else ""
+        )
         if signal_strength_str not in valid_strengths:
             # Default optimiste pour valeurs manquantes/invalides
             signal_strength_str = "MODERATE"
@@ -449,7 +455,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         ):
             return self._create_rejection_signal(
                 f"ADX insuffisant ({adx_value:.1f} < {self.min_adx_trend}) - marché ranging",
-                {"adx": adx_value}
+                {"adx": adx_value},
             )
 
         # Analyse de l'alignement des moyennes mobiles
@@ -534,7 +540,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 {
                     "ma_analysis": ma_analysis,
                     "osc_analysis": osc_analysis,
-                }
+                },
             )
 
         # === BOOSTS SIMPLIFIÉS - 4 catégories principales ===
@@ -639,8 +645,15 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                     reason += f" + régime aligné ({market_regime} modéré)"
 
             elif regime_str == "WEAK" and (
-                (signal_side == "BUY" and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]) or
-                (signal_side == "SELL" and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"])):
+                (
+                    signal_side == "BUY"
+                    and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]
+                )
+                or (
+                    signal_side == "SELL"
+                    and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]
+                )
+            ):
                 # Régimes faibles : impact minimal
                 confidence_boost += 0.03  # Bonus minimal
                 reason += f" + régime aligné ({market_regime} faible)"
@@ -691,7 +704,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                     "confluence_score": confluence_score,
                     "signal_strength": signal_strength_str,
                     "trend_alignment": trend_alignment,
-                }
+                },
             )
 
         strength = self.get_strength_from_confidence(confidence)
@@ -726,13 +739,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         # Plus de rejet dur pour indicateurs manquants au boot
 
         # Vérifier qu'on a au moins quelques moyennes mobiles (ASSOUPLI)
-        ma_indicators = [
-            "ema_7",
-            "ema_12",
-            "ema_26",
-            "ema_50",
-            "sma_20",
-            "sma_50"]
+        ma_indicators = ["ema_7", "ema_12", "ema_26", "ema_50", "sma_20", "sma_50"]
         ma_available = sum(
             1
             for ma in ma_indicators
@@ -740,8 +747,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         )
 
         if ma_available < 1:  # Réduit de 3 à 1 - Une seule MA suffit au boot
-            logger.warning(
-                f"{self.name}: Aucune moyenne mobile ({ma_available}/6)")
+            logger.warning(f"{self.name}: Aucune moyenne mobile ({ma_available}/6)")
             return False
 
         return True

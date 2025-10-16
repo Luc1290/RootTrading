@@ -58,8 +58,7 @@ class UniverseManager:
 
         # Vérifier le pool DB
         if not self.db_pool:
-            logger.warning(
-                "Pas de pool DB fourni, utilisation de Redis uniquement")
+            logger.warning("Pas de pool DB fourni, utilisation de Redis uniquement")
 
         logger.info(
             f"UniverseManager initialisé avec {len(self.core_pairs)} paires core"
@@ -121,7 +120,10 @@ class UniverseManager:
 
     def update_market_data(self, symbol: str, data: dict) -> None:
         """Met à jour les données de marché pour une paire"""
-        self.market_data_cache[symbol] = {**data, "timestamp": datetime.now(tz=timezone.utc)}
+        self.market_data_cache[symbol] = {
+            **data,
+            "timestamp": datetime.now(tz=timezone.utc),
+        }
 
     def calculate_score(self, symbol: str) -> PairScore:
         """Calcule le score de tradeabilité d'une paire en utilisant les données de la DB"""
@@ -155,7 +157,8 @@ class UniverseManager:
                 if not data:
                     logger.warning(f"Pas de données analyzer pour {symbol}")
                     return PairScore(
-                        symbol, -1.0, 0, 0, 0, True, datetime.now(tz=timezone.utc))
+                        symbol, -1.0, 0, 0, 0, True, datetime.now(tz=timezone.utc)
+                    )
 
                 # Extraire métriques (tout est déjà calculé !)
                 atr_pct = float(data["natr"]) if data["natr"] else 0
@@ -165,10 +168,11 @@ class UniverseManager:
                     else 0
                 )
                 volume_ratio = (
-                    float(
-                        data["volume_ratio"]) if data["volume_ratio"] else 1.0)
+                    float(data["volume_ratio"]) if data["volume_ratio"] else 1.0
+                )
                 is_ranging = (
-                    data["bb_squeeze"] if data["bb_squeeze"] is not None else False)
+                    data["bb_squeeze"] if data["bb_squeeze"] is not None else False
+                )
 
                 # Calculer trend_score depuis données DB
                 trend_score = self._calculate_trend_score_from_db(data)
@@ -186,8 +190,7 @@ class UniverseManager:
                     z_atr = self._calculate_zscore(
                         atr_pct, [s.atr_pct for s in all_scores]
                     )
-                    z_roc = self._calculate_zscore(
-                        roc, [s.roc for s in all_scores])
+                    z_roc = self._calculate_zscore(roc, [s.roc for s in all_scores])
                     z_volume = self._calculate_zscore(
                         volume_ratio, [s.volume_ratio for s in all_scores]
                     )
@@ -278,10 +281,11 @@ class UniverseManager:
                         else 0
                     )
                     volume_ratio = (
-                        float(
-                            data["volume_ratio"]) if data["volume_ratio"] else 1.0)
+                        float(data["volume_ratio"]) if data["volume_ratio"] else 1.0
+                    )
                     is_ranging = (
-                        data["bb_squeeze"] if data["bb_squeeze"] is not None else False)
+                        data["bb_squeeze"] if data["bb_squeeze"] is not None else False
+                    )
 
                     # Créer un PairScore basique pour la normalisation
                     score = PairScore(
@@ -309,10 +313,7 @@ class UniverseManager:
         )
         return PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now(tz=timezone.utc))
 
-    def _calculate_zscore(
-            self,
-            value: float,
-            population: list[float]) -> float:
+    def _calculate_zscore(self, value: float, population: list[float]) -> float:
         """Calcule le z-score d'une valeur par rapport à la population"""
         if len(population) < 2:
             return 0.0
@@ -409,8 +410,7 @@ class UniverseManager:
                 results = cursor.fetchall()
 
                 # Extraire toutes les métriques pour z-scores
-                all_atr = [float(r["natr"]) if r["natr"]
-                           else 0 for r in results]
+                all_atr = [float(r["natr"]) if r["natr"] else 0 for r in results]
                 all_roc = [
                     (
                         (float(r["roc_10"]) + float(r["roc_20"])) / 2
@@ -431,7 +431,8 @@ class UniverseManager:
                     roc = all_roc[i]
                     volume_ratio = all_volume[i]
                     is_ranging = (
-                        data["bb_squeeze"] if data["bb_squeeze"] is not None else False)
+                        data["bb_squeeze"] if data["bb_squeeze"] is not None else False
+                    )
 
                     # Z-scores
                     z_atr = self._calculate_zscore(atr_pct, all_atr)
@@ -460,8 +461,7 @@ class UniverseManager:
                         and float(data["confluence_score"]) > 70
                     ):
                         score += 0.3
-                    if data.get("volume_context") in [
-                            "BREAKOUT", "PUMP_START"]:
+                    if data.get("volume_context") in ["BREAKOUT", "PUMP_START"]:
                         score += 0.2
 
                     scores[symbol] = PairScore(
@@ -477,9 +477,7 @@ class UniverseManager:
                             "z_roc": z_roc,
                             "z_volume": z_volume,
                             "trend_bias": trend_score,
-                            "market_regime": data.get(
-                                "market_regime",
-                                "UNKNOWN"),
+                            "market_regime": data.get("market_regime", "UNKNOWN"),
                         },
                     )
 
@@ -501,7 +499,8 @@ class UniverseManager:
             # Fallback : score par défaut pour tous
             for symbol in symbols:
                 scores[symbol] = PairScore(
-                    symbol, -1.0, 0, 0, 0, True, datetime.now(tz=timezone.utc))
+                    symbol, -1.0, 0, 0, 0, True, datetime.now(tz=timezone.utc)
+                )
 
         return scores
 
@@ -565,7 +564,9 @@ class UniverseManager:
         for symbol in symbols:
             if symbol in self.market_data_cache:
                 cache_entry = self.market_data_cache[symbol]
-                if (datetime.now(tz=timezone.utc) - cache_entry["timestamp"]).seconds < 180:
+                if (
+                    datetime.now(tz=timezone.utc) - cache_entry["timestamp"]
+                ).seconds < 180:
                     score = cache_entry.get("score")
                     if isinstance(score, PairScore):
                         scores.append(score)
@@ -575,8 +576,7 @@ class UniverseManager:
     def apply_hysteresis(self, symbol: str, current_score: float) -> bool:
         """Applique l'hystérésis pour éviter le ping-pong"""
         if symbol not in self.pair_states:
-            self.pair_states[symbol] = PairState(
-                symbol=symbol, is_selected=False)
+            self.pair_states[symbol] = PairState(symbol=symbol, is_selected=False)
 
         state = self.pair_states[symbol]
 
@@ -586,7 +586,10 @@ class UniverseManager:
             state.score_history.pop(0)
 
         # Vérifier cool-down
-        if state.cooldown_until and datetime.now(tz=timezone.utc) < state.cooldown_until:
+        if (
+            state.cooldown_until
+            and datetime.now(tz=timezone.utc) < state.cooldown_until
+        ):
             return False
 
         # Logique d'hystérésis
@@ -753,20 +756,14 @@ class UniverseManager:
 
         return stats
 
-    def force_pair_selection(
-            self,
-            symbol: str,
-            duration_minutes: int = 60) -> None:
+    def force_pair_selection(self, symbol: str, duration_minutes: int = 60) -> None:
         """Force la sélection d'une paire pour consensus fort"""
         # Stocker le forçage avec expiration
         forced_until = time.time() + (duration_minutes * 60)
         forced_key = f"forced_pair:{symbol}"
         self.redis.set(
-            forced_key,
-            str(forced_until),
-            expiration=duration_minutes *
-            60 +
-            60)  # +60s marge
+            forced_key, str(forced_until), expiration=duration_minutes * 60 + 60
+        )  # +60s marge
 
         # Ajouter à l'univers actuel
         self.selected_universe.add(symbol)

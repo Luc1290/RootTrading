@@ -8,7 +8,4 @@ pour fournir des signaux plus robustes.
 from .confluence import ConfluenceType, calculate_confluence_score
 from .signal_strength import calculate_signal_strength
 
-__all__ = [
-    "ConfluenceType",
-    "calculate_confluence_score",
-    "calculate_signal_strength"]
+__all__ = ["ConfluenceType", "calculate_confluence_score", "calculate_signal_strength"]

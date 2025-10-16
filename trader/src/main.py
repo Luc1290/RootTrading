@@ -14,11 +14,7 @@ from trader.src.api.rest_server import RestApiServer
 from trader.src.trading.order_manager import OrderManager
 
 # Ajouter le répertoire parent au path pour les imports
-sys.path.append(
-    os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../../")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
 # Maintenant que le chemin est configuré, importer les modules nécessaires
 
@@ -26,6 +22,7 @@ sys.path.append(
 from shared.logging_config import setup_logging
 
 logger = setup_logging("market_analyzer", log_level="INFO")
+
 
 class TraderService:
     """
@@ -48,8 +45,7 @@ class TraderService:
         self.running = False
         self.start_time = time.time()
 
-        logger.info(
-            f"✅ TraderService initialisé pour {len(self.symbols)} symboles")
+        logger.info(f"✅ TraderService initialisé pour {len(self.symbols)} symboles")
 
     def start(self):
         """
@@ -103,21 +99,14 @@ class TraderService:
 def parse_arguments():
     """Parse les arguments de ligne de commande."""
     parser = argparse.ArgumentParser(description="Trader RootTrading")
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=5002,
-        help="Port pour l'API REST")
+    parser.add_argument("--port", type=int, default=5002, help="Port pour l'API REST")
     parser.add_argument(
         "--symbols",
         type=str,
         default=None,
         help="Liste de symboles séparés par des virgules (ex: BTCUSDC,ETHUSDC)",
     )
-    parser.add_argument(
-        "--no-api",
-        action="store_true",
-        help="Désactive l'API REST")
+    parser.add_argument("--no-api", action="store_true", help="Désactive l'API REST")
     parser.add_argument(
         "--log-level",
         type=str,

@@ -47,16 +47,11 @@ class StatisticsService:
                 return_exceptions=True,
             )
 
-            portfolio = results[0] if not isinstance(
-                results[0], Exception) else {}
-            activity = results[1] if not isinstance(
-                results[1], Exception) else {}
-            performance = results[2] if not isinstance(
-                results[2], Exception) else {}
-            unrealized = results[3] if not isinstance(
-                results[3], Exception) else {}
-            cycles = results[4] if not isinstance(
-                results[4], Exception) else {}
+            portfolio = results[0] if not isinstance(results[0], Exception) else {}
+            activity = results[1] if not isinstance(results[1], Exception) else {}
+            performance = results[2] if not isinstance(results[2], Exception) else {}
+            unrealized = results[3] if not isinstance(results[3], Exception) else {}
+            cycles = results[4] if not isinstance(results[4], Exception) else {}
             results[5] if not isinstance(results[5], Exception) else {}
 
             # PnL total = réalisé (trades complétés 24h) + non réalisé
@@ -89,7 +84,8 @@ class StatisticsService:
             logger.exception("Error getting global statistics")
             return {
                 "error": str(e),
-                "timestamp": datetime.now(tz=timezone.utc).isoformat()}
+                "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+            }
 
     async def get_all_symbols_statistics(self) -> dict[str, Any]:
         """
@@ -110,13 +106,15 @@ class StatisticsService:
             """
 
             symbols_result = await self.data_manager.execute_query(symbols_query)
-            symbols = ([row["symbol"]
-                        for row in symbols_result] if symbols_result else [])
+            symbols = (
+                [row["symbol"] for row in symbols_result] if symbols_result else []
+            )
 
             if not symbols:
                 return {
                     "symbols": [],
-                    "timestamp": datetime.now(tz=timezone.utc).isoformat()}
+                    "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+                }
 
             # Requête principale pour récupérer toutes les statistiques en une
             # fois
@@ -195,14 +193,17 @@ class StatisticsService:
                     }
                 )
 
-            return {"symbols": symbol_stats,
-                    "timestamp": datetime.now(tz=timezone.utc).isoformat()}
+            return {
+                "symbols": symbol_stats,
+                "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+            }
 
         except Exception as e:
             logger.exception("Error getting all symbols statistics")
             return {
                 "error": str(e),
-                "timestamp": datetime.now(tz=timezone.utc).isoformat()}
+                "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+            }
 
     async def get_symbol_statistics(self, symbol: str) -> dict[str, Any]:
         """
@@ -225,10 +226,8 @@ class StatisticsService:
                 return_exceptions=True,
             )
 
-            performance = results[0] if not isinstance(
-                results[0], Exception) else {}
-            activity = results[1] if not isinstance(
-                results[1], Exception) else {}
+            performance = results[0] if not isinstance(results[0], Exception) else {}
+            activity = results[1] if not isinstance(results[1], Exception) else {}
             results[2] if not isinstance(results[2], Exception) else {}
             results[3] if not isinstance(results[3], Exception) else {}
             results[4] if not isinstance(results[4], Exception) else {}
@@ -267,8 +266,7 @@ class StatisticsService:
                 if price_result and len(price_result) > 0:
                     price_row = price_result[0]
                     current_price = float(price_row["current_price"] or 0)
-                    price_change_24h = float(
-                        price_row["price_change_24h"] or 0)
+                    price_change_24h = float(price_row["price_change_24h"] or 0)
                 else:
                     current_price = 0
                     price_change_24h = 0
@@ -329,7 +327,9 @@ class StatisticsService:
 
             interval_map = {"1h": "hour", "1d": "day"}
 
-            start_time = datetime.now(tz=timezone.utc) - period_map.get(period, timedelta(days=7))
+            start_time = datetime.now(tz=timezone.utc) - period_map.get(
+                period, timedelta(days=7)
+            )
             pg_interval = interval_map.get(interval, "hour")
 
             query = f"""
@@ -369,14 +369,12 @@ class StatisticsService:
 
             for row in rows:
                 raw_pnl = row["total_pnl"] or Decimal("0")
-                corrected_pnl = raw_pnl * \
-                    Decimal(str(self.pnl_correction_factor))
+                corrected_pnl = raw_pnl * Decimal(str(self.pnl_correction_factor))
                 cumulative_pnl += corrected_pnl
 
                 win_rate = 0
                 if row["total_trades"] > 0:
-                    win_rate = (row["total_winning_trades"] /
-                                row["total_trades"]) * 100
+                    win_rate = (row["total_winning_trades"] / row["total_trades"]) * 100
 
                 history.append(
                     {
@@ -406,8 +404,7 @@ class StatisticsService:
                     "total_pnl": float(cumulative_pnl),
                     "total_trades": sum(h["trades"] for h in history),
                     "avg_win_rate": (
-                        round(sum(h["win_rate"]
-                              for h in history) / len(history), 2)
+                        round(sum(h["win_rate"] for h in history) / len(history), 2)
                         if history
                         else 0
                     ),
@@ -673,10 +670,9 @@ class StatisticsService:
             # Trier par performance (P&L Total décroissant, puis par taux de
             # conversion)
             individual_strategies.sort(
-                key=lambda x: (
-                    x.get(
-                        "totalPnl", 0), x.get(
-                        "signal_to_trade_rate", 0)), reverse=True, )
+                key=lambda x: (x.get("totalPnl", 0), x.get("signal_to_trade_rate", 0)),
+                reverse=True,
+            )
 
             # Statistiques résumées optimisées
             active_strategies = [
@@ -702,8 +698,7 @@ class StatisticsService:
                 "active_count": len(active_strategies),
                 "profitable_count": len(profitable_strategies),
                 "avg_conversion_rate": (
-                    sum(s.get("signal_to_trade_rate", 0)
-                        for s in active_strategies)
+                    sum(s.get("signal_to_trade_rate", 0) for s in active_strategies)
                     / len(active_strategies)
                     if active_strategies
                     else 0
@@ -859,13 +854,11 @@ class StatisticsService:
         if result and result[0]:
             row = result[0]
             return {
-                "total_unrealized_pnl": float(
-                    row["total_unrealized_pnl"] or 0),
+                "total_unrealized_pnl": float(row["total_unrealized_pnl"] or 0),
                 "active_positions_count": row["active_positions_count"] or 0,
                 "avg_unrealized_pnl_percent": round(
-                    float(
-                        row["avg_unrealized_pnl_percent"] or 0),
-                    2),
+                    float(row["avg_unrealized_pnl_percent"] or 0), 2
+                ),
             }
         return {
             "total_unrealized_pnl": 0,
@@ -972,8 +965,7 @@ class StatisticsService:
             }
         return {}
 
-    async def _get_symbol_trading_activity(
-            self, symbol: str) -> dict[str, Any]:
+    async def _get_symbol_trading_activity(self, symbol: str) -> dict[str, Any]:
         """Récupère l'activité de trading pour un symbole."""
         query = f"""
             SELECT
@@ -1033,8 +1025,7 @@ class StatisticsService:
         for row in result:
             accuracy = 0
             if row["total_signals"] > 0:
-                accuracy = (row["profitable_signals"] /
-                            row["total_signals"]) * 100
+                accuracy = (row["profitable_signals"] / row["total_signals"]) * 100
 
             strategies.append(
                 {

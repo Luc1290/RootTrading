@@ -8,8 +8,7 @@ from pathlib import Path
 
 import aiohttp
 import psycopg2
-from fastapi import (FastAPI, HTTPException, Request, WebSocket,
-                     WebSocketDisconnect)
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,8 +17,7 @@ from fastapi.templating import Jinja2Templates
 from notifications.telegram_service import get_notifier
 from visualization.src.chart_service import ChartService
 from visualization.src.data_manager import DataManager
-from visualization.src.opportunity_calculator_pro import \
-    OpportunityCalculatorPro
+from visualization.src.opportunity_calculator_pro import OpportunityCalculatorPro
 from visualization.src.statistics_service import StatisticsService
 from visualization.src.websocket_hub import WebSocketHub
 
@@ -35,6 +33,7 @@ logger = setup_logging("visualization", log_level="INFO")
 # Service container to hold all services
 class ServiceContainer:
     """Container to hold all application services"""
+
     def __init__(self):
         self.data_manager: DataManager | None = None
         self.chart_service: ChartService | None = None
@@ -55,14 +54,18 @@ def check_service_availability(
     opp_calc: bool = False,
 ) -> None:
     """Check if required services are available, raise HTTPException if not"""
-    if data_mgr and (services.data_manager is None or not services.data_manager.postgres_pool):
+    if data_mgr and (
+        services.data_manager is None or not services.data_manager.postgres_pool
+    ):
         raise HTTPException(status_code=503, detail="Data manager not available")
     if chart_svc and services.chart_service is None:
         raise HTTPException(status_code=503, detail="Chart service not available")
     if stats_svc and services.statistics_service is None:
         raise HTTPException(status_code=503, detail="Statistics service not available")
     if opp_calc and services.opportunity_calculator is None:
-        raise HTTPException(status_code=503, detail="Opportunity calculator not available")
+        raise HTTPException(
+            status_code=503, detail="Opportunity calculator not available"
+        )
 
 
 def validate_parameters(period: str | None = None, interval: str | None = None) -> None:
@@ -88,8 +91,7 @@ def check_trading_symbols_config() -> list[str]:
     trading_symbols_env = os.getenv("TRADING_SYMBOLS", "")
     if not trading_symbols_env:
         raise HTTPException(
-            status_code=500,
-            detail="TRADING_SYMBOLS not configured in .env"
+            status_code=500, detail="TRADING_SYMBOLS not configured in .env"
         )
     return [s.strip() for s in trading_symbols_env.split(",")]
 
@@ -118,9 +120,8 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="RootTrading Visualization Service",
-    version="1.0.0",
-    lifespan=lifespan)
+    title="RootTrading Visualization Service", version="1.0.0", lifespan=lifespan
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -141,10 +142,8 @@ serve_react_app_flag = Path(frontend_build_path).exists()
 if serve_react_app_flag:
     # Serve static assets first
     app.mount(
-        "/assets",
-        StaticFiles(
-            directory=f"{frontend_build_path}/assets"),
-        name="assets")
+        "/assets", StaticFiles(directory=f"{frontend_build_path}/assets"), name="assets"
+    )
     logger.info(f"Serving React app from {frontend_build_path}")
 else:
     logger.warning(
@@ -162,20 +161,29 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now(tz=timezone.utc).isoformat() + "Z",
-        "redis_connected": services.data_manager.is_redis_connected() if services.data_manager else False,
+        "redis_connected": (
+            services.data_manager.is_redis_connected()
+            if services.data_manager
+            else False
+        ),
         "postgres_connected": (
-            services.data_manager.is_postgres_connected() if services.data_manager else False),
+            services.data_manager.is_postgres_connected()
+            if services.data_manager
+            else False
+        ),
     }
 
 
 @app.get("/api/system/alerts")
 async def get_system_alerts():
     """Get system health alerts from all services"""
+
     async def fetch_service_health(url: str, service_name: str):
         try:
-            async with aiohttp.ClientSession() as session, session.get(
-                url, timeout=aiohttp.ClientTimeout(total=5)
-            ) as response:
+            async with (
+                aiohttp.ClientSession() as session,
+                session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response,
+            ):
                 if response.status == 200:
                     return await response.json()
                 return {
@@ -184,10 +192,7 @@ async def get_system_alerts():
                     "error": f"HTTP {response.status}",
                 }
         except Exception as e:
-            return {
-                "status": "offline",
-                "service": service_name,
-                "error": str(e)}
+            return {"status": "offline", "service": service_name, "error": str(e)}
 
     # Appels vers les services Docker
     portfolio_health, trader_health = await asyncio.gather(
@@ -355,7 +360,9 @@ async def get_performance_chart(period: str = "24h", metric: str = "pnl"):
     try:
         check_service_availability(chart_svc=True)
 
-        return await services.chart_service.get_performance_chart(period=period, metric=metric)
+        return await services.chart_service.get_performance_chart(
+            period=period, metric=metric
+        )
     except Exception as e:
         logger.exception("Error getting performance chart")
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -410,7 +417,10 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     await services.websocket_hub.subscribe_client(
                         client_id, data.get("channel"), data.get("params", {})
                     )
-            elif data.get("action") == "unsubscribe" and services.websocket_hub is not None:
+            elif (
+                data.get("action") == "unsubscribe"
+                and services.websocket_hub is not None
+            ):
                 await services.websocket_hub.unsubscribe_client(
                     client_id, data.get("channel")
                 )
@@ -565,10 +575,8 @@ async def get_trading_opportunity(symbol: str):
             current_price = float(price_data["close"])
 
             # Convertir les données DB en dict
-            analyzer_dict_1m = dict(
-                analyzer_data_1m) if analyzer_data_1m else {}
-            analyzer_dict_5m = dict(
-                analyzer_data_5m) if analyzer_data_5m else None
+            analyzer_dict_1m = dict(analyzer_data_1m) if analyzer_data_1m else {}
+            analyzer_dict_5m = dict(analyzer_data_5m) if analyzer_data_5m else None
             signals_dict = dict(signals_data) if signals_data else {}
 
             # Récupérer les 10 dernières périodes 1m pour early detector
@@ -673,8 +681,7 @@ async def get_trading_opportunity(symbol: str):
                         stop_loss=opportunity.stop_loss,
                         reason="\n".join(opportunity.reasons),
                         momentum=analyzer_dict_1m.get("adx_14", 0),
-                        volume_ratio=analyzer_dict_1m.get(
-                            "relative_volume", 1.0),
+                        volume_ratio=analyzer_dict_1m.get("relative_volume", 1.0),
                         regime=opportunity.market_regime,
                         estimated_hold_time=opportunity.estimated_hold_time,
                         grade=opportunity.score.grade,
@@ -788,8 +795,7 @@ async def get_automatic_signals(symbol: str):
             )
 
             # Status validé si consensus fort (au moins 3 stratégies)
-            validated = strategies_count >= 3 and abs(
-                buy_count - sell_count) >= 2
+            validated = strategies_count >= 3 and abs(buy_count - sell_count) >= 2
 
             return {
                 "symbol": symbol,
@@ -886,7 +892,9 @@ async def get_performance_history(period: str = "7d", interval: str = "1h"):
         check_service_availability(stats_svc=True)
         validate_parameters(period=period, interval=interval)
 
-        return await services.statistics_service.get_performance_history(period, interval)
+        return await services.statistics_service.get_performance_history(
+            period, interval
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -1141,8 +1149,7 @@ async def get_top_signals(
             top_signals = []
             for row in rows:
                 net = row["net_signal"]
-                dominant_side = "BUY" if net > 0 else (
-                    "SELL" if net < 0 else "NEUTRAL")
+                dominant_side = "BUY" if net > 0 else ("SELL" if net < 0 else "NEUTRAL")
 
                 top_signals.append(
                     {
@@ -1161,8 +1168,7 @@ async def get_top_signals(
                     }
                 )
 
-            return {"signals": top_signals,
-                    "timeframe_minutes": timeframe_minutes}
+            return {"signals": top_signals, "timeframe_minutes": timeframe_minutes}
     except Exception as e:
         logger.exception("Error getting top signals")
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -1201,9 +1207,12 @@ async def proxy_portfolio(path: str, request: Request):
         portfolio_url += f"?{query_string}"
 
     try:
-        async with aiohttp.ClientSession() as session, session.get(
-            portfolio_url, timeout=aiohttp.ClientTimeout(total=10)
-        ) as response:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.get(
+                portfolio_url, timeout=aiohttp.ClientTimeout(total=10)
+            ) as response,
+        ):
             if response.content_type == "application/json":
                 return await response.json()
             text = await response.text()
@@ -1225,9 +1234,12 @@ async def proxy_trader(path: str, request: Request):
         trader_url += f"?{query_string}"
 
     try:
-        async with aiohttp.ClientSession() as session, session.get(
-            trader_url, timeout=aiohttp.ClientTimeout(total=10)
-        ) as response:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.get(
+                trader_url, timeout=aiohttp.ClientTimeout(total=10)
+            ) as response,
+        ):
             if response.content_type == "application/json":
                 return await response.json()
             text = await response.text()
@@ -1250,16 +1262,19 @@ async def proxy_trader_post(path: str, request: Request):
     trader_url = f"http://trader:5002/{path}"
 
     try:
-        async with aiohttp.ClientSession() as session, session.post(
-            trader_url,
-            data=body,
-            headers={
-                k: v
-                for k, v in headers.items()
-                if k.lower() not in ["host", "content-length"]
-            },
-            timeout=aiohttp.ClientTimeout(total=10),
-        ) as response:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(
+                trader_url,
+                data=body,
+                headers={
+                    k: v
+                    for k, v in headers.items()
+                    if k.lower() not in ["host", "content-length"]
+                },
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response,
+        ):
             if response.content_type == "application/json":
                 return await response.json()
             text = await response.text()
@@ -1282,16 +1297,19 @@ async def proxy_portfolio_post(path: str, request: Request):
     portfolio_url = f"http://portfolio:8000/{path}"
 
     try:
-        async with aiohttp.ClientSession() as session, session.post(
-            portfolio_url,
-            data=body,
-            headers={
-                k: v
-                for k, v in headers.items()
-                if k.lower() not in ["host", "content-length"]
-            },
-            timeout=aiohttp.ClientTimeout(total=10),
-        ) as response:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(
+                portfolio_url,
+                data=body,
+                headers={
+                    k: v
+                    for k, v in headers.items()
+                    if k.lower() not in ["host", "content-length"]
+                },
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response,
+        ):
             if response.content_type == "application/json":
                 return await response.json()
             text = await response.text()

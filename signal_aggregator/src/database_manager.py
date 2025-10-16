@@ -32,8 +32,7 @@ class DatabaseManager:
             "last_storage_time": None,
         }
 
-    def store_validated_signal(
-            self, validated_signal: dict[str, Any]) -> int | None:
+    def store_validated_signal(self, validated_signal: dict[str, Any]) -> int | None:
         """
         Stocke un signal validé en base de données.
 
@@ -64,8 +63,9 @@ class DatabaseManager:
                 self.db_connection.commit()
 
                 # Mise à jour des statistiques
-                self.stats["signals_stored"] = int(
-                    self.stats.get("signals_stored", 0)) + 1
+                self.stats["signals_stored"] = (
+                    int(self.stats.get("signals_stored", 0)) + 1
+                )
                 self.stats["last_storage_time"] = datetime.now(tz=timezone.utc)
 
                 logger.debug(f"Signal stocké en DB avec ID: {signal_id}")
@@ -73,8 +73,7 @@ class DatabaseManager:
 
         except Exception:
             logger.exception("Erreur stockage signal en DB")
-            self.stats["storage_errors"] = int(
-                self.stats.get("storage_errors", 0)) + 1
+            self.stats["storage_errors"] = int(self.stats.get("storage_errors", 0)) + 1
 
             # Rollback en cas d'erreur
             try:
@@ -84,8 +83,7 @@ class DatabaseManager:
 
             return None
 
-    def _prepare_signal_data(
-            self, validated_signal: dict[str, Any]) -> dict[str, Any]:
+    def _prepare_signal_data(self, validated_signal: dict[str, Any]) -> dict[str, Any]:
         """
         Prépare les données du signal pour l'insertion en DB.
 
@@ -143,8 +141,7 @@ class DatabaseManager:
                 ),
                 "confidence": float(
                     validated_signal.get(
-                        "aggregator_confidence", validated_signal.get(
-                            "confidence", 0)
+                        "aggregator_confidence", validated_signal.get("confidence", 0)
                     )
                 ),
                 "price": price,
@@ -231,7 +228,9 @@ class DatabaseManager:
 
             for fmt in formats:
                 try:
-                    return datetime.strptime(timestamp_str, fmt).replace(tzinfo=timezone.utc)
+                    return datetime.strptime(timestamp_str, fmt).replace(
+                        tzinfo=timezone.utc
+                    )
                 except ValueError:
                     continue
 
@@ -282,17 +281,18 @@ class DatabaseManager:
                     except Exception:
                         logger.exception("Erreur stockage signal individuel")
                         signal_ids.append(None)
-                        self.stats["storage_errors"] = int(
-                            self.stats.get("storage_errors", 0)) + 1
+                        self.stats["storage_errors"] = (
+                            int(self.stats.get("storage_errors", 0)) + 1
+                        )
 
                 # Commit de toutes les insertions
                 self.db_connection.commit()
 
                 # Mise à jour des statistiques
-                successful_stores = len(
-                    [sid for sid in signal_ids if sid is not None])
-                self.stats["signals_stored"] = int(
-                    self.stats.get("signals_stored", 0)) + successful_stores
+                successful_stores = len([sid for sid in signal_ids if sid is not None])
+                self.stats["signals_stored"] = (
+                    int(self.stats.get("signals_stored", 0)) + successful_stores
+                )
                 self.stats["last_storage_time"] = datetime.now(tz=timezone.utc)
 
                 logger.info(
@@ -301,8 +301,9 @@ class DatabaseManager:
 
         except Exception:
             logger.exception("Erreur stockage batch signaux")
-            self.stats["storage_errors"] = int(self.stats.get(
-                "storage_errors", 0)) + len(validated_signals)
+            self.stats["storage_errors"] = int(
+                self.stats.get("storage_errors", 0)
+            ) + len(validated_signals)
 
             # Rollback en cas d'erreur
             try:
@@ -535,8 +536,7 @@ class DatabaseManager:
                 deleted_count = cursor.rowcount
                 self.db_connection.commit()
 
-                logger.info(
-                    f"Nettoyage DB: {deleted_count} anciens signaux supprimés")
+                logger.info(f"Nettoyage DB: {deleted_count} anciens signaux supprimés")
                 return deleted_count
 
         except Exception:
@@ -544,6 +544,5 @@ class DatabaseManager:
             try:
                 self.db_connection.rollback()
             except Exception:
-                logger.exception(
-                    "Erreur rollback nettoyage: ")
+                logger.exception("Erreur rollback nettoyage: ")
             return 0

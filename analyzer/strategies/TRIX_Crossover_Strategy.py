@@ -30,8 +30,7 @@ class TRIX_Crossover_Strategy(BaseStrategy):
     - SELL: TRIX simulé crosses below zero + confirmations baissières
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
 
         # Paramètres TRIX simulé ASSOUPLIS basés sur données réelles DB
@@ -87,10 +86,12 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                         price_ratio = close_prev / close_curr
                         tema_12_prev = float(tema_curr) * price_ratio
                         dema_12_prev = (
-                            float(dema_curr) *
-                            price_ratio if dema_curr else None)
+                            float(dema_curr) * price_ratio if dema_curr else None
+                        )
 
-                    if roc_curr and len(close_list) >= 12:  # ROC(10) need 12 points for prev calc
+                    if (
+                        roc_curr and len(close_list) >= 12
+                    ):  # ROC(10) need 12 points for prev calc
                         # ROC précédent approximé: (close[-2] - close[-12]) /
                         # close[-12]
                         close_12_ago = float(close_list[-12])
@@ -153,10 +154,7 @@ class TRIX_Crossover_Strategy(BaseStrategy):
         momentum_10 = values.get("momentum_10")
 
         if tema_12 is None:
-            return {
-                "trix_value": None,
-                "trix_direction": None,
-                "trix_strength": 0}
+            return {"trix_value": None, "trix_direction": None, "trix_strength": 0}
 
         try:
             tema_val = float(tema_12)
@@ -174,10 +172,7 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                 # décimal)
                 trix_proxy = momentum_val / 100.0  # Normalisation cohérente
             else:
-                return {
-                    "trix_value": None,
-                    "trix_direction": None,
-                    "trix_strength": 0}
+                return {"trix_value": None, "trix_direction": None, "trix_strength": 0}
 
             # Direction TRIX avec ZONE NEUTRE élargie
             if abs(trix_proxy) < self.neutral_zone:
@@ -214,15 +209,11 @@ class TRIX_Crossover_Strategy(BaseStrategy):
             }
 
         except (ValueError, TypeError):
-            return {
-                "trix_value": None,
-                "trix_direction": None,
-                "trix_strength": 0}
+            return {"trix_value": None, "trix_direction": None, "trix_strength": 0}
         else:
             return result
 
-    def _detect_signal_line_crossover(
-            self, values: dict[str, Any]) -> dict[str, Any]:
+    def _detect_signal_line_crossover(self, values: dict[str, Any]) -> dict[str, Any]:
         """Détecte FRESH crossover entre TEMA (TRIX base) et DEMA (signal line)."""
         tema_12 = values.get("tema_12")
         dema_12 = values.get("dema_12")
@@ -248,8 +239,12 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                     diff_prev = (tp - dp) / (tp or 1e-12)
 
                     # Détection FRESH crossover (changement de signe récent)
-                    crossed_up = (diff_prev <= 0) and (diff > self.min_tema_dema_separation)
-                    crossed_down = (diff_prev >= 0) and (diff < -self.min_tema_dema_separation)
+                    crossed_up = (diff_prev <= 0) and (
+                        diff > self.min_tema_dema_separation
+                    )
+                    crossed_down = (diff_prev >= 0) and (
+                        diff < -self.min_tema_dema_separation
+                    )
 
                     if crossed_up or crossed_down:
                         direction = "bullish" if crossed_up else "bearish"
@@ -306,10 +301,7 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                 momentum_val = float(momentum_score)
                 # momentum_score RÉEL observé: 47.70-61.66, 99% entre 49.54-50.82
                 # Seulement 0.14% > 52, donc seuils très fins nécessaires
-                if trix_direction in [
-                    "bullish",
-                    "strong_bullish",
-                        "extreme_bullish"]:
+                if trix_direction in ["bullish", "strong_bullish", "extreme_bullish"]:
                     # Pas de rejet strict - momentum quasi-normal autour de 50
                     # Top 10% (p90=50.25, donc 50.5 est rare)
                     if momentum_val > 50.5:
@@ -351,8 +343,10 @@ class TRIX_Crossover_Strategy(BaseStrategy):
 
         # Directional bias alignment - RÉDUIT
         if directional_bias:
-            if (trix_direction in ["bullish", "strong_bullish",
-                                   "extreme_bullish"] and directional_bias == "BULLISH"):
+            if (
+                trix_direction in ["bullish", "strong_bullish", "extreme_bullish"]
+                and directional_bias == "BULLISH"
+            ):
                 alignment_score += 0.18  # Réduit de 0.25
                 alignment_indicators.append("Bias directionnel haussier")
             elif (
@@ -367,15 +361,13 @@ class TRIX_Crossover_Strategy(BaseStrategy):
             # trend_strength: WEAK/MODERATE/STRONG/VERY_STRONG
             if trend_strength == "VERY_STRONG":
                 alignment_score += 0.18
-                alignment_indicators.append(
-                    f"Trend très forte ({trend_strength})")
+                alignment_indicators.append(f"Trend très forte ({trend_strength})")
             elif trend_strength == "STRONG":
                 alignment_score += 0.14
                 alignment_indicators.append(f"Trend forte ({trend_strength})")
             elif trend_strength == "MODERATE":
                 alignment_score += 0.10
-                alignment_indicators.append(
-                    f"Trend modérée ({trend_strength})")
+                alignment_indicators.append(f"Trend modérée ({trend_strength})")
             # WEAK ne donne plus de bonus (score neutre)
 
         # ROC confirmation
@@ -383,8 +375,10 @@ class TRIX_Crossover_Strategy(BaseStrategy):
         if roc_10 is not None:
             try:
                 roc_val = float(roc_10)
-                if (trix_direction in ["bullish", "strong_bullish",
-                                       "extreme_bullish"] and roc_val > self.min_roc_confirmation):
+                if (
+                    trix_direction in ["bullish", "strong_bullish", "extreme_bullish"]
+                    and roc_val > self.min_roc_confirmation
+                ):
                     alignment_score += 0.12  # Réduit de 0.15
                     alignment_indicators.append(
                         f"ROC haussier ({roc_val:.2f}%)"
@@ -406,7 +400,9 @@ class TRIX_Crossover_Strategy(BaseStrategy):
             "indicators": alignment_indicators,
         }
 
-    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _create_rejection_signal(
+        self, reason: str, metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Helper to create rejection signals."""
         base_metadata = {"strategy": self.name}
         if metadata:
@@ -431,12 +427,12 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                 if signal_side == "BUY" and not (-0.001 <= r <= 0.05):
                     return self._create_rejection_signal(
                         f"ROC {'trop faible' if r < -0.001 else 'trop fort'} ({r:.3%})",
-                        {"roc_10": r}
+                        {"roc_10": r},
                     )
                 if signal_side == "SELL" and not (-0.05 <= r <= 0.001):
                     return self._create_rejection_signal(
                         f"ROC {'trop faible' if r > 0.001 else 'trop fort'} ({r:.3%})",
-                        {"roc_10": r}
+                        {"roc_10": r},
                     )
             except (ValueError, TypeError):
                 pass
@@ -445,7 +441,9 @@ class TRIX_Crossover_Strategy(BaseStrategy):
         if signal_side == "BUY":
             ema_12 = values.get("ema_12")
             atr_14 = values.get("atr_14")
-            close = (self.data.get("close", [None])[-1] if self.data.get("close") else None)
+            close = (
+                self.data.get("close", [None])[-1] if self.data.get("close") else None
+            )
 
             if None not in (close, ema_12, atr_14):
                 try:
@@ -460,7 +458,11 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                     if overextended:
                         return self._create_rejection_signal(
                             "TRIX BUY mais prix sur-étiré: attente pullback",
-                            {"close": close_val, "ema_12": ema12_val, "atr_14": atr_val}
+                            {
+                                "close": close_val,
+                                "ema_12": ema12_val,
+                                "atr_14": atr_val,
+                            },
                         )
                 except (ValueError, TypeError):
                     pass
@@ -473,7 +475,7 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                 if vol_ratio < 0.5:
                     return self._create_rejection_signal(
                         f"Volume anémique ({vol_ratio:.2f}x)",
-                        {"volume_ratio": vol_ratio}
+                        {"volume_ratio": vol_ratio},
                     )
             except (ValueError, TypeError):
                 pass
@@ -486,7 +488,10 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                 if conf_val < 25:
                     return self._create_rejection_signal(
                         f"Rejet TRIX: confluence trop faible ({conf_val:.1f})",
-                        {"confluence_score": conf_val, "trix_direction": trix_direction}
+                        {
+                            "confluence_score": conf_val,
+                            "trix_direction": trix_direction,
+                        },
                     )
             except (ValueError, TypeError):
                 pass
@@ -520,17 +525,37 @@ class TRIX_Crossover_Strategy(BaseStrategy):
         directional_bias = values.get("directional_bias")
 
         # Valider momentum alignment et directional bias
-        momentum_not_aligned = self.momentum_alignment_required and not alignment_data["is_aligned"]
+        momentum_not_aligned = (
+            self.momentum_alignment_required and not alignment_data["is_aligned"]
+        )
         bias_contradicts = directional_bias and (
-            (trix_direction in ["bullish", "strong_bullish", "extreme_bullish"] and directional_bias == "BEARISH") or
-            (trix_direction in ["bearish", "strong_bearish", "extreme_bearish"] and directional_bias == "BULLISH"))
+            (
+                trix_direction in ["bullish", "strong_bullish", "extreme_bullish"]
+                and directional_bias == "BEARISH"
+            )
+            or (
+                trix_direction in ["bearish", "strong_bearish", "extreme_bearish"]
+                and directional_bias == "BULLISH"
+            )
+        )
 
         if momentum_not_aligned or bias_contradicts:
-            reason = (f"TRIX {trix_direction} mais momentum pas aligné" if momentum_not_aligned
-                     else f"Rejet TRIX: bias contradictoire ({directional_bias})")
-            metadata = ({"trix_direction": trix_direction, "alignment_score": alignment_data["score"]}
-                       if momentum_not_aligned
-                       else {"trix_direction": trix_direction, "directional_bias": directional_bias})
+            reason = (
+                f"TRIX {trix_direction} mais momentum pas aligné"
+                if momentum_not_aligned
+                else f"Rejet TRIX: bias contradictoire ({directional_bias})"
+            )
+            metadata = (
+                {
+                    "trix_direction": trix_direction,
+                    "alignment_score": alignment_data["score"],
+                }
+                if momentum_not_aligned
+                else {
+                    "trix_direction": trix_direction,
+                    "directional_bias": directional_bias,
+                }
+            )
             return self._create_rejection_signal(reason, metadata)
 
         # Déterminer le signal side et valider les exigences
@@ -544,10 +569,12 @@ class TRIX_Crossover_Strategy(BaseStrategy):
         if not signal_side:
             return self._create_rejection_signal(
                 f"Direction TRIX indéterminée: {trix_direction}",
-                {"trix_direction": trix_direction}
+                {"trix_direction": trix_direction},
             )
 
-        rejection = self._validate_signal_requirements(signal_side, values, trix_direction)
+        rejection = self._validate_signal_requirements(
+            signal_side, values, trix_direction
+        )
         if rejection:
             return rejection
 
@@ -563,9 +590,14 @@ class TRIX_Crossover_Strategy(BaseStrategy):
         if alignment_data["indicators"]:
             reason += f" + {alignment_data['indicators'][0]}"
 
-        if self.signal_line_crossover and crossover_data["is_crossover"] and (
-                (signal_side == "BUY" and crossover_data["direction"] == "bullish") or
-                (signal_side == "SELL" and crossover_data["direction"] == "bearish")):
+        if (
+            self.signal_line_crossover
+            and crossover_data["is_crossover"]
+            and (
+                (signal_side == "BUY" and crossover_data["direction"] == "bullish")
+                or (signal_side == "SELL" and crossover_data["direction"] == "bearish")
+            )
+        ):
             confidence_boost += crossover_data["strength"] * 0.15
             reason += " + crossover signal line"
 
@@ -587,7 +619,8 @@ class TRIX_Crossover_Strategy(BaseStrategy):
             try:
                 hist_val = float(macd_histogram)
                 if (signal_side == "BUY" and hist_val > 0.001) or (
-                    signal_side == "SELL" and hist_val < -0.001):
+                    signal_side == "SELL" and hist_val < -0.001
+                ):
                     confidence_boost += 0.06
                     reason += " + MACD histogram"
             except (ValueError, TypeError):
@@ -637,8 +670,7 @@ class TRIX_Crossover_Strategy(BaseStrategy):
 
         for indicator in required_indicators:
             if indicator not in self.indicators:
-                logger.warning(
-                    f"{self.name}: Indicateur manquant: {indicator}")
+                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
                 return False
             if self.indicators[indicator] is None:
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")

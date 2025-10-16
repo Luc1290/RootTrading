@@ -29,8 +29,7 @@ class CycleManager:
         self.fee_rate = Decimal("0.001")  # 0.1% de frais Binance par trade
         logger.info("✅ CycleManager initialisé")
 
-    def process_trade_execution(
-            self, trade_data: dict[str, Any]) -> str | None:
+    def process_trade_execution(self, trade_data: dict[str, Any]) -> str | None:
         """
         Traite une exécution de trade pour mettre à jour les cycles.
         Cette méthode est appelée APRÈS l'exécution réussie d'un trade.
@@ -57,8 +56,7 @@ class CycleManager:
             strategy = trade_data.get("strategy", "Unknown")
 
             if not all([symbol, side, price > 0, quantity > 0]):
-                logger.warning(
-                    f"⚠️ Données de trade incomplètes: {trade_data}")
+                logger.warning(f"⚠️ Données de trade incomplètes: {trade_data}")
                 return None
 
             # Convertir side en OrderSide si nécessaire
@@ -134,8 +132,7 @@ class CycleManager:
                     new_quantity=quantity,
                     order_id=order_id,
                 )
-                logger.info(
-                    f"📈 Cycle mis à jour pour {symbol}: +{quantity} @ {price}")
+                logger.info(f"📈 Cycle mis à jour pour {symbol}: +{quantity} @ {price}")
                 return active_cycle["id"]
             # Créer un nouveau cycle
             cycle_id = self._create_new_cycle(
@@ -145,9 +142,7 @@ class CycleManager:
                 order_id=order_id,
                 strategy=strategy,
             )
-            logger.info(
-                f"🆕 Nouveau cycle créé pour {symbol}: {quantity} @ {price}"
-            )
+            logger.info(f"🆕 Nouveau cycle créé pour {symbol}: {quantity} @ {price}")
             return cycle_id
 
         except Exception:
@@ -180,8 +175,7 @@ class CycleManager:
             active_cycles = self._get_active_cycles_for_symbol(symbol)
 
             if not active_cycles:
-                logger.warning(
-                    f"⚠️ Aucun cycle actif trouvé pour SELL {symbol}")
+                logger.warning(f"⚠️ Aucun cycle actif trouvé pour SELL {symbol}")
                 # Créer un cycle orphelin pour tracker ce SELL
                 return self._create_orphan_sell_cycle(
                     symbol=symbol,
@@ -261,8 +255,7 @@ class CycleManager:
             logger.exception("❌ Erreur _get_active_cycle")
             return None
 
-    def _get_active_cycles_for_symbol(
-            self, symbol: str) -> list[dict[str, Any]]:
+    def _get_active_cycles_for_symbol(self, symbol: str) -> list[dict[str, Any]]:
         """
         Récupère tous les cycles actifs pour un symbole (ordre FIFO).
 
@@ -350,11 +343,8 @@ class CycleManager:
             return ""
 
     def _update_cycle_for_buy(
-            self,
-            cycle_id: str,
-            new_price: Decimal,
-            new_quantity: Decimal,
-            order_id: str) -> None:
+        self, cycle_id: str, new_price: Decimal, new_quantity: Decimal, order_id: str
+    ) -> None:
         """
         Met à jour un cycle existant avec un nouveau BUY (ajout de position).
 
@@ -382,10 +372,8 @@ class CycleManager:
 
                 current_price = Decimal(str(result[0]))
                 current_quantity = Decimal(str(result[1]))
-                min_price = Decimal(
-                    str(result[2])) if result[2] else current_price
-                max_price = Decimal(
-                    str(result[3])) if result[3] else current_price
+                min_price = Decimal(str(result[2])) if result[2] else current_price
+                max_price = Decimal(str(result[3])) if result[3] else current_price
 
                 try:
                     metadata = json.loads(result[4]) if result[4] else {}
@@ -442,11 +430,8 @@ class CycleManager:
             logger.exception("❌ Erreur _update_cycle_for_buy")
 
     def _close_cycle(
-            self,
-            cycle_id: str,
-            exit_price: Decimal,
-            exit_quantity: Decimal,
-            order_id: str) -> None:
+        self, cycle_id: str, exit_price: Decimal, exit_quantity: Decimal, order_id: str
+    ) -> None:
         """
         Ferme complètement un cycle et calcule le P&L.
 
@@ -510,8 +495,7 @@ class CycleManager:
                         )
 
                 except Exception as e:
-                    logger.warning(
-                        f"Erreur récupération max_price depuis Redis: {e}")
+                    logger.warning(f"Erreur récupération max_price depuis Redis: {e}")
                     max_price = max(entry_price, exit_price)
 
                 # Calculer les frais (0.1% à l'achat + 0.1% à la vente = 0.2%
@@ -581,11 +565,8 @@ class CycleManager:
             logger.exception("❌ Erreur _close_cycle")
 
     def _partial_close_cycle(
-            self,
-            cycle_id: str,
-            exit_price: Decimal,
-            exit_quantity: Decimal,
-            order_id: str) -> None:
+        self, cycle_id: str, exit_price: Decimal, exit_quantity: Decimal, order_id: str
+    ) -> None:
         """
         Ferme partiellement un cycle (vente partielle de la position).
 
@@ -618,21 +599,17 @@ class CycleManager:
 
                 if remaining_quantity <= 0:
                     # Si on vend tout ou plus, fermer complètement
-                    self._close_cycle(
-                        cycle_id, exit_price, current_quantity, order_id)
+                    self._close_cycle(cycle_id, exit_price, current_quantity, order_id)
                     return
 
                 # Fermer le cycle actuel avec la quantité vendue
-                self._close_cycle(
-                    cycle_id, exit_price, exit_quantity, order_id)
+                self._close_cycle(cycle_id, exit_price, exit_quantity, order_id)
 
                 # Créer un nouveau cycle avec la quantité restante
                 new_cycle_id = f"cycle_{uuid.uuid4().hex[:16]}"
 
                 try:
-                    metadata = json.loads(
-                        cycle_data.get(
-                            "metadata", "{}") or "{}")
+                    metadata = json.loads(cycle_data.get("metadata", "{}") or "{}")
                 except (json.JSONDecodeError, TypeError):
                     metadata = {}
 

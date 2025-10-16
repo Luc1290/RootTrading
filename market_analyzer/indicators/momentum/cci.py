@@ -70,8 +70,7 @@ def calculate_cci(
             cci_values = talib.CCI(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return float(
-                cci_values[-1]) if not np.isnan(cci_values[-1]) else None
+            return float(cci_values[-1]) if not np.isnan(cci_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib CCI error: {e}, using fallback")
 
@@ -111,19 +110,15 @@ def calculate_cci_series(
             cci_values = talib.CCI(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return [float(val) if not np.isnan(
-                val) else None for val in cci_values]
+            return [float(val) if not np.isnan(val) else None for val in cci_values]
         except Exception as e:
             logger.warning(f"TA-Lib CCI series error: {e}, using fallback")
 
     # Manual calculation
-    return _calculate_cci_series_manual(
-        highs_array, lows_array, closes_array, period)
+    return _calculate_cci_series_manual(highs_array, lows_array, closes_array, period)
 
 
-def cci_signal(
-    current_value: float | None, previous_value: float | None = None
-) -> str:
+def cci_signal(current_value: float | None, previous_value: float | None = None) -> str:
     """
     Generate trading signal based on CCI levels and movements.
 
@@ -399,7 +394,7 @@ def _calculate_mean_deviation(
     mean_deviations = np.zeros_like(typical_prices)
 
     for i in range(period - 1, len(typical_prices)):
-        window = typical_prices[i - period + 1: i + 1]
+        window = typical_prices[i - period + 1 : i + 1]
         sma = sma_typical[i]
 
         # Calculate mean absolute deviation
@@ -453,7 +448,7 @@ def _calculate_cci_series_manual(
             cci_series.append(None)
         else:
             # Get window for calculation
-            window = typical_prices[i - period + 1: i + 1]
+            window = typical_prices[i - period + 1 : i + 1]
 
             # Calculate SMA of typical price
             sma_typical = np.mean(window)
@@ -466,8 +461,7 @@ def _calculate_cci_series_manual(
             else:
                 # Calculate CCI
                 current_typical = typical_prices[i]
-                cci = (current_typical - sma_typical) / \
-                    (0.015 * mean_deviation)
+                cci = (current_typical - sma_typical) / (0.015 * mean_deviation)
 
             cci_series.append(float(cci))
 

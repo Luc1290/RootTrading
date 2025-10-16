@@ -13,8 +13,10 @@ import pandas as pd
 
 # Import cache and utilities
 from shared.src.indicator_cache import get_indicator_cache
-from shared.src.technical_utils import (validate_and_align_arrays,
-                                        validate_indicator_params)
+from shared.src.technical_utils import (
+    validate_and_align_arrays,
+    validate_indicator_params,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +67,7 @@ def calculate_rsi(
     if TALIB_AVAILABLE:
         try:
             rsi_values = talib.RSI(prices_array, timeperiod=period)
-            return float(
-                rsi_values[-1]) if not np.isnan(rsi_values[-1]) else None
+            return float(rsi_values[-1]) if not np.isnan(rsi_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib RSI error: {e}, using fallback")
 
@@ -91,8 +92,7 @@ def calculate_rsi_series(
     if TALIB_AVAILABLE:
         try:
             rsi_values = talib.RSI(prices_array, timeperiod=period)
-            return [float(val) if not np.isnan(
-                val) else None for val in rsi_values]
+            return [float(val) if not np.isnan(val) else None for val in rsi_values]
         except Exception as e:
             logger.warning(f"TA-Lib RSI series error: {e}, using fallback")
 
@@ -213,8 +213,7 @@ def calculate_stoch_rsi(
             logger.warning(f"TA-Lib Stoch RSI error: {e}, using fallback")
 
     # Manual calculation
-    return _calculate_stoch_rsi_manual(
-        prices_array, period, stoch_period, smooth_k)
+    return _calculate_stoch_rsi_manual(prices_array, period, stoch_period, smooth_k)
 
 
 def calculate_stoch_rsi_full(
@@ -346,7 +345,7 @@ def _calculate_stoch_rsi_manual(
         for i in range(smooth_k):
             idx = -(smooth_k - i)
             rsi_subset = (
-                rsi_values[idx - stoch_period + 1: idx + 1]
+                rsi_values[idx - stoch_period + 1 : idx + 1]
                 if idx != -1
                 else rsi_values[-stoch_period:]
             )
@@ -381,7 +380,7 @@ def _calculate_stoch_rsi_kd_manual(
 
     # Calculate raw Stochastic RSI values
     for i in range(stoch_period - 1, len(rsi_values)):
-        rsi_window = rsi_values[i - stoch_period + 1: i + 1]
+        rsi_window = rsi_values[i - stoch_period + 1 : i + 1]
         min_rsi = min(rsi_window)
         max_rsi = max(rsi_window)
 
@@ -397,7 +396,7 @@ def _calculate_stoch_rsi_kd_manual(
     # Smooth %K values
     smoothed_k = []
     for i in range(smooth_k - 1, len(k_values)):
-        smoothed_k.append(np.mean(k_values[i - smooth_k + 1: i + 1]))
+        smoothed_k.append(np.mean(k_values[i - smooth_k + 1 : i + 1]))
 
     if len(smoothed_k) < smooth_d:
         return {"k": float(smoothed_k[-1]) if smoothed_k else None, "d": None}
@@ -405,7 +404,7 @@ def _calculate_stoch_rsi_kd_manual(
     # Calculate %D (SMA of %K)
     d_values = []
     for i in range(smooth_d - 1, len(smoothed_k)):
-        d_values.append(np.mean(smoothed_k[i - smooth_d + 1: i + 1]))
+        d_values.append(np.mean(smoothed_k[i - smooth_d + 1 : i + 1]))
 
     return {
         "k": round(float(smoothed_k[-1]), 2) if smoothed_k else None,
@@ -443,8 +442,7 @@ def calculate_rsi_cached(
         period = int(params["period"])
 
         # Validate and prepare data
-        prices_array = validate_and_align_arrays(
-            prices, min_length=period + 1)[0]
+        prices_array = validate_and_align_arrays(prices, min_length=period + 1)[0]
 
         # Get cache
         cache = get_indicator_cache()
@@ -500,8 +498,7 @@ def calculate_rsi_series_cached(
 
     try:
         # Validate data
-        prices_array = validate_and_align_arrays(
-            prices, min_length=period + 1)[0]
+        prices_array = validate_and_align_arrays(prices, min_length=period + 1)[0]
 
         # Get cache
         cache = get_indicator_cache()
@@ -512,8 +509,7 @@ def calculate_rsi_series_cached(
 
         if cached_series is not None and len(cached_series) <= len(prices_array):
             # Calculate only new values
-            new_series = _extend_rsi_series(
-                prices_array, cached_series, period)
+            new_series = _extend_rsi_series(prices_array, cached_series, period)
             if new_series:
                 cache.set(cache_key, new_series, symbol)
                 return new_series
@@ -557,11 +553,8 @@ def _create_rsi_state(prices: np.ndarray, period: int) -> dict | None:
 
 
 def _calculate_rsi_incremental(
-        prices: np.ndarray,
-        cached_state: dict,
-        period: int,
-        symbol: str,
-        cache_key: str) -> float | None:
+    prices: np.ndarray, cached_state: dict, period: int, symbol: str, cache_key: str
+) -> float | None:
     """Calculate RSI incrementally using cached state."""
     try:
         cache = get_indicator_cache()
@@ -647,7 +640,7 @@ def _extend_rsi_series(
 
         # We need at least period+1 prices for RSI calculation
         for i in range(max(period, cached_length), prices_length):
-            price_window = prices[i - period: i + 1]
+            price_window = prices[i - period : i + 1]
             rsi_value = calculate_rsi(price_window, period)
             new_series.append(rsi_value)
 

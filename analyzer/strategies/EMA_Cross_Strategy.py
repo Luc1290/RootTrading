@@ -19,8 +19,7 @@ class EMA_Cross_Strategy(BaseStrategy):
     - SELL: EMA rapide croise en-dessous EMA lente + confirmations baissières
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Configuration des EMA - OPTIMISÉES
         self.ema_fast_period = 12  # EMA rapide (info seulement)
@@ -33,7 +32,9 @@ class EMA_Cross_Strategy(BaseStrategy):
         self.min_separation_pct = 0.25
         self.strong_separation_pct = 1.0  # Séparation forte 1.0%
 
-    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _create_rejection_signal(
+        self, reason: str, metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Helper to create rejection signals."""
         base_metadata = {"strategy": self.name}
         if metadata:
@@ -46,25 +47,47 @@ class EMA_Cross_Strategy(BaseStrategy):
             "metadata": base_metadata,
         }
 
-    def _validate_ema_data(self, values: dict[str, Any], current_price: float | None) -> tuple[float | None, float | None, float | None, dict[str, Any] | None]:
+    def _validate_ema_data(
+        self, values: dict[str, Any], current_price: float | None
+    ) -> tuple[float | None, float | None, float | None, dict[str, Any] | None]:
         """Valide les données EMA et prix. Retourne (ema_12, ema_26, ema_50, error_signal)."""
         if current_price is None:
-            return None, None, None, self._create_rejection_signal("Prix non disponible", {})
+            return (
+                None,
+                None,
+                None,
+                self._create_rejection_signal("Prix non disponible", {}),
+            )
 
         try:
             ema_12 = float(values["ema_12"]) if values["ema_12"] is not None else None
             ema_26 = float(values["ema_26"]) if values["ema_26"] is not None else None
             ema_50 = float(values["ema_50"]) if values["ema_50"] is not None else None
         except (ValueError, TypeError) as e:
-            return None, None, None, self._create_rejection_signal(f"Erreur conversion EMA: {e}", {})
+            return (
+                None,
+                None,
+                None,
+                self._create_rejection_signal(f"Erreur conversion EMA: {e}", {}),
+            )
 
         if ema_12 is None or ema_26 is None:
-            return None, None, None, self._create_rejection_signal("EMA 12/26 non disponibles", {})
+            return (
+                None,
+                None,
+                None,
+                self._create_rejection_signal("EMA 12/26 non disponibles", {}),
+            )
 
         return ema_12, ema_26, ema_50, None
 
     def _validate_trend_alignment(
-        self, signal_side: str, current_price: float, values: dict[str, Any], macd_line: Any, macd_signal: Any
+        self,
+        signal_side: str,
+        current_price: float,
+        values: dict[str, Any],
+        macd_line: Any,
+        macd_signal: Any,
     ) -> dict[str, Any] | None:
         """Valide l'alignement des tendances. Retourne un signal de rejet ou None si valide."""
         # Validation EMA99
@@ -75,12 +98,22 @@ class EMA_Cross_Strategy(BaseStrategy):
                 if signal_side == "BUY" and current_price < ema99_val * 0.98:
                     return self._create_rejection_signal(
                         f"Rejet BUY: prix {self._format_price(current_price)} trop sous EMA99 {self._format_price(ema99_val)} (contra-trend LT)",
-                        {"symbol": self.symbol, "current_price": current_price, "ema_99": ema99_val, "rejected": "contra_trend_lt"}
+                        {
+                            "symbol": self.symbol,
+                            "current_price": current_price,
+                            "ema_99": ema99_val,
+                            "rejected": "contra_trend_lt",
+                        },
                     )
                 if signal_side == "SELL" and current_price > ema99_val * 1.02:
                     return self._create_rejection_signal(
                         f"Rejet SELL: prix {self._format_price(current_price)} trop au-dessus EMA99 {self._format_price(ema99_val)} (contra-trend LT)",
-                        {"symbol": self.symbol, "current_price": current_price, "ema_99": ema99_val, "rejected": "contra_trend_lt"}
+                        {
+                            "symbol": self.symbol,
+                            "current_price": current_price,
+                            "ema_99": ema99_val,
+                            "rejected": "contra_trend_lt",
+                        },
                     )
             except (ValueError, TypeError):
                 pass
@@ -93,10 +126,16 @@ class EMA_Cross_Strategy(BaseStrategy):
                 macd_cross = macd > macd_sig
 
                 if (signal_side == "BUY" and macd < 0 and not macd_cross) or (
-                    signal_side == "SELL" and macd > 0 and macd_cross):
+                    signal_side == "SELL" and macd > 0 and macd_cross
+                ):
                     return self._create_rejection_signal(
                         f"Rejet croisement EMA: MACD diverge franchement ({macd:.4f})",
-                        {"symbol": self.symbol, "macd_line": macd, "macd_signal": macd_sig, "rejected": "macd_divergence"}
+                        {
+                            "symbol": self.symbol,
+                            "macd_line": macd,
+                            "macd_signal": macd_sig,
+                            "rejected": "macd_divergence",
+                        },
                     )
             except (ValueError, TypeError):
                 pass
@@ -178,7 +217,9 @@ class EMA_Cross_Strategy(BaseStrategy):
         current_price = self._get_current_price()
 
         # Valider les données EMA et prix
-        ema_12, ema_26, ema_50, error_signal = self._validate_ema_data(values, current_price)
+        ema_12, ema_26, ema_50, error_signal = self._validate_ema_data(
+            values, current_price
+        )
         if error_signal:
             return error_signal
 
@@ -196,7 +237,7 @@ class EMA_Cross_Strategy(BaseStrategy):
                     "ema_26": ema_26,
                     "separation_pct": ema_distance_pct,
                     "min_required": self.min_separation_pct,
-                }
+                },
             )
 
         signal_side = None
@@ -267,7 +308,9 @@ class EMA_Cross_Strategy(BaseStrategy):
         macd_signal = values.get("macd_signal")
         macd_histogram = values.get("macd_histogram")
 
-        rejection = self._validate_trend_alignment(signal_side, current_price, values, macd_line, macd_signal)
+        rejection = self._validate_trend_alignment(
+            signal_side, current_price, values, macd_line, macd_signal
+        )
         if rejection:
             return rejection
 
@@ -296,10 +339,13 @@ class EMA_Cross_Strategy(BaseStrategy):
                 macd_cross = macd > macd_sig
 
                 if (signal_side == "BUY" and macd_cross and macd > 0) or (
-                    signal_side == "SELL" and not macd_cross and macd < 0):
+                    signal_side == "SELL" and not macd_cross and macd < 0
+                ):
                     confidence_boost += 0.18
                     reason += " + MACD PARFAITEMENT aligné"
-                elif (signal_side == "BUY" and macd_cross) or (signal_side == "SELL" and not macd_cross):
+                elif (signal_side == "BUY" and macd_cross) or (
+                    signal_side == "SELL" and not macd_cross
+                ):
                     confidence_boost += 0.10
                     reason += " + MACD confirme"
                 else:
@@ -350,7 +396,7 @@ class EMA_Cross_Strategy(BaseStrategy):
                     "rejected_signal": signal_side,
                     "rejected_confidence": confidence,
                     "ema_separation": ema_distance_pct,
-                }
+                },
             )
 
         strength = self.get_strength_from_confidence(confidence)
@@ -386,8 +432,7 @@ class EMA_Cross_Strategy(BaseStrategy):
 
         for indicator in required:
             if indicator not in self.indicators:
-                logger.warning(
-                    f"{self.name}: Indicateur manquant: {indicator}")
+                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
                 return False
             if self.indicators[indicator] is None:
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")

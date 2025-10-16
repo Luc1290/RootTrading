@@ -26,8 +26,7 @@ class Support_Breakout_Strategy(BaseStrategy):
     - BUY: Cassure résistance + confirmations
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
 
         # Paramètres DURCIS pour vrais breakouts
@@ -54,15 +53,12 @@ class Support_Breakout_Strategy(BaseStrategy):
         """Détecte breakout support (SELL) ou résistance (BUY)."""
 
         # Support breakout (SELL)
-        nearest_support = values.get(
-            "nearest_support") or values.get("bb_lower")
+        nearest_support = values.get("nearest_support") or values.get("bb_lower")
         if nearest_support is not None:
             try:
                 support_level = float(nearest_support)
-                if current_price < support_level * \
-                        (1 - self.breakout_threshold):
-                    breakdown_distance = (
-                        support_level - current_price) / support_level
+                if current_price < support_level * (1 - self.breakout_threshold):
+                    breakdown_distance = (support_level - current_price) / support_level
                     return {
                         "is_breakout": True,
                         "signal_side": "SELL",
@@ -74,13 +70,11 @@ class Support_Breakout_Strategy(BaseStrategy):
                 pass
 
         # Resistance breakout (BUY)
-        nearest_resistance = values.get(
-            "nearest_resistance") or values.get("bb_upper")
+        nearest_resistance = values.get("nearest_resistance") or values.get("bb_upper")
         if nearest_resistance is not None:
             try:
                 resistance_level = float(nearest_resistance)
-                if current_price > resistance_level * \
-                        (1 + self.breakout_threshold):
+                if current_price > resistance_level * (1 + self.breakout_threshold):
                     breakout_distance = (
                         current_price - resistance_level
                     ) / resistance_level
@@ -97,8 +91,13 @@ class Support_Breakout_Strategy(BaseStrategy):
         return {"is_breakout": False, "reason": "Pas de breakout détecté"}
 
     def _validate_breakout_signal(
-        self, signal_side: str, momentum_val: float, directional_bias: str | None,
-        vol_ratio: float, conf_val: float, market_regime: str | None
+        self,
+        signal_side: str,
+        momentum_val: float,
+        directional_bias: str | None,
+        vol_ratio: float,
+        conf_val: float,
+        market_regime: str | None,
     ) -> tuple[bool, str | None]:
         """Valide les conditions pour un signal de breakout. Returns (is_valid, rejection_reason)."""
         # Rejet momentum
@@ -111,7 +110,10 @@ class Support_Breakout_Strategy(BaseStrategy):
         if (signal_side == "BUY" and directional_bias == "BEARISH") or (
             signal_side == "SELL" and directional_bias == "BULLISH"
         ):
-            return False, f"Rejet {signal_side}: bias contradictoire ({directional_bias})"
+            return (
+                False,
+                f"Rejet {signal_side}: bias contradictoire ({directional_bias})",
+            )
 
         # Rejet volume faible
         if vol_ratio < 1.1:
@@ -125,7 +127,10 @@ class Support_Breakout_Strategy(BaseStrategy):
         if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or (
             signal_side == "SELL" and market_regime == "TRENDING_BULL"
         ):
-            return False, f"Rejet {signal_side}: régime contradictoire ({market_regime})"
+            return (
+                False,
+                f"Rejet {signal_side}: régime contradictoire ({market_regime})",
+            )
 
         return True, None
 
@@ -204,7 +209,12 @@ class Support_Breakout_Strategy(BaseStrategy):
 
         # VALIDATIONS GROUPÉES
         is_valid, rejection_reason = self._validate_breakout_signal(
-            signal_side, momentum_val, directional_bias, vol_ratio, conf_val, market_regime
+            signal_side,
+            momentum_val,
+            directional_bias,
+            vol_ratio,
+            conf_val,
+            market_regime,
         )
         if not is_valid:
             return {
@@ -284,8 +294,7 @@ class Support_Breakout_Strategy(BaseStrategy):
         )
 
         if not has_level:
-            logger.warning(
-                f"{self.name}: Aucun niveau support/résistance disponible")
+            logger.warning(f"{self.name}: Aucun niveau support/résistance disponible")
             return False
 
         # Seulement momentum requis

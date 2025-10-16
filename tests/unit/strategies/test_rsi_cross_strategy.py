@@ -19,9 +19,8 @@ class TestRSICrossStrategy:
     def test_init(self, mock_strategy_data):
         """Test d'initialisation de la stratégie RSI."""
         strategy = RSI_Cross_Strategy(
-            "BTCUSDC",
-            mock_strategy_data["data"],
-            mock_strategy_data["indicators"])
+            "BTCUSDC", mock_strategy_data["data"], mock_strategy_data["indicators"]
+        )
 
         assert strategy.symbol == "BTCUSDC"
         assert strategy.name == "RSI_Cross_Strategy"
@@ -37,8 +36,7 @@ class TestRSICrossStrategy:
         indicators = mock_strategy_data["indicators"].copy()
         indicators["rsi_14"] = None
 
-        strategy = RSI_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = RSI_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
         result = strategy.generate_signal()
 
         assert result["side"] is None
@@ -52,8 +50,7 @@ class TestRSICrossStrategy:
         # Zone survente
         indicators.update({"rsi_14": 30, "market_regime": "RANGING"})
 
-        strategy = RSI_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = RSI_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
         result = strategy.generate_signal()
 
         assert result["side"] is None
@@ -61,8 +58,7 @@ class TestRSICrossStrategy:
         assert "RANGING" in result["reason"]
         assert "faux signaux" in result["reason"]
 
-    def test_generate_signal_insufficient_volume_quality(
-            self, mock_strategy_data):
+    def test_generate_signal_insufficient_volume_quality(self, mock_strategy_data):
         """Test signal rejeté pour volume qualité insuffisante."""
         indicators = mock_strategy_data["indicators"].copy()
         indicators.update(
@@ -73,8 +69,7 @@ class TestRSICrossStrategy:
             }
         )
 
-        strategy = RSI_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = RSI_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
         result = strategy.generate_signal()
 
         assert result["side"] is None
@@ -93,8 +88,7 @@ class TestRSICrossStrategy:
             }
         )
 
-        strategy = RSI_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = RSI_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
         result = strategy.generate_signal()
 
         assert result["side"] is None
@@ -119,8 +113,7 @@ class TestRSICrossStrategy:
             }
         )
 
-        strategy = RSI_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = RSI_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
         result = strategy.generate_signal()
 
         assert result["side"] == "BUY"
@@ -147,8 +140,7 @@ class TestRSICrossStrategy:
             }
         )
 
-        strategy = RSI_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = RSI_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
         result = strategy.generate_signal()
 
         assert result["side"] == "SELL"
@@ -172,8 +164,7 @@ class TestRSICrossStrategy:
             }
         )
 
-        strategy = RSI_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = RSI_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
         result = strategy.generate_signal()
 
         assert result["side"] is None
@@ -196,8 +187,7 @@ class TestRSICrossStrategy:
             }
         )
 
-        strategy = RSI_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = RSI_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
         result = strategy.generate_signal()
 
         assert result["side"] is None
@@ -205,8 +195,7 @@ class TestRSICrossStrategy:
         assert "tendance non baissière" in result["reason"]
         assert "évite contra-trend" in result["reason"]
 
-    def test_generate_signal_momentum_contraire_rejected(
-            self, mock_strategy_data):
+    def test_generate_signal_momentum_contraire_rejected(self, mock_strategy_data):
         """Test signal rejeté pour momentum contraire."""
         indicators = mock_strategy_data["indicators"].copy()
         indicators.update(
@@ -220,8 +209,7 @@ class TestRSICrossStrategy:
             }
         )
 
-        strategy = RSI_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = RSI_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
         result = strategy.generate_signal()
 
         assert result["side"] is None
@@ -242,15 +230,13 @@ class TestRSICrossStrategy:
             }
         )
 
-        strategy = RSI_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = RSI_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
         result = strategy.generate_signal()
 
         assert result["side"] == "BUY"
         assert "survente extrême" in result["reason"]
 
-    def test_generate_signal_extreme_overbought_bonus(
-            self, mock_strategy_data):
+    def test_generate_signal_extreme_overbought_bonus(self, mock_strategy_data):
         """Test bonus pour RSI en zone surachat extrême."""
         indicators = mock_strategy_data["indicators"].copy()
         indicators.update(
@@ -264,8 +250,7 @@ class TestRSICrossStrategy:
             }
         )
 
-        strategy = RSI_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = RSI_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
         result = strategy.generate_signal()
 
         assert result["side"] == "SELL"
@@ -285,8 +270,7 @@ class TestRSICrossStrategy:
             }
         )
 
-        strategy = RSI_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = RSI_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
         result = strategy.generate_signal()
 
         assert result["side"] is None
@@ -306,8 +290,7 @@ class TestRSICrossStrategy:
             }
         )
 
-        strategy = RSI_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = RSI_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
         result = strategy.generate_signal()
 
         assert result["side"] is None
@@ -330,8 +313,7 @@ class TestRSICrossStrategy:
             }
         )
 
-        strategy = RSI_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = RSI_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
         result = strategy.generate_signal()
 
         # Peut être rejeté pour confidence insuffisante
@@ -341,9 +323,8 @@ class TestRSICrossStrategy:
     def test_get_current_values_structure(self, mock_strategy_data):
         """Test que _get_current_values retourne la structure attendue."""
         strategy = RSI_Cross_Strategy(
-            "BTCUSDC",
-            mock_strategy_data["data"],
-            mock_strategy_data["indicators"])
+            "BTCUSDC", mock_strategy_data["data"], mock_strategy_data["indicators"]
+        )
         values = strategy._get_current_values()
 
         # Vérifier que les clés essentielles sont présentes
@@ -398,8 +379,7 @@ class TestRSICrossStrategy:
             }
         )
 
-        strategy = RSI_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = RSI_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
         result = strategy.generate_signal()
 
         if expected_side is None:
@@ -425,8 +405,7 @@ class TestRSICrossStrategy:
             }
         )
 
-        strategy = RSI_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = RSI_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
         result = strategy.generate_signal()
 
         if result["side"] == "BUY":

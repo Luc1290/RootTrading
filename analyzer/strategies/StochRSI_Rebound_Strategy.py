@@ -20,8 +20,7 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
     - SELL: StochRSI en zone de surachat avec signaux favorables
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Seuils StochRSI - RESSERREÉS POUR QUALITÉ
         self.oversold_zone = 28  # Resserré (30 -> 28)
@@ -60,16 +59,27 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
             return None
 
     def _validate_stochrsi_requirements(
-        self, signal_side: str, momentum_score: float | None, directional_bias: str | None,
-        confluence_score: float | None, adx_14: float | None, stoch_rsi: float
+        self,
+        signal_side: str,
+        momentum_score: float | None,
+        directional_bias: str | None,
+        confluence_score: float | None,
+        adx_14: float | None,
+        stoch_rsi: float,
     ) -> tuple[bool, str | None]:
         """Valide les exigences pour un signal StochRSI. Returns (is_valid, rejection_reason)."""
         # Rejet momentum contradictoire
         if momentum_score:
             if signal_side == "BUY" and momentum_score < 40:
-                return False, f"Rejet StochRSI BUY: momentum trop faible ({momentum_score:.0f})"
+                return (
+                    False,
+                    f"Rejet StochRSI BUY: momentum trop faible ({momentum_score:.0f})",
+                )
             if signal_side == "SELL" and momentum_score > 60:
-                return False, f"Rejet StochRSI SELL: momentum trop fort ({momentum_score:.0f})"
+                return (
+                    False,
+                    f"Rejet StochRSI SELL: momentum trop fort ({momentum_score:.0f})",
+                )
 
         # Rejet bias contradictoire
         if directional_bias:
@@ -81,14 +91,23 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
 
         # Rejet confluence faible
         if confluence_score and confluence_score < 40:
-            return False, f"Rejet StochRSI: confluence insuffisante ({confluence_score:.0f})"
+            return (
+                False,
+                f"Rejet StochRSI: confluence insuffisante ({confluence_score:.0f})",
+            )
 
         # Rejet ADX
         if adx_14:
             if adx_14 < 15:
-                return False, f"Rejet StochRSI: ADX trop faible ({adx_14:.0f}) - range mou"
+                return (
+                    False,
+                    f"Rejet StochRSI: ADX trop faible ({adx_14:.0f}) - range mou",
+                )
             if adx_14 > 40:
-                return False, f"Rejet StochRSI: ADX trop fort ({adx_14:.0f}) - tendance trop forte"
+                return (
+                    False,
+                    f"Rejet StochRSI: ADX trop fort ({adx_14:.0f}) - tendance trop forte",
+                )
 
         return True, None
 
@@ -202,7 +221,12 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
             adx_14 = values.get("adx_14")
 
             is_valid, rejection_reason = self._validate_stochrsi_requirements(
-                signal_side, momentum_score, directional_bias, confluence_score, adx_14, stoch_rsi
+                signal_side,
+                momentum_score,
+                directional_bias,
+                confluence_score,
+                adx_14,
+                stoch_rsi,
             )
             if not is_valid:
                 return {
@@ -230,7 +254,8 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
 
                 # Croisement favorable avec écart minimum (AJUSTÉ)
                 if (signal_side == "BUY" and stoch_k > stoch_d and k_d_diff >= 2.5) or (
-                        signal_side == "SELL" and stoch_k < stoch_d and k_d_diff >= 2.5):
+                    signal_side == "SELL" and stoch_k < stoch_d and k_d_diff >= 2.5
+                ):
                     confidence_boost += 0.18  # Amélioré (était 0.15)
                     reason += " + K/D fort"
                 elif (
@@ -281,7 +306,10 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                 elif signal_side == "BUY" and momentum_score >= self.momentum_bullish:
                     confidence_boost += 0.10
                     reason += " + momentum"
-                elif signal_side == "SELL" and momentum_score <= self.momentum_strong_bear:
+                elif (
+                    signal_side == "SELL"
+                    and momentum_score <= self.momentum_strong_bear
+                ):
                     confidence_boost += 0.18
                     reason += " + momentum"
                 elif signal_side == "SELL" and momentum_score <= self.momentum_bearish:

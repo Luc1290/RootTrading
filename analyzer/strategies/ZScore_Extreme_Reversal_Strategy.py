@@ -34,8 +34,7 @@ class ZScoreExtremeReversalStrategy(BaseStrategy):
     - SELL: Z-Score extrême positif (surachat) + confirmations reversal baissier
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
 
         # Paramètres Z-Score HEDGE FUND - équilibre qualité/fréquence
@@ -338,14 +337,12 @@ class ZScoreExtremeReversalStrategy(BaseStrategy):
                     reversal_direction == "bullish" and macd_hist > -0.001
                 ):  # MACD hist turning positive
                     reversal_score += 0.12
-                    reversal_indicators.append(
-                        "MACD histogram tournant positif")
+                    reversal_indicators.append("MACD histogram tournant positif")
                 elif (
                     reversal_direction == "bearish" and macd_hist < 0.001
                 ):  # MACD hist turning negative
                     reversal_score += 0.12
-                    reversal_indicators.append(
-                        "MACD histogram tournant négatif")
+                    reversal_indicators.append("MACD histogram tournant négatif")
 
             except (ValueError, TypeError):
                 pass
@@ -383,8 +380,7 @@ class ZScoreExtremeReversalStrategy(BaseStrategy):
             "indicators": reversal_indicators,
         }
 
-    def _detect_volatility_context(
-            self, values: dict[str, Any]) -> dict[str, Any]:
+    def _detect_volatility_context(self, values: dict[str, Any]) -> dict[str, Any]:
         """Détecte le contexte de volatilité favorable aux reversals Z-Score."""
         volatility_score = 0.0
         volatility_indicators = []
@@ -401,12 +397,10 @@ class ZScoreExtremeReversalStrategy(BaseStrategy):
                     )
                 elif atr_perc >= self.min_volatility_percentile:
                     volatility_score += 0.15
-                    volatility_indicators.append(
-                        f"Volatilité élevée ({atr_perc:.0f})")
+                    volatility_indicators.append(f"Volatilité élevée ({atr_perc:.0f})")
                 elif atr_perc < 30:  # Volatilité trop faible
                     volatility_score -= 0.1
-                    volatility_indicators.append(
-                        f"Volatilité faible ({atr_perc:.0f})")
+                    volatility_indicators.append(f"Volatilité faible ({atr_perc:.0f})")
             except (ValueError, TypeError):
                 pass
 
@@ -418,8 +412,7 @@ class ZScoreExtremeReversalStrategy(BaseStrategy):
             try:
                 if bool(bb_squeeze):  # Squeeze en cours
                     volatility_score += self.bb_squeeze_bonus
-                    volatility_indicators.append(
-                        "BB squeeze - expansion attendue")
+                    volatility_indicators.append("BB squeeze - expansion attendue")
             except (ValueError, TypeError):
                 pass
 
@@ -427,8 +420,7 @@ class ZScoreExtremeReversalStrategy(BaseStrategy):
             try:
                 if bool(bb_expansion):  # Expansion en cours
                     volatility_score += 0.1
-                    volatility_indicators.append(
-                        "BB expansion - volatilité élevée")
+                    volatility_indicators.append("BB expansion - volatilité élevée")
             except (ValueError, TypeError):
                 pass
 
@@ -450,7 +442,9 @@ class ZScoreExtremeReversalStrategy(BaseStrategy):
             "indicators": volatility_indicators,
         }
 
-    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _create_rejection_signal(
+        self, reason: str, metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Helper to create rejection signals."""
         base_metadata = {"strategy": self.name}
         if metadata:
@@ -529,8 +523,7 @@ class ZScoreExtremeReversalStrategy(BaseStrategy):
         market_regime = values.get("market_regime")
 
         try:
-            momentum_score = float(
-                momentum_val) if momentum_val is not None else 50.0
+            momentum_score = float(momentum_val) if momentum_val is not None else 50.0
         except (ValueError, TypeError):
             momentum_score = 50.0
 
@@ -548,7 +541,8 @@ class ZScoreExtremeReversalStrategy(BaseStrategy):
 
         # Rejet bias contradictoire
         if (signal_side == "BUY" and str(directional_bias).upper() == "BEARISH") or (
-                signal_side == "SELL" and str(directional_bias).upper() == "BULLISH"):
+            signal_side == "SELL" and str(directional_bias).upper() == "BULLISH"
+        ):
             return self._create_rejection_signal(
                 f"Rejet ZScore {signal_side}: bias contradictoire ({directional_bias})",
                 {"directional_bias": directional_bias},
@@ -667,8 +661,7 @@ class ZScoreExtremeReversalStrategy(BaseStrategy):
 
         # Market regime FILTRÉ - reversals selon contexte
         regime_strength = values.get("regime_strength")
-        regime_str = str(regime_strength).upper(
-        ) if regime_strength else "WEAK"
+        regime_str = str(regime_strength).upper() if regime_strength else "WEAK"
 
         if market_regime == "RANGING":
             confidence_boost += 0.12  # Z-Score excellent en ranging
@@ -692,7 +685,11 @@ class ZScoreExtremeReversalStrategy(BaseStrategy):
         # Pattern confluence
         pattern_detected = values.get("pattern_detected")
         pattern_confidence = values.get("pattern_confidence")
-        if pattern_detected and "reversal" in str(pattern_detected).lower() and pattern_confidence is not None:
+        if (
+            pattern_detected
+            and "reversal" in str(pattern_detected).lower()
+            and pattern_confidence is not None
+        ):
             try:
                 pattern_conf = float(pattern_confidence)
                 if pattern_conf > 70:
@@ -720,8 +717,7 @@ class ZScoreExtremeReversalStrategy(BaseStrategy):
         if reason_elements:
             reason += ": " + " + ".join(reason_elements[:4])
 
-        confidence = self.calculate_confidence(
-            base_confidence, 1.0 + confidence_boost)
+        confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
 
         return {
@@ -763,8 +759,7 @@ class ZScoreExtremeReversalStrategy(BaseStrategy):
 
         for indicator in required_indicators:
             if indicator not in self.indicators:
-                logger.warning(
-                    f"{self.name}: Indicateur manquant: {indicator}")
+                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
                 return False
             if self.indicators[indicator] is None:
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")

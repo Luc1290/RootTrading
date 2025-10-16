@@ -93,8 +93,7 @@ def calculate_bollinger_bands(
                 "percent_b": float(percent_b) if percent_b is not None else None,
             }
         except Exception as e:
-            logger.warning(
-                f"TA-Lib Bollinger Bands error: {e}, using fallback")
+            logger.warning(f"TA-Lib Bollinger Bands error: {e}, using fallback")
 
     return _calculate_bollinger_manual(prices_array, period, std_dev, ma_type)
 
@@ -155,12 +154,10 @@ def calculate_bollinger_bands_series(
                 "percent_b": [x if x is not None else 0.0 for x in percent_b_series],
             }
         except Exception as e:
-            logger.warning(
-                f"TA-Lib Bollinger Bands series error: {e}, using fallback")
+            logger.warning(f"TA-Lib Bollinger Bands series error: {e}, using fallback")
 
     # Manual calculation
-    return _calculate_bollinger_series_manual(
-        prices_array, period, std_dev, ma_type)
+    return _calculate_bollinger_series_manual(prices_array, period, std_dev, ma_type)
 
 
 def calculate_bollinger_width(
@@ -242,8 +239,7 @@ def calculate_bollinger_squeeze(
     in_squeeze = current_width <= percentile_20
 
     # Calculate metrics
-    squeeze_percentage = (current_width / avg_width) * \
-        100 if avg_width > 0 else None
+    squeeze_percentage = (current_width / avg_width) * 100 if avg_width > 0 else None
     width_percentile = (
         np.sum(np.array(recent_widths) <= current_width) / len(recent_widths)
     ) * 100
@@ -251,7 +247,8 @@ def calculate_bollinger_squeeze(
     return {
         "in_squeeze": bool(in_squeeze),
         "squeeze_percentage": (
-            float(squeeze_percentage) if squeeze_percentage is not None else None),
+            float(squeeze_percentage) if squeeze_percentage is not None else None
+        ),
         "width_percentile": float(width_percentile),
     }
 
@@ -402,10 +399,7 @@ def calculate_keltner_channels(
     upper = middle + (atr * multiplier)
     lower = middle - (atr * multiplier)
 
-    return {
-        "upper": float(upper),
-        "middle": float(middle),
-        "lower": float(lower)}
+    return {"upper": float(upper), "middle": float(middle), "lower": float(lower)}
 
 
 def bollinger_band_signal(
@@ -524,7 +518,7 @@ def _calculate_bollinger_series_manual(
             percent_b_series.append(None)
         else:
             # Calculate for window
-            window = prices[i - period + 1: i + 1]
+            window = prices[i - period + 1 : i + 1]
 
             if ma_type == "ema":
                 from ..trend.moving_averages import calculate_ema

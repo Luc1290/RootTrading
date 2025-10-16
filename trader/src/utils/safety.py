@@ -62,8 +62,7 @@ def retry(
                     logger.warning(
                         f"Échec de la fonction {func.__name__} (tentative {attempt}/{max_attempts}): {e!s}"
                     )
-                    logger.warning(
-                        f"Nouvelle tentative dans {current_delay:.2f}s")
+                    logger.warning(f"Nouvelle tentative dans {current_delay:.2f}s")
 
                     time.sleep(current_delay)
                     current_delay *= backoff
@@ -89,8 +88,12 @@ def circuit_breaker(
         Fonction décorée
     """
     # État du circuit breaker
-    state: dict[str, Any] = {"failures": 0, "open": False,
-                             "last_failure": 0.0, "lock": threading.RLock()}
+    state: dict[str, Any] = {
+        "failures": 0,
+        "open": False,
+        "last_failure": 0.0,
+        "lock": threading.RLock(),
+    }
 
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
@@ -113,8 +116,7 @@ def circuit_breaker(
                         logger.warning(
                             f"Circuit breaker ouvert pour {func.__name__}, réinitialisation dans {remaining:.2f}s"
                         )
-                        raise Exception(
-                            f"Circuit breaker ouvert pour {func.__name__}")
+                        raise Exception(f"Circuit breaker ouvert pour {func.__name__}")
 
             try:
                 # Exécuter la fonction
@@ -175,15 +177,13 @@ def redis_lock(lock_name: str, timeout: int = 30) -> Callable:
             redis_client = RedisClient()
 
             # Essayer d'acquérir le verrou (utiliser la méthode native Redis)
-            acquired = redis_client.redis.set(
-                lock_key, lock_id, nx=True, ex=timeout)
+            acquired = redis_client.redis.set(lock_key, lock_id, nx=True, ex=timeout)
 
             if not acquired:
                 logger.warning(
                     f"Impossible d'acquérir le verrou Redis pour {func.__name__}"
                 )
-                raise Exception(
-                    f"Verrou Redis déjà acquis pour {func.__name__}")
+                raise Exception(f"Verrou Redis déjà acquis pour {func.__name__}")
 
             try:
                 # Exécuter la fonction
@@ -194,12 +194,9 @@ def redis_lock(lock_name: str, timeout: int = 30) -> Callable:
                     current_value = redis_client.get(lock_key)
                     if current_value == lock_id:
                         redis_client.delete(lock_key)
-                        logger.debug(
-                            f"Verrou Redis libéré pour {func.__name__}")
+                        logger.debug(f"Verrou Redis libéré pour {func.__name__}")
                 except Exception:
-                    logger.exception(
-                        "Erreur lors de la libération du verrou Redis: "
-                    )
+                    logger.exception("Erreur lors de la libération du verrou Redis: ")
 
         return wrapper
 
@@ -226,9 +223,7 @@ def safe_execute(func: Callable, *args, **kwargs) -> Any | None:
         return None
 
 
-def notify_error(
-    message: str, additional_info: dict[str, Any] | None = None
-) -> None:
+def notify_error(message: str, additional_info: dict[str, Any] | None = None) -> None:
     """
     Notifie une erreur via Redis.
 
@@ -255,10 +250,7 @@ def notify_error(
         logger.exception("❌ Erreur lors de l'envoi de la notification")
 
 
-def validate_price(
-        symbol: str,
-        price: float,
-        max_deviation: float = 0.1) -> bool:
+def validate_price(symbol: str, price: float, max_deviation: float = 0.1) -> bool:
     """
     Valide un prix par rapport au prix du marché.
 
@@ -277,8 +269,7 @@ def validate_price(
     try:
         # Récupérer le prix actuel via Redis
         redis = RedisClient()
-        market_data = redis.get(
-            f"roottrading:market:last_price:{symbol.lower()}")
+        market_data = redis.get(f"roottrading:market:last_price:{symbol.lower()}")
 
         if not market_data:
             logger.warning(f"⚠️ Pas de prix récent pour {symbol}")

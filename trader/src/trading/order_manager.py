@@ -7,8 +7,7 @@ import logging
 import time
 from typing import Any
 
-from shared.src.config import (BINANCE_API_KEY, BINANCE_SECRET_KEY, SYMBOLS,
-                               TRADING_MODE)
+from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY, SYMBOLS, TRADING_MODE
 from trader.src.exchange.binance_executor import BinanceExecutor
 from trader.src.trading.order_executor import OrderExecutor
 from trader.src.trading.price_monitor import PriceMonitor
@@ -35,17 +34,16 @@ class OrderManager:
         # Initialiser les composants
         demo_mode = TRADING_MODE is not None and TRADING_MODE.lower() == "demo"
         self.binance_executor = BinanceExecutor(
-            api_key=BINANCE_API_KEY,
-            api_secret=BINANCE_SECRET_KEY,
-            demo_mode=demo_mode)
+            api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY, demo_mode=demo_mode
+        )
 
         # Exécuteur d'ordres simplifié
         self.order_executor = OrderExecutor(self.binance_executor)
 
         # Moniteur de prix pour les données de marché
         self.price_monitor = PriceMonitor(
-            symbols=self.symbols,
-            price_update_callback=self.handle_price_update)
+            symbols=self.symbols, price_update_callback=self.handle_price_update
+        )
 
         # Cache des derniers prix
         self.last_prices: dict[str, float] = {}
@@ -60,10 +58,7 @@ class OrderManager:
             f"✅ OrderManager initialisé (mode simplifié) pour {len(self.symbols)} symboles"
         )
 
-    def is_trading_paused(
-            self,
-            symbol: str,
-            strategy: str | None = None) -> bool:
+    def is_trading_paused(self, symbol: str, strategy: str | None = None) -> bool:
         """
         Vérifie si le trading est en pause.
 

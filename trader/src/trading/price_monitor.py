@@ -38,7 +38,8 @@ class PriceMonitor:
         # Configuration des canaux Redis pour les mises à jour de prix (1m
         # timeframe)
         self.price_channels = [
-            f"roottrading:market:data:{symbol.lower()}:1m" for symbol in self.symbols]
+            f"roottrading:market:data:{symbol.lower()}:1m" for symbol in self.symbols
+        ]
 
         # Dictionnaire des derniers prix
         self.last_prices: dict[str, float] = {}
@@ -51,8 +52,7 @@ class PriceMonitor:
         self.check_thread: threading.Thread | None = None
         self.running = False
 
-        logger.info(
-            f"✅ PriceMonitor initialisé pour {len(self.symbols)} symboles")
+        logger.info(f"✅ PriceMonitor initialisé pour {len(self.symbols)} symboles")
 
     def _process_price_update(self, _channel: str, data: dict) -> None:
         """
@@ -72,8 +72,7 @@ class PriceMonitor:
                 return
 
             # Ne traiter que les chandeliers fermés si spécifié
-            if data.get("is_closed", True) is False and data.get(
-                    "type") == "kline":
+            if data.get("is_closed", True) is False and data.get("type") == "kline":
                 return
 
             symbol = data.get("symbol", "").upper()
@@ -159,14 +158,12 @@ class PriceMonitor:
         self.client_id = self.redis_client.subscribe(
             self.price_channels, self._process_price_update
         )
-        logger.info(
-            f"✅ Abonné aux canaux de prix: {', '.join(self.price_channels)}")
+        logger.info(f"✅ Abonné aux canaux de prix: {', '.join(self.price_channels)}")
 
         # Démarrer le thread de vérification des timeouts
         self.check_thread = threading.Thread(
-            target=self._check_price_timeouts,
-            daemon=True,
-            name="PriceTimeoutChecker")
+            target=self._check_price_timeouts, daemon=True, name="PriceTimeoutChecker"
+        )
         self.check_thread.start()
 
         logger.info("✅ Moniteur de prix démarré")

@@ -38,8 +38,7 @@ class DatabasePersister:
                 min_size=2,
                 max_size=5,
             )
-            logger.info(
-                "✅ Connexion base de données initialisée pour persistance")
+            logger.info("✅ Connexion base de données initialisée pour persistance")
             self.running = True
         except Exception:
             logger.exception("❌ Erreur initialisation base de données")
@@ -120,8 +119,7 @@ class DatabasePersister:
 
         # Vérifier les données essentielles OHLCV
         if not data["time"] or data["close"] is None:
-            logger.error(
-                f"Données OHLCV essentielles manquantes pour {symbol}")
+            logger.error(f"Données OHLCV essentielles manquantes pour {symbol}")
             return
 
         # Traiter le timestamp pour PostgreSQL
@@ -152,8 +150,7 @@ class DatabasePersister:
         except Exception as e:
             import traceback
 
-            logger.exception(
-                "Erreur lors de l'insertion des données de marché")
+            logger.exception("Erreur lors de l'insertion des données de marché")
             logger.exception(f"Type d'erreur: {type(e).__name__}")
             logger.exception(f"Traceback complet: {traceback.format_exc()}")
             logger.exception("Données problématiques: ")

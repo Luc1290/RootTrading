@@ -135,8 +135,7 @@ def calculate_stochastic_fast(
                 "fast_d": float(d_values[-1]) if not np.isnan(d_values[-1]) else None,
             }
         except Exception as e:
-            logger.warning(
-                f"TA-Lib Fast Stochastic error: {e}, using fallback")
+            logger.warning(f"TA-Lib Fast Stochastic error: {e}, using fallback")
 
     # Use regular stochastic with k_smooth=1
     result = calculate_stochastic(highs, lows, closes, k_period, 1, d_period)
@@ -187,12 +186,11 @@ def calculate_stochastic_series(
             )
 
             return {
-                "k": [
-                    float(val) if not np.isnan(val) else None for val in k_values], "d": [
-                    float(val) if not np.isnan(val) else None for val in d_values], }
+                "k": [float(val) if not np.isnan(val) else None for val in k_values],
+                "d": [float(val) if not np.isnan(val) else None for val in d_values],
+            }
         except Exception as e:
-            logger.warning(
-                f"TA-Lib Stochastic series error: {e}, using fallback")
+            logger.warning(f"TA-Lib Stochastic series error: {e}, using fallback")
 
     # Manual calculation
     return _calculate_stochastic_series_manual(
@@ -374,8 +372,8 @@ def _calculate_raw_k(
             k_values.append(None)
         else:
             # Get window
-            high_window = highs[i - period + 1: i + 1]
-            low_window = lows[i - period + 1: i + 1]
+            high_window = highs[i - period + 1 : i + 1]
+            low_window = lows[i - period + 1 : i + 1]
             current_close = closes[i]
 
             # Calculate %K
@@ -385,16 +383,14 @@ def _calculate_raw_k(
             if highest_high == lowest_low:
                 k = 50.0  # Neutral when no range
             else:
-                k = ((current_close - lowest_low) /
-                     (highest_high - lowest_low)) * 100
+                k = ((current_close - lowest_low) / (highest_high - lowest_low)) * 100
 
             k_values.append(float(k))
 
     return k_values
 
 
-def _smooth_series(values: list[float | None],
-                   period: int) -> list[float | None]:
+def _smooth_series(values: list[float | None], period: int) -> list[float | None]:
     """Apply SMA smoothing to a series."""
     smoothed: list[float | None] = []
 
@@ -405,8 +401,7 @@ def _smooth_series(values: list[float | None],
             smoothed.append(values[i])  # Not enough data to smooth
         else:
             # Calculate SMA
-            window_values = [x for x in values[i - \
-                period + 1: i + 1] if x is not None]
+            window_values = [x for x in values[i - period + 1 : i + 1] if x is not None]
             if len(window_values) == period:
                 smoothed.append(float(np.mean(window_values)))
             else:
@@ -497,8 +492,7 @@ def calculate_stochastic_signal(
         return result
 
     # Calculate stochastic values
-    stoch_data = calculate_stochastic(
-        highs, lows, closes, k_period, 1, d_period)
+    stoch_data = calculate_stochastic(highs, lows, closes, k_period, 1, d_period)
 
     if not stoch_data or stoch_data["k"] is None or stoch_data["d"] is None:
         return result

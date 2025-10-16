@@ -21,8 +21,7 @@ async def initial_sync_binance():
             return
 
         logger.info("⏳ Synchronisation initiale des balances Binance...")
-        account_manager = BinanceAccountManager(
-            BINANCE_API_KEY, BINANCE_SECRET_KEY)
+        account_manager = BinanceAccountManager(BINANCE_API_KEY, BINANCE_SECRET_KEY)
         balances = account_manager.calculate_asset_values()
 
         if not balances:

@@ -25,8 +25,7 @@ class ROC_Threshold_Strategy(BaseStrategy):
     - SELL: ROC dépasse seuil baissier + confirmations momentum
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres ROC - Valeurs déjà en pourcentage
         self.bullish_threshold = 0.8  # ROC > +0.8% pour signal haussier
@@ -181,8 +180,7 @@ class ROC_Threshold_Strategy(BaseStrategy):
             values, current_price or 0.0, roc_analysis, threshold_result
         )
 
-    def _analyze_roc_values(
-            self, values: dict[str, Any]) -> dict[str, Any] | None:
+    def _analyze_roc_values(self, values: dict[str, Any]) -> dict[str, Any] | None:
         """Analyse les valeurs ROC disponibles et choisit la principale."""
         roc_data = {}
 
@@ -242,9 +240,17 @@ class ROC_Threshold_Strategy(BaseStrategy):
             try:
                 momentum = float(momentum_score)
                 if signal_side == "BUY" and momentum < 40:
-                    return False, f"Rejet ROC BUY: momentum trop faible ({momentum:.1f})", {"momentum_score": momentum}
+                    return (
+                        False,
+                        f"Rejet ROC BUY: momentum trop faible ({momentum:.1f})",
+                        {"momentum_score": momentum},
+                    )
                 if signal_side == "SELL" and momentum > 60:
-                    return False, f"Rejet ROC SELL: momentum trop fort ({momentum:.1f})", {"momentum_score": momentum}
+                    return (
+                        False,
+                        f"Rejet ROC SELL: momentum trop fort ({momentum:.1f})",
+                        {"momentum_score": momentum},
+                    )
             except (ValueError, TypeError):
                 pass
 
@@ -254,7 +260,11 @@ class ROC_Threshold_Strategy(BaseStrategy):
             try:
                 vol_ratio = float(volume_ratio)
                 if vol_ratio < 1.0:
-                    return False, f"Rejet ROC: volume insuffisant ({vol_ratio:.1f}x)", {"volume_ratio": vol_ratio}
+                    return (
+                        False,
+                        f"Rejet ROC: volume insuffisant ({vol_ratio:.1f}x)",
+                        {"volume_ratio": vol_ratio},
+                    )
             except (ValueError, TypeError):
                 pass
 
@@ -263,7 +273,11 @@ class ROC_Threshold_Strategy(BaseStrategy):
         if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or (
             signal_side == "SELL" and market_regime == "TRENDING_BULL"
         ):
-            return False, f"Rejet ROC {signal_side}: régime contradictoire ({market_regime})", {"market_regime": market_regime}
+            return (
+                False,
+                f"Rejet ROC {signal_side}: régime contradictoire ({market_regime})",
+                {"market_regime": market_regime},
+            )
 
         # Validation confluence
         confluence_score = values.get("confluence_score")
@@ -271,15 +285,17 @@ class ROC_Threshold_Strategy(BaseStrategy):
             try:
                 confluence = float(confluence_score)
                 if confluence < 40:
-                    return False, f"Rejet ROC: confluence insuffisante ({confluence})", {"confluence_score": confluence}
+                    return (
+                        False,
+                        f"Rejet ROC: confluence insuffisante ({confluence})",
+                        {"confluence_score": confluence},
+                    )
             except (ValueError, TypeError):
                 pass
 
         return True, None, None
 
-    def _check_thresholds(
-        self, roc_analysis: dict[str, Any]
-    ) -> dict[str, Any] | None:
+    def _check_thresholds(self, roc_analysis: dict[str, Any]) -> dict[str, Any] | None:
         """Vérifie si les seuils ROC sont dépassés."""
         primary_roc = roc_analysis["primary_roc"]
 
@@ -348,7 +364,9 @@ class ROC_Threshold_Strategy(BaseStrategy):
         signal_side = "BUY" if signal_type == "bullish" else "SELL"
 
         # VALIDATIONS PRÉLIMINAIRES GROUPÉES
-        is_valid, rejection_reason, rejection_metadata = self._validate_roc_signal_requirements(signal_side, values)
+        is_valid, rejection_reason, rejection_metadata = (
+            self._validate_roc_signal_requirements(signal_side, values)
+        )
         if not is_valid:
             metadata = {"strategy": self.name}
             if rejection_metadata:
@@ -419,7 +437,9 @@ class ROC_Threshold_Strategy(BaseStrategy):
                     elif momentum > 65:  # Momentum minimum acceptable
                         confidence_boost += 0.03  # Bonus minimal
                         reason += f" + momentum correct ({momentum:.1f})"
-                    elif momentum < 50:  # Momentum défavorable (rejets <40 faits dans validation)
+                    elif (
+                        momentum < 50
+                    ):  # Momentum défavorable (rejets <40 faits dans validation)
                         confidence_boost -= 0.15
                         reason += f" avec momentum défavorable ({momentum:.1f})"
             except (ValueError, TypeError):
@@ -683,8 +703,7 @@ class ROC_Threshold_Strategy(BaseStrategy):
                 },
             }
 
-        confidence = self.calculate_confidence(
-            base_confidence, 1 + confidence_boost)
+        confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
 
         return {
@@ -734,6 +753,5 @@ class ROC_Threshold_Strategy(BaseStrategy):
             if indicator in self.indicators and self.indicators[indicator] is not None:
                 return True
 
-        logger.warning(
-            f"{self.name}: Aucun indicateur ROC/momentum disponible")
+        logger.warning(f"{self.name}: Aucun indicateur ROC/momentum disponible")
         return False

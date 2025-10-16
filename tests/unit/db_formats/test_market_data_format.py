@@ -84,11 +84,7 @@ class TestMarketDataFormat:
         market_data = MarketData(
             symbol="BTCUSDC",
             start_time=int(datetime.now(timezone.utc).timestamp() * 1000),
-            close_time=int(
-                (datetime.now() +
-                 timedelta(
-                    minutes=1)).timestamp() *
-                1000),
+            close_time=int((datetime.now() + timedelta(minutes=1)).timestamp() * 1000),
             open=50000.0,
             high=50100.0,
             low=49900.0,
@@ -105,11 +101,7 @@ class TestMarketDataFormat:
         market_data = MarketData(
             symbol="BTCUSDC",
             start_time=int(datetime.now(timezone.utc).timestamp() * 1000),
-            close_time=int(
-                (datetime.now() +
-                 timedelta(
-                    minutes=1)).timestamp() *
-                1000),
+            close_time=int((datetime.now() + timedelta(minutes=1)).timestamp() * 1000),
             open=50000.0,
             high=49000.0,  # High < Open (techniquement invalide)
             low=49900.0,
@@ -148,15 +140,8 @@ class TestMarketDataFormat:
 
         market_data = MarketData(
             symbol="BTCUSDC",
-            start_time=int(
-                datetime.now(
-                    timezone.utc).timestamp() *
-                1000),
-            close_time=int(
-                (datetime.now() +
-                 timedelta(
-                    minutes=1)).timestamp() *
-                1000),
+            start_time=int(datetime.now(timezone.utc).timestamp() * 1000),
+            close_time=int((datetime.now() + timedelta(minutes=1)).timestamp() * 1000),
             open=50000.0,
             high=50100.0,
             low=49900.0,
@@ -173,11 +158,7 @@ class TestMarketDataFormat:
         market_data = MarketData(
             symbol="",  # Accepté sans validator custom
             start_time=int(datetime.now(timezone.utc).timestamp() * 1000),
-            close_time=int(
-                (datetime.now() +
-                 timedelta(
-                    minutes=1)).timestamp() *
-                1000),
+            close_time=int((datetime.now() + timedelta(minutes=1)).timestamp() * 1000),
             open=50000.0,
             high=50100.0,
             low=49900.0,

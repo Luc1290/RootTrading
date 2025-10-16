@@ -36,8 +36,9 @@ class BinanceAccountManager:
     Permet de récupérer les balances et autres informations du compte.
     """
 
-    def __init__(self, api_key: str, api_secret: str,
-                 base_url: str = "https://api.binance.com"):
+    def __init__(
+        self, api_key: str, api_secret: str, base_url: str = "https://api.binance.com"
+    ):
         """
         Initialise le gestionnaire de compte Binance.
 
@@ -124,8 +125,7 @@ class BinanceAccountManager:
                     params["recvWindow"] = self.recvWindow
 
                     # Construire la chaîne de requête
-                    query_string = "&".join(
-                        [f"{k}={v}" for k, v in params.items()])
+                    query_string = "&".join([f"{k}={v}" for k, v in params.items()])
 
                     # Ajouter la signature
                     signature = self._generate_signature(query_string)
@@ -231,8 +231,7 @@ class BinanceAccountManager:
             raise last_exception
 
         # Ce code ne devrait jamais être atteint
-        raise BinanceApiError(
-            "Erreur inconnue lors de la requête à l'API Binance")
+        raise BinanceApiError("Erreur inconnue lors de la requête à l'API Binance")
 
     def get_account_info(self) -> dict[str, Any]:
         """
@@ -285,8 +284,7 @@ class BinanceAccountManager:
                         }
                     )
 
-            logger.info(
-                f"Récupéré {len(balances)} balances non nulles depuis Binance")
+            logger.info(f"Récupéré {len(balances)} balances non nulles depuis Binance")
             return balances
 
         except BinanceApiError:
@@ -315,8 +313,11 @@ class BinanceAccountManager:
         """
         # Vérifier le cache
         current_time = time.time()
-        if (use_cache and self._prices_cache and (current_time -
-                                                  self._prices_cache_time < self._prices_cache_ttl)):
+        if (
+            use_cache
+            and self._prices_cache
+            and (current_time - self._prices_cache_time < self._prices_cache_ttl)
+        ):
             logger.info(
                 f"Utilisation du cache des prix ({len(self._prices_cache)} symboles)"
             )
@@ -341,8 +342,7 @@ class BinanceAccountManager:
             self._prices_cache = prices
             self._prices_cache_time = int(current_time)
 
-            logger.info(
-                f"Récupéré les prix pour {len(prices)} symboles depuis Binance")
+            logger.info(f"Récupéré les prix pour {len(prices)} symboles depuis Binance")
             return prices
 
         except BinanceApiError:
@@ -350,8 +350,7 @@ class BinanceAccountManager:
 
             # Si le cache existe et n'est pas trop vieux (moins de 5 minutes),
             # l'utiliser malgré l'erreur
-            if self._prices_cache and (
-                    current_time - self._prices_cache_time < 60):
+            if self._prices_cache and (current_time - self._prices_cache_time < 60):
                 logger.warning(
                     f"⚠️ Utilisation du cache des prix après échec de la requête ({len(self._prices_cache)} symboles)"
                 )
@@ -359,15 +358,12 @@ class BinanceAccountManager:
 
             raise
         except Exception:
-            logger.exception(
-                "❌ Erreur inattendue lors de la récupération des prix: "
-            )
+            logger.exception("❌ Erreur inattendue lors de la récupération des prix: ")
             logger.exception(traceback.format_exc())
 
             # Si le cache existe et n'est pas trop vieux (moins de 5 minutes),
             # l'utiliser malgré l'erreur
-            if self._prices_cache and (
-                    current_time - self._prices_cache_time < 60):
+            if self._prices_cache and (current_time - self._prices_cache_time < 60):
                 logger.warning(
                     f"⚠️ Utilisation du cache des prix après erreur inattendue ({len(self._prices_cache)} symboles)"
                 )
@@ -413,8 +409,7 @@ class BinanceAccountManager:
             logger.exception(traceback.format_exc())
             return None
 
-    def get_open_orders(self, symbol: str |
-                        None = None) -> list[dict[str, Any]]:
+    def get_open_orders(self, symbol: str | None = None) -> list[dict[str, Any]]:
         """
         Récupère les ordres ouverts.
 
@@ -435,13 +430,10 @@ class BinanceAccountManager:
 
         try:
             result = self._make_request(endpoint, signed=True, params=params)
-            return result if isinstance(result, list) else [
-                result] if result else []
+            return result if isinstance(result, list) else [result] if result else []
 
         except BinanceApiError:
-            logger.exception(
-                "❌ Erreur lors de la récupération des ordres ouverts: "
-            )
+            logger.exception("❌ Erreur lors de la récupération des ordres ouverts: ")
             raise
         except Exception:
             logger.exception(
@@ -450,8 +442,7 @@ class BinanceAccountManager:
             logger.exception(traceback.format_exc())
             return []
 
-    def get_order_history(
-            self, symbol: str, limit: int = 500) -> list[dict[str, Any]]:
+    def get_order_history(self, symbol: str, limit: int = 500) -> list[dict[str, Any]]:
         """
         Récupère l'historique des ordres pour un symbole.
 
@@ -470,8 +461,7 @@ class BinanceAccountManager:
 
         try:
             result = self._make_request(endpoint, signed=True, params=params)
-            return result if isinstance(result, list) else [
-                result] if result else []
+            return result if isinstance(result, list) else [result] if result else []
 
         except BinanceApiError:
             logger.exception(
@@ -597,8 +587,7 @@ class BinanceAccountManager:
                     # Vérifier si cette route est valide
                     if symbol in prices and conversion_rate is not None:
                         asset_price = prices[symbol]
-                        balance["value_usdc"] = total * \
-                            asset_price * conversion_rate
+                        balance["value_usdc"] = total * asset_price * conversion_rate
                         return balance
 
                 # Aucune route trouvée
@@ -613,18 +602,13 @@ class BinanceAccountManager:
                 balances = [process_balance(balance) for balance in balances]
 
             # Compter les actifs avec valeur en USDC
-            valued_count = sum(
-                1 for b in balances if b.get("value_usdc") is not None)
+            valued_count = sum(1 for b in balances if b.get("value_usdc") is not None)
             logger.info(
                 f"✅ Valeurs en USDC calculées pour {valued_count}/{len(balances)} actifs"
             )
 
             # Trier par valeur décroissante
-            balances.sort(
-                key=lambda b: b.get(
-                    "value_usdc",
-                    0) or 0,
-                reverse=True)
+            balances.sort(key=lambda b: b.get("value_usdc", 0) or 0, reverse=True)
 
             return balances
 

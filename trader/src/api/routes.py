@@ -75,8 +75,7 @@ def diagnostic():
         logger.warning(
             f"Impossible de récupérer les métriques de base de données: {e!s}"
         )
-        diagnostic_info["database"] = {
-            "status": "unavailable", "error": str(e)}
+        diagnostic_info["database"] = {"status": "unavailable", "error": str(e)}
 
     return jsonify(diagnostic_info)
 
@@ -195,8 +194,7 @@ def create_order():
                 ),
                 201,
             )
-        return jsonify(
-            {"error": "Ordre non créé - vérifiez les paramètres"}), 422
+        return jsonify({"error": "Ordre non créé - vérifiez les paramètres"}), 422
 
     except Exception as e:
         logger.exception("❌ Erreur lors de la création de l'ordre")
@@ -231,8 +229,7 @@ def get_orders():
                     # quelle
                     order["timestamp"] = str(order["timestamp"])
 
-        return jsonify(
-            {"success": True, "count": len(orders), "orders": orders})
+        return jsonify({"success": True, "count": len(orders), "orders": orders})
 
     except Exception as e:
         logger.exception("❌ Erreur lors de la récupération des ordres")
@@ -383,8 +380,7 @@ def get_stats():
 
     try:
         stats = order_manager.get_stats()
-        return jsonify({"success": True, "stats": stats,
-                       "timestamp": time.time()})
+        return jsonify({"success": True, "stats": stats, "timestamp": time.time()})
 
     except Exception as e:
         logger.exception("❌ Erreur lors de la récupération des stats")
@@ -394,9 +390,9 @@ def get_stats():
 @routes_bp.route("/test", methods=["GET"])
 def test_route():
     """Route de test simple."""
-    return jsonify({"status": "ok",
-                    "message": "Trader API fonctionne",
-                    "timestamp": time.time()})
+    return jsonify(
+        {"status": "ok", "message": "Trader API fonctionne", "timestamp": time.time()}
+    )
 
 
 # ============================================================================

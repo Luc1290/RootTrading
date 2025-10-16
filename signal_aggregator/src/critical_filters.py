@@ -108,8 +108,7 @@ class CriticalFilters:
                 )
 
                 # FILTRE MTF 1: Direction 15m (filtre principal)
-                htf_direction_check = self._check_htf_direction(
-                    signals, context)
+                htf_direction_check = self._check_htf_direction(signals, context)
                 if not htf_direction_check[0]:
                     return False, f"DIRECTION 15M INVALIDE: {htf_direction_check[1]}"
 
@@ -117,11 +116,12 @@ class CriticalFilters:
                 mtf_volatility_check = self._check_mtf_volatility(context)
                 if not mtf_volatility_check[0]:
                     return (
-                        False, f"VOLATILITÉ 15M INSUFFISANTE: {mtf_volatility_check[1]}", )
+                        False,
+                        f"VOLATILITÉ 15M INSUFFISANTE: {mtf_volatility_check[1]}",
+                    )
 
                 # FILTRE MTF 3: Timing pullback 3m
-                ltf_timing_check = self._check_ltf_pullback_timing(
-                    signals, context)
+                ltf_timing_check = self._check_ltf_pullback_timing(signals, context)
                 if not ltf_timing_check[0]:
                     return False, f"TIMING 3M INVALIDE: {ltf_timing_check[1]}"
 
@@ -138,8 +138,7 @@ class CriticalFilters:
                 )
 
                 # FILTRE ESSENTIEL 1: Direction 15m reste obligatoire
-                htf_direction_check = self._check_htf_direction(
-                    signals, context)
+                htf_direction_check = self._check_htf_direction(signals, context)
                 if not htf_direction_check[0]:
                     return False, f"DIRECTION 15M INVALIDE: {htf_direction_check[1]}"
 
@@ -155,8 +154,7 @@ class CriticalFilters:
 
         # ========== FILTRES CLASSIQUES (SECONDAIRES) ==========
         # FILTRE 0: Régime de marché - PAS D'ACHAT EN TENDANCE BAISSIÈRE
-        regime_check = self._check_market_regime_compatibility(
-            signals, context)
+        regime_check = self._check_market_regime_compatibility(signals, context)
         if not regime_check[0]:
             return False, f"RÉGIME INCOMPATIBLE: {regime_check[1]}"
 
@@ -202,8 +200,7 @@ class CriticalFilters:
         # Préférer le régime du timeframe sauf si confidence < 30%
         timeframe_confidence = context.get("timeframe_regime_confidence", 100)
 
-        if context.get("timeframe_regime") and float(
-                timeframe_confidence) >= 30:
+        if context.get("timeframe_regime") and float(timeframe_confidence) >= 30:
             # Utiliser le régime du timeframe (plus précis pour le signal)
             market_regime = context.get("timeframe_regime", "UNKNOWN")
             context.get("timeframe_regime_strength", "weak")
@@ -217,13 +214,11 @@ class CriticalFilters:
                 "unified_regime", context.get("market_regime", "UNKNOWN")
             )
             context.get(
-                "unified_regime_strength",
-                context.get(
-                    "regime_strength",
-                    "weak"))
+                "unified_regime_strength", context.get("regime_strength", "weak")
+            )
             regime_confidence = context.get(
-                "unified_regime_confidence", context.get(
-                    "regime_confidence", 0.0))
+                "unified_regime_confidence", context.get("regime_confidence", 0.0)
+            )
             logger.debug(
                 f"Utilisation régime UNIFIÉ/STANDARD: {market_regime} (conf: {regime_confidence})"
             )
@@ -253,8 +248,7 @@ class CriticalFilters:
                     if float(stoch_rsi) < 15:  # StochRSI très oversold
                         strong_oversold += 1
 
-                if williams_r and float(williams_r) < - \
-                        80:  # Williams %R oversold
+                if williams_r and float(williams_r) < -80:  # Williams %R oversold
                     oversold_conditions += 1
                     if float(williams_r) < -85:  # Williams %R très oversold
                         strong_oversold += 1
@@ -285,8 +279,7 @@ class CriticalFilters:
             if market_regime == "UNKNOWN":
                 # Vérifier les indicateurs de tendance (strings en DB)
                 trend_strength_str = context.get("trend_strength", "neutral")
-                directional_bias_str = context.get(
-                    "directional_bias", "neutral")
+                directional_bias_str = context.get("directional_bias", "neutral")
                 momentum_score = context.get("momentum_score", 50)
 
                 # Si indicateurs majoritairement baissiers, rejeter l'achat
@@ -354,8 +347,7 @@ class CriticalFilters:
 
         return True, "Régime compatible"
 
-    def _check_extreme_volatility(
-            self, context: dict[str, Any]) -> tuple[bool, str]:
+    def _check_extreme_volatility(self, context: dict[str, Any]) -> tuple[bool, str]:
         """Vérifie si la volatilité n'est pas dangereusement élevée avec seuil dynamique."""
         try:
             # ATR dynamique basé sur l'univers
@@ -368,7 +360,9 @@ class CriticalFilters:
 
                 if natr_value > dynamic_threshold:
                     return (
-                        False, f"NATR {natr_value:.1f}% > seuil dynamique {dynamic_threshold:.1f}%", )
+                        False,
+                        f"NATR {natr_value:.1f}% > seuil dynamique {dynamic_threshold:.1f}%",
+                    )
 
             # BB width extrême - avec protection division par zéro
             bb_width = context.get("bb_width")
@@ -394,14 +388,12 @@ class CriticalFilters:
 
         return True, "Volatilité acceptable"
 
-    def _check_volume_sufficiency(
-            self, context: dict[str, Any]) -> tuple[bool, str]:
+    def _check_volume_sufficiency(self, context: dict[str, Any]) -> tuple[bool, str]:
         """Vérifie que le volume n'est pas mort avec logs détaillés."""
         try:
             # Volume ratio vs moyenne
             volume_ratio = context.get("volume_ratio")
-            relative_volume = context.get(
-                "relative_volume", volume_ratio)  # Fallback
+            relative_volume = context.get("relative_volume", volume_ratio)  # Fallback
 
             if volume_ratio is not None:
                 vol_ratio = float(volume_ratio)
@@ -419,7 +411,8 @@ class CriticalFilters:
                 vol_quality = float(volume_quality)
                 if vol_quality < self.min_volume_quality:
                     avg_vol_info = (
-                        f", avg_20j: {avg_volume_20:.0f}" if avg_volume_20 else "")
+                        f", avg_20j: {avg_volume_20:.0f}" if avg_volume_20 else ""
+                    )
                     return (
                         False,
                         f"Volume quality {vol_quality:.0f}% < {self.min_volume_quality}%{avg_vol_info}",
@@ -475,8 +468,7 @@ class CriticalFilters:
 
         return True, "Pas de conflit MTF majeur"
 
-    def _check_technical_anomalies(
-            self, context: dict[str, Any]) -> tuple[bool, str]:
+    def _check_technical_anomalies(self, context: dict[str, Any]) -> tuple[bool, str]:
         """Vérifie les anomalies techniques système."""
         try:
             # Anomalie détectée par le système
@@ -590,12 +582,9 @@ class CriticalFilters:
             ema20_15m_val = ema20_15m
             ema100_15m_val = ema100_15m
 
-            close_15m = float(
-                close_15m_val) if close_15m_val is not None else 0.0
-            ema20_15m = float(
-                ema20_15m_val) if ema20_15m_val is not None else 0.0
-            ema100_15m = float(
-                ema100_15m_val) if ema100_15m_val is not None else 0.0
+            close_15m = float(close_15m_val) if close_15m_val is not None else 0.0
+            ema20_15m = float(ema20_15m_val) if ema20_15m_val is not None else 0.0
+            ema100_15m = float(ema100_15m_val) if ema100_15m_val is not None else 0.0
 
             # Déterminer la direction HTF (15m)
             htf_direction = None
@@ -606,7 +595,8 @@ class CriticalFilters:
             else:
                 # Zone neutre/transition - vérifier règle fail-safe LTF
                 failsafe_valid, failsafe_reason = self._check_failsafe_ltf_alignment(
-                    signal_side, context)
+                    signal_side, context
+                )
                 if failsafe_valid:
                     logger.info(
                         f"✅ FAIL-SAFE LTF activée: HTF neutre mais LTF alignés - {failsafe_reason}"
@@ -621,7 +611,8 @@ class CriticalFilters:
             if signal_side != htf_direction:
                 # 🚀 PRIORITÉ #1: Signal exceptionnel (fail-safe)
                 failsafe_valid, failsafe_reason = self._check_failsafe_ltf_alignment(
-                    signal_side, context)
+                    signal_side, context
+                )
                 if failsafe_valid:
                     logger.info(
                         f"✅ FAIL-SAFE OVERRIDE: HTF {htf_direction} vs signal {signal_side} - {failsafe_reason}"
@@ -649,8 +640,7 @@ class CriticalFilters:
         else:
             return True, "Direction HTF valide"
 
-    def _check_mtf_volatility(
-            self, context: dict[str, Any]) -> tuple[bool, str]:
+    def _check_mtf_volatility(self, context: dict[str, Any]) -> tuple[bool, str]:
         """
         Vérifie que la volatilité 15m est suffisante pour trader.
         ATR(15m) doit être >= moyenne des 50 dernières bougies.
@@ -736,34 +726,27 @@ class CriticalFilters:
             ema20_3m_val = ema20_3m
             ema100_3m_val = ema100_3m
 
-            current_price = float(
-                current_price_val) if current_price_val is not None else 0.0
+            current_price = (
+                float(current_price_val) if current_price_val is not None else 0.0
+            )
             ema20_3m = float(ema20_3m_val) if ema20_3m_val is not None else 0.0
-            ema100_3m = float(
-                ema100_3m_val) if ema100_3m_val is not None else 0.0
+            ema100_3m = float(ema100_3m_val) if ema100_3m_val is not None else 0.0
 
             distance_to_ema20 = abs(current_price - ema20_3m)
 
             # A. ATR FLOOR DYNAMIQUE : Respiration basée sur volatilité 15m
-            atr15m_ratio = context.get(
-                "mtf_atr15m_ratio", 1.0)  # ratio vs moyenne
+            atr15m_ratio = context.get("mtf_atr15m_ratio", 1.0)  # ratio vs moyenne
             volatility_level = context.get(
                 "volatility_level", "normal"
             )  # low/normal/high/extreme
 
             # Boost volatilité selon niveau
-            vol_boost_map = {
-                "low": 1.0,
-                "normal": 1.1,
-                "high": 1.3,
-                "extreme": 1.5}
+            vol_boost_map = {"low": 1.0, "normal": 1.1, "high": 1.3, "extreme": 1.5}
             vol_boost = vol_boost_map.get(volatility_level, 1.0)
 
             # ATR floor : tolérance minimale basée sur volatilité (0.30% -
             # 0.75%)
-            atr_floor_pct = min(
-                0.0075, max(
-                    0.0030, 0.0060 * atr15m_ratio)) * vol_boost
+            atr_floor_pct = min(0.0075, max(0.0030, 0.0060 * atr15m_ratio)) * vol_boost
 
             # Tolérance de base
             base_tolerance = self.pullback_tolerance
@@ -811,7 +794,9 @@ class CriticalFilters:
                 # Pour BUY: Prix proche EMA20 ET au-dessus EMA100
                 if current_price < ema100_3m:
                     return (
-                        False, f"Prix {current_price:.4f} < EMA100(3m) {ema100_3m:.4f}", )
+                        False,
+                        f"Prix {current_price:.4f} < EMA100(3m) {ema100_3m:.4f}",
+                    )
 
                 # Vérifier pullback vers EMA20 (tolérance adaptative)
                 if distance_to_ema20 > price_pct:
@@ -838,7 +823,9 @@ class CriticalFilters:
                 # Pour SELL: Prix proche EMA20 ET en-dessous EMA100
                 if current_price > ema100_3m:
                     return (
-                        False, f"Prix {current_price:.4f} > EMA100(3m) {ema100_3m:.4f}", )
+                        False,
+                        f"Prix {current_price:.4f} > EMA100(3m) {ema100_3m:.4f}",
+                    )
 
                 # Vérifier pullback vers EMA20 (tolérance adaptative)
                 if distance_to_ema20 > price_pct:
@@ -855,15 +842,15 @@ class CriticalFilters:
             logger.info(
                 f"✅ Timing pullback 3m validé: {signal_side} à {current_price:.4f} "
                 f"(tolerance={tolerance_bp}bp, atr15m_ratio={atr15m_ratio:.2f}, "
-                f"entry_style={entry_style}, bars_since_touch={bars_since_touch}, vol={vol_level})")
+                f"entry_style={entry_style}, bars_since_touch={bars_since_touch}, vol={vol_level})"
+            )
         except Exception:
             logger.exception("Erreur check pullback timing")
             return True, "Erreur validation timing"
         else:
             return True, f"Timing pullback valide ({tolerance_bp}bp, {entry_style})"
 
-    def _check_min_risk_reward(
-            self, context: dict[str, Any]) -> tuple[bool, str]:
+    def _check_min_risk_reward(self, context: dict[str, Any]) -> tuple[bool, str]:
         """
         Vérifie que le Risk/Reward estimé est suffisant.
         SL estimé = max(swing 3m, 0.7*ATR)
@@ -871,8 +858,9 @@ class CriticalFilters:
         """
         try:
             # Récupérer ATR (chercher dans plusieurs champs possibles)
-            atr = (context.get("atr_14") or context.get(
-                "mtf_atr15m") or context.get("atr"))
+            atr = (
+                context.get("atr_14") or context.get("mtf_atr15m") or context.get("atr")
+            )
             if not atr:
                 logger.warning("ATR indisponible pour calcul R/R")
                 return True, "ATR indisponible"  # On laisse passer si pas d'ATR
@@ -890,20 +878,25 @@ class CriticalFilters:
                 # Pour un BUY, distance au support = potentiel SL
                 cp_val = current_price
                 ns_val = nearest_support
-                swing_distance = abs(
-                    float(cp_val) -
-                    float(ns_val)) if cp_val is not None and ns_val is not None else 0.0
+                swing_distance = (
+                    abs(float(cp_val) - float(ns_val))
+                    if cp_val is not None and ns_val is not None
+                    else 0.0
+                )
             elif current_price and nearest_resistance:
                 # Pour un SELL, distance à la résistance = potentiel SL
                 cp_val = current_price
                 nr_val = nearest_resistance
-                swing_distance = abs(
-                    float(cp_val) -
-                    float(nr_val)) if cp_val is not None and nr_val is not None else 0.0
+                swing_distance = (
+                    abs(float(cp_val) - float(nr_val))
+                    if cp_val is not None and nr_val is not None
+                    else 0.0
+                )
 
             # Calculer SL et TP estimés
-            sl_estimated = (max(swing_distance, 0.7 * atr)
-                            if swing_distance > 0 else 0.7 * atr)
+            sl_estimated = (
+                max(swing_distance, 0.7 * atr) if swing_distance > 0 else 0.7 * atr
+            )
             tp_estimated = 1.5 * atr
 
             # Vérifier que SL est valide et protéger division par zéro
@@ -1043,8 +1036,9 @@ class CriticalFilters:
             if signal_side == "BUY":
                 # Logique assouplie pour rebonds: si momentum > seuil, accepter
                 # même avec bias BEARISH
-                momentum_ok = (momentum_score and float(
-                    momentum_score) > momentum_threshold_buy)
+                momentum_ok = (
+                    momentum_score and float(momentum_score) > momentum_threshold_buy
+                )
                 bias_ok = directional_bias in ["BULLISH", "NEUTRAL"]
 
                 # CAS SPÉCIAL: Rebond avec consensus très fort (≥0.80) +
@@ -1064,8 +1058,9 @@ class CriticalFilters:
                 ):
                     ltf_aligned = True  # Override si conditions exceptionnelles
             elif signal_side == "SELL":
-                momentum_ok = (momentum_score and float(
-                    momentum_score) < momentum_threshold_sell)
+                momentum_ok = (
+                    momentum_score and float(momentum_score) < momentum_threshold_sell
+                )
                 bias_ok = directional_bias in ["BEARISH", "NEUTRAL"]
 
                 strong_breakdown = (
@@ -1214,7 +1209,8 @@ class CriticalFilters:
                     # apply_critical_filters
                     logger.info(
                         f"🔄 HTF REVERSAL WINDOW activée: close_near_ema20={close_near_ema20}, "
-                        f"ema20_trending_up={ema20_trending_up}, consensus={consensus_strength:.2f}")
+                        f"ema20_trending_up={ema20_trending_up}, consensus={consensus_strength:.2f}"
+                    )
 
                     # Marquer le trade comme reversal pour tracking
                     context["htf_reversal_window"] = True

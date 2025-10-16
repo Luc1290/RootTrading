@@ -25,17 +25,10 @@ MOVING_AVERAGES_CONFIG = {
 RSI_CONFIG = {"periods": [14, 21]}  # Périodes de calcul RSI
 
 # Stochastic Configuration
-STOCHASTIC_CONFIG = {
-    "k_period": 14,
-    "k_smooth": 1,
-    "d_period": 3}  # Fast stochastic
+STOCHASTIC_CONFIG = {"k_period": 14, "k_smooth": 1, "d_period": 3}  # Fast stochastic
 
 # Stochastic RSI Configuration
-STOCH_RSI_CONFIG = {
-    "rsi_period": 14,
-    "stoch_period": 14,
-    "smooth_k": 3,
-    "smooth_d": 3}
+STOCH_RSI_CONFIG = {"rsi_period": 14, "stoch_period": 14, "smooth_k": 3, "smooth_d": 3}
 
 # MACD Configuration
 MACD_CONFIG = {"fast_period": 12, "slow_period": 26, "signal_period": 9}
@@ -66,9 +59,7 @@ VOLUME_CONFIG = {
 }
 
 # Momentum Configuration
-MOMENTUM_CONFIG = {
-    "period": 10, "roc_periods": [
-        10, 20]}  # Rate of Change périodes
+MOMENTUM_CONFIG = {"period": 10, "roc_periods": [10, 20]}  # Rate of Change périodes
 
 # ==================== TIMEFRAMES ====================
 TIMEFRAMES = ["1m", "3m", "5m", "15m", "1h", "1d"]
@@ -148,8 +139,6 @@ MARKET_CONFIG = {
         "momentum": MOMENTUM_CONFIG,
     },
     "timeframes": TIMEFRAMES,
-    "technical": {
-        "incremental": INCREMENTAL_CONFIG,
-        "divergence": DIVERGENCE_CONFIG},
+    "technical": {"incremental": INCREMENTAL_CONFIG, "divergence": DIVERGENCE_CONFIG},
     "performance": PERFORMANCE_CONFIG,
 }

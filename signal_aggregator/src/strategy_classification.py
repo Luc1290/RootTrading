@@ -358,9 +358,7 @@ def get_regime_adjustment(
     return adjustments.get(signal_side, 1.0)
 
 
-def get_min_confidence_for_regime(
-        market_regime: str,
-        signal_side: str) -> float:
+def get_min_confidence_for_regime(market_regime: str, signal_side: str) -> float:
     """
     Retourne la confidence minimum requise selon le régime et la direction.
 
@@ -378,9 +376,7 @@ def get_min_confidence_for_regime(
     return REGIME_MIN_CONFIDENCE[regime].get(signal_side, 0.65)
 
 
-def is_strategy_optimal_for_regime(
-        strategy_name: str,
-        market_regime: str) -> bool:
+def is_strategy_optimal_for_regime(strategy_name: str, market_regime: str) -> bool:
     """
     Vérifie si une stratégie est optimale pour le régime actuel.
 
@@ -402,9 +398,7 @@ def is_strategy_optimal_for_regime(
     return regime in best_regimes
 
 
-def is_strategy_acceptable_for_regime(
-        strategy_name: str,
-        market_regime: str) -> bool:
+def is_strategy_acceptable_for_regime(strategy_name: str, market_regime: str) -> bool:
     """
     Vérifie si une stratégie est au moins acceptable pour le régime actuel.
 
@@ -523,11 +517,8 @@ class AdaptiveRegimeAdjuster:
             stats["successes"] += 1
 
     def get_adaptive_multiplier(
-            self,
-            strategy_name: str,
-            regime: str,
-            side: str,
-            base_multiplier: float) -> float:
+        self, strategy_name: str, regime: str, side: str, base_multiplier: float
+    ) -> float:
         """
         Retourne un multiplicateur ajusté basé sur la performance historique.
 
@@ -590,9 +581,7 @@ class AdaptiveRegimeAdjuster:
         """
         if regime:
             regime = regime.upper()
-            return {
-                k: v for k, v in self.performance_history.items() if regime in k
-            }
+            return {k: v for k, v in self.performance_history.items() if regime in k}
 
         return self.performance_history.copy()
 
@@ -620,13 +609,15 @@ def get_enhanced_regime_adjustment(
         Multiplicateur de confidence ajusté
     """
     # Obtenir le multiplicateur de base
-    base_multiplier = get_regime_adjustment(
-        strategy_name, market_regime, signal_side)
+    base_multiplier = get_regime_adjustment(strategy_name, market_regime, signal_side)
 
     # Vérifier si c'est un rebond légitime
-    if should_allow_counter_trend_rebound(
-        market_regime, signal_side, market_indicators
-    ) and base_multiplier < 0.8:  # Si fortement pénalisé
+    if (
+        should_allow_counter_trend_rebound(
+            market_regime, signal_side, market_indicators
+        )
+        and base_multiplier < 0.8
+    ):  # Si fortement pénalisé
         # Réduire la pénalité pour les rebonds légitimes
         base_multiplier = max(
             base_multiplier * 1.4, 0.7

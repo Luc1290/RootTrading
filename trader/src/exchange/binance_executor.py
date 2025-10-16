@@ -9,6 +9,7 @@ from typing import Any
 
 from shared.src.enums import OrderSide, OrderStatus, TradeRole
 from shared.src.schemas import TradeExecution, TradeOrder
+
 # Imports des modules internes
 from trader.src.exchange.binance_utils import BinanceUtils
 from trader.src.exchange.constraints import BinanceSymbolConstraints
@@ -75,8 +76,7 @@ class BinanceExecutor:
                 f"✅ {'Mode DÉMO: vérifié la connectivité Binance (sans authentification)' if self.demo_mode else 'Connecté à Binance avec succès'}"
             )
         else:
-            logger.error(
-                "❌ Échec de la vérification de la connectivité Binance")
+            logger.error("❌ Échec de la vérification de la connectivité Binance")
             raise Exception("Impossible de se connecter à Binance")
 
     def _simulate_order(self, order: TradeOrder) -> TradeExecution:
@@ -158,8 +158,7 @@ class BinanceExecutor:
             validated_order = self.validator.validate_and_adjust_order(order)
 
             # Préparer les paramètres d'ordre
-            params = self.utils.prepare_order_params(
-                validated_order, self.time_offset)
+            params = self.utils.prepare_order_params(validated_order, self.time_offset)
 
             # Envoyer l'ordre à Binance
             response = self.utils.send_order_request(params)
@@ -168,10 +167,8 @@ class BinanceExecutor:
             execution = self.utils.create_execution_from_response(response)
 
             side_str = (
-                order.side.value if hasattr(
-                    order.side,
-                    "value") else str(
-                    order.side))
+                order.side.value if hasattr(order.side, "value") else str(order.side)
+            )
             logger.info(
                 f"✅ Ordre exécuté sur Binance: {side_str} {execution.quantity} {execution.symbol} @ {execution.price}"
             )
@@ -184,10 +181,7 @@ class BinanceExecutor:
             # Cela crée des incohérences (cycles non-démo avec ordres démo)
             raise
 
-    def get_order_status(
-            self,
-            symbol: str,
-            order_id: str) -> TradeExecution | None:
+    def get_order_status(self, symbol: str, order_id: str) -> TradeExecution | None:
         """
         Récupère le statut d'un ordre sur Binance.
 
@@ -212,12 +206,9 @@ class BinanceExecutor:
 
         # En mode réel, interroger Binance
         try:
-            return self.utils.fetch_order_status(
-                symbol, order_id, self.time_offset)
+            return self.utils.fetch_order_status(symbol, order_id, self.time_offset)
         except Exception:
-            logger.exception(
-                "❌ Erreur lors de la récupération du statut de l'ordre: "
-            )
+            logger.exception("❌ Erreur lors de la récupération du statut de l'ordre: ")
             return None
 
     def cancel_order(self, symbol: str, order_id: str) -> bool:
@@ -235,9 +226,7 @@ class BinanceExecutor:
         if self.demo_mode:
             if order_id in self.demo_trades:
                 trade = self.demo_trades[order_id]
-                if trade.status not in [
-                        OrderStatus.FILLED,
-                        OrderStatus.CANCELED]:
+                if trade.status not in [OrderStatus.FILLED, OrderStatus.CANCELED]:
                     trade.status = OrderStatus.CANCELED
                     logger.info(f"✅ [DÉMO] Ordre annulé: {order_id}")
                     return True
@@ -296,7 +285,5 @@ class BinanceExecutor:
         try:
             return self.utils.fetch_trade_fee(symbol, self.time_offset)
         except Exception:
-            logger.exception(
-                "❌ Erreur lors de la récupération des frais de trading: "
-            )
+            logger.exception("❌ Erreur lors de la récupération des frais de trading: ")
             return (0.001, 0.001)  # Valeurs par défaut en cas d'erreur

@@ -10,8 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from strategies.base_strategy import \
-    BaseStrategy  # type: ignore[import-not-found]
+from strategies.base_strategy import BaseStrategy  # type: ignore[import-not-found]
 
 # Ajouter le répertoire parent au path pour les imports dynamiques
 analyzer_root = str((Path(__file__).parent / "..").resolve())
@@ -37,8 +36,7 @@ class StrategyLoader:
         logger.info("Chargement des stratégies...")
 
         if not self.strategies_path.exists():
-            logger.error(
-                f"Dossier strategies non trouvé: {self.strategies_path}")
+            logger.error(f"Dossier strategies non trouvé: {self.strategies_path}")
             return
 
         # Parcourir tous les fichiers Python dans le dossier strategies
@@ -52,8 +50,7 @@ class StrategyLoader:
             try:
                 self._load_strategy_from_file(strategy_name)
             except Exception:
-                logger.exception(
-                    "Erreur lors du chargement de {strategy_name}")
+                logger.exception("Erreur lors du chargement de {strategy_name}")
 
         logger.info(f"Stratégies chargées: {len(self.strategies)}")
         for name in self.strategies:
@@ -161,8 +158,7 @@ class StrategyLoader:
         try:
             # Vérifier que c'est une sous-classe de BaseStrategy
             if not issubclass(strategy_class, BaseStrategy):
-                logger.error(
-                    f"{strategy_class.__name__} n'hérite pas de BaseStrategy")
+                logger.error(f"{strategy_class.__name__} n'hérite pas de BaseStrategy")
                 return False
 
             # Vérifier que la méthode generate_signal est implémentée

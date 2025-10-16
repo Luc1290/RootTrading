@@ -97,8 +97,7 @@ def calculate_atr(
             atr_values = talib.ATR(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return float(
-                atr_values[-1]) if not np.isnan(atr_values[-1]) else None
+            return float(atr_values[-1]) if not np.isnan(atr_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib ATR error: {e}, using fallback")
 
@@ -138,14 +137,12 @@ def calculate_atr_series(
             atr_values = talib.ATR(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return [float(val) if not np.isnan(
-                val) else None for val in atr_values]
+            return [float(val) if not np.isnan(val) else None for val in atr_values]
         except Exception as e:
             logger.warning(f"TA-Lib ATR series error: {e}, using fallback")
 
     # Manual calculation
-    return _calculate_atr_series_manual(
-        highs_array, lows_array, closes_array, period)
+    return _calculate_atr_series_manual(highs_array, lows_array, closes_array, period)
 
 
 def calculate_atr_incremental(
@@ -242,8 +239,7 @@ def calculate_natr(
             natr_values = talib.NATR(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return float(
-                natr_values[-1]) if not np.isnan(natr_values[-1]) else None
+            return float(natr_values[-1]) if not np.isnan(natr_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib NATR error: {e}, using fallback")
 
@@ -357,18 +353,16 @@ def calculate_atr_percentile(
 
     for i in range(start_idx, len(highs_array)):
         atr_val = _calculate_atr_manual(
-            highs_array[i - period: i + 1],
-            lows_array[i - period: i + 1],
-            closes_array[i - period: i + 1],
+            highs_array[i - period : i + 1],
+            lows_array[i - period : i + 1],
+            closes_array[i - period : i + 1],
             period,
         )
         if atr_val is not None:
             atr_values.append(atr_val)
 
-    if not atr_values or len(
-            atr_values) < 20:  # Need minimum 20 values for percentile
-        logger.debug(
-            f"Not enough ATR values for percentile: {len(atr_values)}")
+    if not atr_values or len(atr_values) < 20:  # Need minimum 20 values for percentile
+        logger.debug(f"Not enough ATR values for percentile: {len(atr_values)}")
         return 50.0
 
     current_atr = atr_values[-1]
@@ -447,8 +441,7 @@ def _calculate_atr_manual(
     # Calculate True Range values
     tr_values = []
     for i in range(1, len(highs)):
-        tr = calculate_true_range(
-            float(highs[i]), float(lows[i]), float(closes[i - 1]))
+        tr = calculate_true_range(float(highs[i]), float(lows[i]), float(closes[i - 1]))
         tr_values.append(tr)
 
     if len(tr_values) < period:
@@ -481,8 +474,7 @@ def _calculate_atr_series_manual(
     # Calculate True Range values
     tr_values = []
     for i in range(1, len(highs)):
-        tr = calculate_true_range(
-            float(highs[i]), float(lows[i]), float(closes[i - 1]))
+        tr = calculate_true_range(float(highs[i]), float(lows[i]), float(closes[i - 1]))
         tr_values.append(tr)
 
     # Initial ATR (simple average of first 'period' TR values)

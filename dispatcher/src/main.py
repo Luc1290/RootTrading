@@ -29,11 +29,13 @@ logger = setup_logging("dispatcher", log_level=LOG_LEVEL)
 
 class DispatcherHTTPServer(HTTPServer):
     """HTTPServer personnalisé avec référence au DispatcherService."""
-    dispatcher_service: 'DispatcherService'
+
+    dispatcher_service: "DispatcherService"
 
 
 class HealthHandler(BaseHTTPRequestHandler):
     """Gestionnaire des requêtes HTTP pour les endpoints de santé."""
+
     server: DispatcherHTTPServer  # Type hint pour self.server
 
     def do_GET(self):  # noqa: N802
@@ -52,10 +54,10 @@ class HealthHandler(BaseHTTPRequestHandler):
 
             health_info = {
                 "status": (
-                    "healthy" if self.server.dispatcher_service.running else "stopping"),
+                    "healthy" if self.server.dispatcher_service.running else "stopping"
+                ),
                 "timestamp": time.time(),
-                "uptime": time.time() -
-                self.server.dispatcher_service.start_time,
+                "uptime": time.time() - self.server.dispatcher_service.start_time,
                 "stats": router_stats,
             }
 
@@ -130,8 +132,7 @@ class DispatcherService:
         self.topics = []
         self.http_server = None
 
-    def handle_kafka_message(
-            self, topic: str, message: dict[str, Any]) -> None:
+    def handle_kafka_message(self, topic: str, message: dict[str, Any]) -> None:
         """
         Callback pour traiter les messages Kafka.
 
@@ -140,8 +141,7 @@ class DispatcherService:
             message: Message reçu
         """
         if not self.router or not self.running:
-            logger.warning(
-                "Router non initialisé ou service arrêté, message ignoré")
+            logger.warning("Router non initialisé ou service arrêté, message ignoré")
             return
 
         try:
@@ -164,8 +164,7 @@ class DispatcherService:
             port: Port pour le serveur HTTP
         """
         try:
-            self.http_server = DispatcherHTTPServer(
-                ("0.0.0.0", port), HealthHandler)
+            self.http_server = DispatcherHTTPServer(("0.0.0.0", port), HealthHandler)
             self.http_server.dispatcher_service = self
 
             # Démarrer dans un thread séparé pour ne pas bloquer
@@ -255,11 +254,9 @@ class DispatcherService:
                 self.topics.append(f"market.data.{symbol.lower()}")
 
             # Autres topics à suivre
-            self.topics.extend(
-                ["signals", "executions", "orders", "analyzer.signals"])
+            self.topics.extend(["signals", "executions", "orders", "analyzer.signals"])
 
-            logger.info(
-                f"Abonnement aux topics Kafka: {', '.join(self.topics)}")
+            logger.info(f"Abonnement aux topics Kafka: {', '.join(self.topics)}")
 
             # Démarrer le serveur HTTP pour les endpoints de santé
             self.start_http_server()

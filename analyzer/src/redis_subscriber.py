@@ -77,8 +77,7 @@ class RedisPublisher:
                 }
 
                 await self._publish_message(self.channels["signals"], batch_message)
-                logger.info(
-                    f"Publié batch de {len(signals)} signaux vers Redis")
+                logger.info(f"Publié batch de {len(signals)} signaux vers Redis")
 
         except Exception as e:
             logger.exception("Erreur publication signaux")
@@ -311,11 +310,9 @@ class RedisSubscriber:
         finally:
             self.running = False
 
-    async def _default_message_handler(
-            self, channel: str, data: dict[str, Any]):
+    async def _default_message_handler(self, channel: str, data: dict[str, Any]):
         """Gestionnaire par défaut des messages."""
-        logger.info(
-            f"Message reçu sur {channel}: {data.get('type', 'unknown')}")
+        logger.info(f"Message reçu sur {channel}: {data.get('type', 'unknown')}")
 
         # Traitement basique selon le canal
         if channel == "analyzer:config":

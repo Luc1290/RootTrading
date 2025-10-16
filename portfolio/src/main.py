@@ -162,15 +162,9 @@ def parse_arguments():
     """Parse les arguments de ligne de commande."""
     parser = argparse.ArgumentParser(description="Portfolio RootTrading")
     parser.add_argument(
-        "--host",
-        type=str,
-        default="0.0.0.0",
-        help="Adresse IP pour l'API REST")
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=8000,
-        help="Port pour l'API REST")
+        "--host", type=str, default="0.0.0.0", help="Adresse IP pour l'API REST"
+    )
+    parser.add_argument("--port", type=int, default=8000, help="Port pour l'API REST")
     parser.add_argument(
         "--log-level",
         type=str,

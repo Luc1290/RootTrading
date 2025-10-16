@@ -22,11 +22,9 @@ def start_redis_subscriptions():
 
 def _subscribe_market_data():
     redis = RedisClient()
-    channels = [
-        f"roottrading:market:data:{symbol.lower()}" for symbol in SYMBOLS]
+    channels = [f"roottrading:market:data:{symbol.lower()}" for symbol in SYMBOLS]
     redis.subscribe(channels, _handle_market_data)
-    logger.info(
-        f"✅ Abonné à {len(channels)} channels Redis pour le monitoring.")
+    logger.info(f"✅ Abonné à {len(channels)} channels Redis pour le monitoring.")
 
 
 def _handle_market_data(channel, data):
@@ -37,8 +35,7 @@ def _handle_market_data(channel, data):
 def _subscribe_cycle_created():
     redis = RedisClient()
     redis.subscribe("roottrading:cycle:created", _handle_cycle_created)
-    logger.info(
-        "✅ Abonné au canal Redis des cycles créés (monitoring uniquement).")
+    logger.info("✅ Abonné au canal Redis des cycles créés (monitoring uniquement).")
 
 
 def _handle_cycle_created(_channel, data):
@@ -93,8 +90,7 @@ def _handle_cycle_completed(_channel, data):
 def _subscribe_cycle_canceled():
     redis = RedisClient()
     redis.subscribe("roottrading:cycle:canceled", _handle_cycle_canceled)
-    logger.info(
-        "✅ Abonné au canal Redis des cycles annulés (monitoring uniquement).")
+    logger.info("✅ Abonné au canal Redis des cycles annulés (monitoring uniquement).")
 
 
 def _handle_cycle_canceled(_channel, data):
@@ -118,8 +114,7 @@ def _handle_cycle_canceled(_channel, data):
 def _subscribe_cycle_failed():
     redis = RedisClient()
     redis.subscribe("roottrading:cycle:failed", _handle_cycle_failed)
-    logger.info(
-        "✅ Abonné au canal Redis des cycles échoués (monitoring uniquement).")
+    logger.info("✅ Abonné au canal Redis des cycles échoués (monitoring uniquement).")
 
 
 def _handle_cycle_failed(_channel, data):

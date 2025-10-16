@@ -12,8 +12,11 @@ import logging
 import numpy as np
 import pandas as pd
 
-from .moving_averages import (calculate_ema, calculate_ema_incremental,
-                              calculate_ema_series)
+from .moving_averages import (
+    calculate_ema,
+    calculate_ema_incremental,
+    calculate_ema_series,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,11 +89,8 @@ def calculate_macd(
             logger.warning(f"TA-Lib MACD error: {e}, using fallback")
 
     return _calculate_macd_manual(
-        prices_array,
-        fast_period,
-        slow_period,
-        signal_period,
-        normalize_high_price)
+        prices_array, fast_period, slow_period, signal_period, normalize_high_price
+    )
 
 
 def calculate_macd_series(
@@ -124,11 +124,14 @@ def calculate_macd_series(
 
             return {
                 "macd_line": [
-                    float(val) if not np.isnan(val) else None for val in macd_line],
+                    float(val) if not np.isnan(val) else None for val in macd_line
+                ],
                 "macd_signal": [
-                    float(val) if not np.isnan(val) else None for val in macd_signal],
+                    float(val) if not np.isnan(val) else None for val in macd_signal
+                ],
                 "macd_histogram": [
-                    float(val) if not np.isnan(val) else None for val in macd_hist],
+                    float(val) if not np.isnan(val) else None for val in macd_hist
+                ],
             }
         except Exception as e:
             logger.warning(f"TA-Lib MACD series error: {e}, using fallback")
@@ -167,10 +170,8 @@ def calculate_macd_incremental(
         Dictionary with new MACD values and updated EMAs
     """
     # Calculate new EMAs
-    new_ema_fast = calculate_ema_incremental(
-        current_price, prev_ema_fast, fast_period)
-    new_ema_slow = calculate_ema_incremental(
-        current_price, prev_ema_slow, slow_period)
+    new_ema_fast = calculate_ema_incremental(current_price, prev_ema_fast, fast_period)
+    new_ema_slow = calculate_ema_incremental(current_price, prev_ema_slow, slow_period)
 
     # Calculate MACD line
     macd_line = new_ema_fast - new_ema_slow
@@ -284,13 +285,11 @@ def calculate_ppo(
 
     # Signal line (EMA of PPO)
     ppo_signal: float | None = calculate_ema(
-        [x for x in ppo_series if x is not None], signal_period)
+        [x for x in ppo_series if x is not None], signal_period
+    )
 
     if ppo_signal is None:
-        return {
-            "ppo_line": ppo_line,
-            "ppo_signal": None,
-            "ppo_histogram": None}
+        return {"ppo_line": ppo_line, "ppo_signal": None, "ppo_histogram": None}
 
     ppo_histogram: float = float(ppo_line - ppo_signal)
 
@@ -509,7 +508,7 @@ def _calculate_macd_manual(
     normalization_factor = 1.0
     if normalize_high_price and len(prices) > 0:
         avg_price = np.mean(
-            prices[-min(50, len(prices)):]
+            prices[-min(50, len(prices)) :]
         )  # Moyenne des 50 derniers prix
         if avg_price > 10000:  # Pour BTC et autres cryptos à prix élevé
             normalization_factor = avg_price / 1000  # Ramener à une échelle raisonnable
@@ -575,8 +574,7 @@ def _calculate_macd_series_manual(
 
     # Calculate signal line series
     macd_signal_series: list[float | None] = [0.0] * len(prices)
-    valid_macd = [(i, x)
-                  for i, x in enumerate(macd_line_series) if x is not None]
+    valid_macd = [(i, x) for i, x in enumerate(macd_line_series) if x is not None]
 
     if len(valid_macd) >= signal_period:
         # Extract valid MACD values

@@ -53,8 +53,7 @@ class SimpleDataFetcher:
             "1d": 300,  # 300 jours = 10 mois (EMA 99 très stable)
         }
 
-        logger.info(
-            "📡 SimpleDataFetcher initialisé - données brutes uniquement")
+        logger.info("📡 SimpleDataFetcher initialisé - données brutes uniquement")
 
     async def start(self):
         """Démarre le service de récupération de données."""
@@ -90,8 +89,7 @@ class SimpleDataFetcher:
         success_count = sum(1 for r in results if not isinstance(r, Exception))
         total_count = len(tasks)
 
-        logger.info(
-            f"✅ Données initiales récupérées: {success_count}/{total_count}")
+        logger.info(f"✅ Données initiales récupérées: {success_count}/{total_count}")
 
     async def _fetch_symbol_timeframe_data(self, symbol: str, timeframe: str):
         """Récupère les données pour un symbole/timeframe spécifique."""
@@ -100,19 +98,17 @@ class SimpleDataFetcher:
 
             # URL de requête Binance
             url = f"{self.base_url}{self.klines_endpoint}"
-            params = {
-                "symbol": symbol,
-                "interval": timeframe,
-                "limit": str(limit)}
+            params = {"symbol": symbol, "interval": timeframe, "limit": str(limit)}
 
-            async with aiohttp.ClientSession(timeout=self.timeout) as session, session.get(url, params=params) as response:
+            async with (
+                aiohttp.ClientSession(timeout=self.timeout) as session,
+                session.get(url, params=params) as response,
+            ):
                 if response.status == 200:
                     klines = await response.json()
 
                     # Traiter les données OHLCV brutes
-                    processed_data = self._process_raw_klines(
-                        klines, symbol, timeframe
-                    )
+                    processed_data = self._process_raw_klines(klines, symbol, timeframe)
 
                     # Publier sur Kafka via Redis
                     await self._publish_to_kafka(processed_data, symbol, timeframe)
@@ -142,7 +138,9 @@ class SimpleDataFetcher:
         for kline in klines:
             # Extraire uniquement les données OHLCV
             candle_data = {
-                "time": datetime.fromtimestamp(kline[0] / 1000, tz=timezone.utc).isoformat(),
+                "time": datetime.fromtimestamp(
+                    kline[0] / 1000, tz=timezone.utc
+                ).isoformat(),
                 "symbol": symbol,
                 "timeframe": timeframe,
                 "open": float(kline[1]),
@@ -163,19 +161,14 @@ class SimpleDataFetcher:
 
         return processed_candles
 
-    async def _publish_to_kafka(
-            self,
-            candles: list[dict],
-            symbol: str,
-            timeframe: str):
+    async def _publish_to_kafka(self, candles: list[dict], symbol: str, timeframe: str):
         """Publie les données brutes sur Kafka via KafkaProducer."""
         try:
             for candle in candles:
                 # Utiliser le KafkaProducer pour publier
                 self.kafka_producer.publish_market_data(candle, key=symbol)
 
-                logger.debug(
-                    f"📤 Données historiques publiées: {symbol} {timeframe}")
+                logger.debug(f"📤 Données historiques publiées: {symbol} {timeframe}")
 
         except Exception:
             logger.exception("❌ Erreur publication Kafka")
@@ -211,7 +204,10 @@ class SimpleDataFetcher:
             url = f"{self.base_url}{self.klines_endpoint}"
             params = {"symbol": symbol, "interval": timeframe, "limit": "5"}
 
-            async with aiohttp.ClientSession(timeout=self.timeout) as session, session.get(url, params=params) as response:
+            async with (
+                aiohttp.ClientSession(timeout=self.timeout) as session,
+                session.get(url, params=params) as response,
+            ):
                 if response.status == 200:
                     klines = await response.json()
 
@@ -225,13 +221,10 @@ class SimpleDataFetcher:
                         processed_data = self._process_raw_klines(
                             closed_klines, symbol, timeframe
                         )
-                        await self._publish_to_kafka(
-                            processed_data, symbol, timeframe
-                        )
+                        await self._publish_to_kafka(processed_data, symbol, timeframe)
 
         except Exception:
-            logger.exception(
-                "❌ Erreur récupération latest {symbol} {timeframe}")
+            logger.exception("❌ Erreur récupération latest {symbol} {timeframe}")
 
     async def _fetch_period_data(
         self, symbol: str, timeframe: str, start_time, end_time
@@ -251,7 +244,10 @@ class SimpleDataFetcher:
                 "limit": "1000",
             }
 
-            async with aiohttp.ClientSession(timeout=self.timeout) as session, session.get(url, params=params) as response:
+            async with (
+                aiohttp.ClientSession(timeout=self.timeout) as session,
+                session.get(url, params=params) as response,
+            ):
                 if response.status == 200:
                     klines = await response.json()
 
@@ -259,9 +255,7 @@ class SimpleDataFetcher:
                         processed_data = self._process_raw_klines(
                             klines, symbol, timeframe
                         )
-                        await self._publish_to_kafka(
-                            processed_data, symbol, timeframe
-                        )
+                        await self._publish_to_kafka(processed_data, symbol, timeframe)
 
                         logger.debug(
                             f"✅ Période remplie: {symbol} {timeframe} ({len(klines)} bougies)"

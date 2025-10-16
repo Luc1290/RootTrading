@@ -16,8 +16,7 @@ from psycopg2 import extras
 from psycopg2.extras import DictCursor, RealDictCursor
 
 # Importer la configuration
-from shared.src.config import (DB_MAX_CONNECTIONS, DB_MIN_CONNECTIONS,
-                               get_db_url)
+from shared.src.config import DB_MAX_CONNECTIONS, DB_MIN_CONNECTIONS, get_db_url
 
 # Compatibilité pour différentes versions de psycopg2
 # Définir des constantes locales en utilisant getattr pour éviter les
@@ -76,8 +75,7 @@ class DBMetrics:
 
             # Enregistrer par type de requête
             if query_type:
-                self.query_types[query_type] = self.query_types.get(
-                    query_type, 0) + 1
+                self.query_types[query_type] = self.query_types.get(query_type, 0) + 1
 
             # Enregistrer les requêtes lentes
             if duration > 0.1:  # 100ms
@@ -94,8 +92,7 @@ class DBMetrics:
                     or duration > self.slow_queries[-1]["duration"]
                 ):
                     self.slow_queries.append(query_info)
-                    self.slow_queries.sort(
-                        key=lambda x: x["duration"], reverse=True)
+                    self.slow_queries.sort(key=lambda x: x["duration"], reverse=True)
 
                     # Garder seulement les 10 plus lentes
                     if len(self.slow_queries) > 10:
@@ -187,9 +184,9 @@ class ConnectionWrapper:
             # Vérifier si la connexion n'est pas trop vieille ou n'a pas été
             # utilisée depuis trop longtemps
             current_time = time.time()
-            if (current_time -
-                self.created > 3600) or (not self.in_use and current_time -
-                                         self.last_used > self.idle_timeout):
+            if (current_time - self.created > 3600) or (
+                not self.in_use and current_time - self.last_used > self.idle_timeout
+            ):
                 return False
 
             # Si pas en cours d'utilisation, tester avec un ping
@@ -234,8 +231,7 @@ class AdvancedConnectionPool:
         self.dsn = dsn
 
         # Créer un pool pour les connexions disponibles
-        self.available_connections: queue.Queue = queue.Queue(
-            maxsize=max_connections)
+        self.available_connections: queue.Queue = queue.Queue(maxsize=max_connections)
 
         # Dictionnaire des connexions en cours d'utilisation
         self.in_use_connections: dict[int, ConnectionWrapper] = {}
@@ -372,9 +368,7 @@ class AdvancedConnectionPool:
                         self.connection_count += 1
                         self.in_use_connections[id(conn)] = conn
                     except Exception:
-                        logger.exception(
-                            "Impossible de créer une nouvelle connexion: "
-                        )
+                        logger.exception("Impossible de créer une nouvelle connexion: ")
                         raise
                     else:
                         return conn
@@ -477,8 +471,9 @@ class AdvancedConnectionPool:
             usage_counts = [
                 conn.usage_count for conn in self.in_use_connections.values()
             ]
-            avg_usage = (sum(usage_counts) /
-                         max(1, len(usage_counts)) if usage_counts else 0)
+            avg_usage = (
+                sum(usage_counts) / max(1, len(usage_counts)) if usage_counts else 0
+            )
 
             return {
                 "total_connections": self.connection_count,
@@ -545,7 +540,8 @@ class DBConnectionPool:
                     # Logguer les statistiques
                     logger.info(
                         f"📊 DB Pool: {pool_stats['in_use_connections']}/{pool_stats['total_connections']} "
-                        f"connexions utilisées ({pool_stats['usage_percent']:.1f}%)")
+                        f"connexions utilisées ({pool_stats['usage_percent']:.1f}%)"
+                    )
 
                     logger.info(
                         f"📊 DB Requêtes: {db_stats['query_count']} requêtes, "
@@ -570,9 +566,7 @@ class DBConnectionPool:
                     self.metrics.reset()
 
                 except Exception:
-                    logger.exception(
-                        "Erreur dans le thread de surveillance du pool: "
-                    )
+                    logger.exception("Erreur dans le thread de surveillance du pool: ")
 
         thread = threading.Thread(target=monitor_pool, daemon=True)
         thread.start()
@@ -606,11 +600,11 @@ class DBConnectionPool:
                     if attempt < max_retries:
                         # Calculer un délai avec jitter pour éviter la tempête
                         # de requêtes
-                        wait_time = retry_delay * \
-                            (2**attempt) + random.uniform(0, 0.1)
+                        wait_time = retry_delay * (2**attempt) + random.uniform(0, 0.1)
                         logger.warning(
                             f"⚠️ Pool de connexions épuisé (attempt {attempt}/{max_retries}), "
-                            f"attente de {wait_time:.2f}s")
+                            f"attente de {wait_time:.2f}s"
+                        )
                         time.sleep(wait_time)
                         continue
                     # Logguer des informations de diagnostic
@@ -621,12 +615,12 @@ class DBConnectionPool:
                         pool_stats = self.connection_pool.get_stats()
                         logger.critical(
                             f"Diagnostic: {pool_stats['in_use_connections']}/{pool_stats['total_connections']} "
-                            f"connexions utilisées ({pool_stats['usage_percent']:.1f}%)")
+                            f"connexions utilisées ({pool_stats['usage_percent']:.1f}%)"
+                        )
                     except Exception:
                         pass
 
-                logger.exception(
-                    "❌ Erreur lors de l'obtention d'une connexion")
+                logger.exception("❌ Erreur lors de l'obtention d'une connexion")
 
                 if attempt >= max_retries:
                     break
@@ -674,8 +668,7 @@ class DBConnectionPool:
                 # Rendre la connexion au pool
                 self.connection_pool.putconn(conn_wrapper)
             else:
-                logger.warning(
-                    "Tentative de libération d'une connexion inconnue")
+                logger.warning("Tentative de libération d'une connexion inconnue")
         except Exception as e:
             logger.exception("❌ Erreur lors de la libération d'une connexion")
             self.metrics.record_error(e)
@@ -815,8 +808,7 @@ class DBContextManager:
         if exc_type:
             self.pool.metrics.record_error(exc_val, self.query_text)
         else:
-            self.pool.metrics.record_query(
-                duration, self.query_type, self.query_text)
+            self.pool.metrics.record_query(duration, self.query_type, self.query_text)
 
         try:
             # 1) fermer le curseur s'il existe encore
@@ -861,8 +853,7 @@ class DBContextManager:
 
         # Logguer les requêtes lentes (plus de 500ms)
         if duration > 0.5:
-            logger.warning(
-                f"⚠️ Requête SQL lente ({self.query_type}): {duration:.3f}s")
+            logger.warning(f"⚠️ Requête SQL lente ({self.query_type}): {duration:.3f}s")
 
 
 # Helper contextmanager pour les transactions explicites
@@ -883,9 +874,7 @@ def transaction(cursor_factory=None):
     db_ctx = None
     try:
         # Create connection with explicit transaction mode
-        db_ctx = DBContextManager(
-            auto_transaction=True,
-            cursor_factory=cursor_factory)
+        db_ctx = DBContextManager(auto_transaction=True, cursor_factory=cursor_factory)
         cursor = db_ctx.__enter__()
 
         # Vérifier que la transaction est bien démarrée
@@ -933,9 +922,7 @@ def dict_cursor(auto_transaction=False):
             cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
             user = cursor.fetchone()  # Retourne un dictionnaire
     """
-    db = DBContextManager(
-        auto_transaction=auto_transaction,
-        cursor_factory=DictCursor)
+    db = DBContextManager(auto_transaction=auto_transaction, cursor_factory=DictCursor)
     try:
         cursor = db.__enter__()
         yield cursor

@@ -47,10 +47,8 @@ def calculate_vwap_quote(
 
     # Ensure all arrays have same length
     min_len = min(
-        len(highs_array),
-        len(lows_array),
-        len(closes_array),
-        len(quote_volumes_array))
+        len(highs_array), len(lows_array), len(closes_array), len(quote_volumes_array)
+    )
     if min_len == 0:
         return None
 
@@ -119,10 +117,8 @@ def calculate_vwap(
 
     # Ensure all arrays have same length
     min_len = min(
-        len(highs_array),
-        len(lows_array),
-        len(closes_array),
-        len(volumes_array))
+        len(highs_array), len(lows_array), len(closes_array), len(volumes_array)
+    )
     if min_len == 0:
         return None
 
@@ -182,10 +178,8 @@ def calculate_vwap_series(
 
     # Ensure all arrays have same length
     min_len = min(
-        len(highs_array),
-        len(lows_array),
-        len(closes_array),
-        len(volumes_array))
+        len(highs_array), len(lows_array), len(closes_array), len(volumes_array)
+    )
     highs_array = highs_array[-min_len:]
     lows_array = lows_array[-min_len:]
     closes_array = closes_array[-min_len:]
@@ -205,8 +199,7 @@ def calculate_vwap_series(
                 else:
                     vwap_series.append(float(typical_prices[i]))
             else:
-                cumulative_pv = np.sum(
-                    typical_prices[: i + 1] * volumes_array[: i + 1])
+                cumulative_pv = np.sum(typical_prices[: i + 1] * volumes_array[: i + 1])
                 cumulative_volume = np.sum(volumes_array[: i + 1])
 
                 if cumulative_volume == 0:
@@ -218,8 +211,8 @@ def calculate_vwap_series(
         elif i < period - 1:
             vwap_series.append(None)
         else:
-            window_typical = typical_prices[i - period + 1: i + 1]
-            window_volumes = volumes_array[i - period + 1: i + 1]
+            window_typical = typical_prices[i - period + 1 : i + 1]
+            window_volumes = volumes_array[i - period + 1 : i + 1]
 
             window_pv = np.sum(window_typical * window_volumes)
             window_volume = np.sum(window_volumes)
@@ -260,10 +253,8 @@ def calculate_vwap_quote_series(
 
     # Ensure all arrays have same length
     min_len = min(
-        len(highs_array),
-        len(lows_array),
-        len(closes_array),
-        len(quote_volumes_array))
+        len(highs_array), len(lows_array), len(closes_array), len(quote_volumes_array)
+    )
     if min_len == 0:
         return []
 
@@ -300,8 +291,8 @@ def calculate_vwap_quote_series(
         elif i < period - 1:
             vwap_series.append(None)
         else:
-            window_typical = typical_prices[i - period + 1: i + 1]
-            window_quote_volumes = quote_volumes_array[i - period + 1: i + 1]
+            window_typical = typical_prices[i - period + 1 : i + 1]
+            window_quote_volumes = quote_volumes_array[i - period + 1 : i + 1]
 
             window_pv = np.sum(window_typical * window_quote_volumes)
             window_volume = np.sum(window_quote_volumes)
@@ -348,10 +339,8 @@ def calculate_vwap_bands(
     volumes_array = _to_numpy_array(volumes)
 
     min_len = min(
-        len(highs_array),
-        len(lows_array),
-        len(closes_array),
-        len(volumes_array))
+        len(highs_array), len(lows_array), len(closes_array), len(volumes_array)
+    )
     typical_prices = (
         highs_array[-min_len:] + lows_array[-min_len:] + closes_array[-min_len:]
     ) / 3
@@ -373,8 +362,7 @@ def calculate_vwap_bands(
     if total_volume == 0:
         return {"vwap": vwap, "upper_band": None, "lower_band": None}
 
-    weighted_variance = np.sum(
-        vol_range * (data_range - vwap) ** 2) / total_volume
+    weighted_variance = np.sum(vol_range * (data_range - vwap) ** 2) / total_volume
     vwap_std = np.sqrt(weighted_variance)
 
     upper_band = vwap + (vwap_std * std_multiplier)
@@ -463,9 +451,7 @@ def vwap_signal(
     return base_signal
 
 
-def calculate_vwap_deviation(
-    current_price: float, vwap: float | None
-) -> float | None:
+def calculate_vwap_deviation(current_price: float, vwap: float | None) -> float | None:
     """
     Calculate price deviation from VWAP as percentage.
 
@@ -530,8 +516,7 @@ def calculate_volume_profile(
         volume_profile[bin_index] += volumes_array[i]
 
     # Calculate bin centers
-    price_levels = [(price_bins[i] + price_bins[i + 1]) /
-                    2 for i in range(num_bins)]
+    price_levels = [(price_bins[i] + price_bins[i + 1]) / 2 for i in range(num_bins)]
 
     return {
         "price_levels": [float(level) for level in price_levels],
@@ -605,8 +590,7 @@ def calculate_value_area(
         low_index > 0 or high_index < len(profile["volume_profile"]) - 1
     ):
         # Determine which direction to expand (choose side with more volume)
-        left_volume = profile["volume_profile"][low_index -
-                                                1] if low_index > 0 else 0
+        left_volume = profile["volume_profile"][low_index - 1] if low_index > 0 else 0
         right_volume = (
             profile["volume_profile"][high_index + 1]
             if high_index < len(profile["volume_profile"]) - 1

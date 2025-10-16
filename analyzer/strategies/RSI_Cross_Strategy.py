@@ -19,8 +19,7 @@ class RSI_Cross_Strategy(BaseStrategy):
     - SELL: RSI en zone de surachat avec momentum et tendance favorables
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Seuils RSI ÉQUILIBRÉS pour crypto
         self.oversold_level = 35  # Équilibré crypto (38 -> 35)
@@ -96,8 +95,9 @@ class RSI_Cross_Strategy(BaseStrategy):
         elif rsi_14 >= self.overbought_level:
             # Zone de surachat - signal SELL
             signal_side = "SELL"
-            zone = ("surachat extrême" if rsi_14 >=
-                    self.extreme_overbought else "surachat")
+            zone = (
+                "surachat extrême" if rsi_14 >= self.extreme_overbought else "surachat"
+            )
             reason = f"RSI ({rsi_14:.1f}) {zone}"
 
             # Bonus RSI surachat
@@ -162,7 +162,8 @@ class RSI_Cross_Strategy(BaseStrategy):
             directional_bias = values.get("directional_bias")
             if directional_bias:
                 if (signal_side == "BUY" and directional_bias == "BEARISH") or (
-                        signal_side == "SELL" and directional_bias == "BULLISH"):
+                    signal_side == "SELL" and directional_bias == "BULLISH"
+                ):
                     confidence_boost -= 0.15  # Pénalité au lieu de rejet
                     reason += " - bias contraire"
                 elif (signal_side == "BUY" and directional_bias == "BULLISH") or (
@@ -204,8 +205,10 @@ class RSI_Cross_Strategy(BaseStrategy):
 
             # Confirmation avec RSI 21 pour multi-timeframe
             rsi_21 = values.get("rsi_21")
-            if rsi_21 and ((signal_side == "BUY" and rsi_21 <= self.oversold_level) or (
-                    signal_side == "SELL" and rsi_21 >= self.overbought_level)):
+            if rsi_21 and (
+                (signal_side == "BUY" and rsi_21 <= self.oversold_level)
+                or (signal_side == "SELL" and rsi_21 >= self.overbought_level)
+            ):
                 confidence_boost += 0.1
                 reason += " + RSI 21"
 

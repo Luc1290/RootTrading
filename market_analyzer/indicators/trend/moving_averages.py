@@ -17,8 +17,10 @@ import pandas as pd
 
 # Import cache and utilities
 from shared.src.indicator_cache import get_indicator_cache
-from shared.src.technical_utils import (validate_and_align_arrays,
-                                        validate_indicator_params)
+from shared.src.technical_utils import (
+    validate_and_align_arrays,
+    validate_indicator_params,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +55,7 @@ def calculate_sma(
     if TALIB_AVAILABLE:
         try:
             sma_values = talib.SMA(prices_array, timeperiod=period)
-            return float(
-                sma_values[-1]) if not np.isnan(sma_values[-1]) else None
+            return float(sma_values[-1]) if not np.isnan(sma_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib SMA error: {e}, using fallback")
 
@@ -80,8 +81,7 @@ def calculate_sma_series(
     if TALIB_AVAILABLE:
         try:
             sma_values = talib.SMA(prices_array, timeperiod=period)
-            return [float(val) if not np.isnan(
-                val) else None for val in sma_values]
+            return [float(val) if not np.isnan(val) else None for val in sma_values]
         except Exception as e:
             logger.warning(f"TA-Lib SMA series error: {e}, using fallback")
 
@@ -91,7 +91,7 @@ def calculate_sma_series(
         if i < period - 1:
             sma_series.append(None)
         else:
-            sma = float(np.mean(prices_array[i - period + 1: i + 1]))
+            sma = float(np.mean(prices_array[i - period + 1 : i + 1]))
             sma_series.append(sma)
 
     return sma_series
@@ -134,8 +134,7 @@ def calculate_ema(
     if TALIB_AVAILABLE:
         try:
             ema_values = talib.EMA(prices_array, timeperiod=period)
-            return float(
-                ema_values[-1]) if not np.isnan(ema_values[-1]) else None
+            return float(ema_values[-1]) if not np.isnan(ema_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib EMA error: {e}, using fallback")
 
@@ -160,8 +159,7 @@ def calculate_ema_series(
     if TALIB_AVAILABLE:
         try:
             ema_values = talib.EMA(prices_array, timeperiod=period)
-            return [float(val) if not np.isnan(
-                val) else None for val in ema_values]
+            return [float(val) if not np.isnan(val) else None for val in ema_values]
         except Exception as e:
             logger.warning(f"TA-Lib EMA series error: {e}, using fallback")
 
@@ -234,8 +232,7 @@ def calculate_wma(
     if TALIB_AVAILABLE:
         try:
             wma_values = talib.WMA(prices_array, timeperiod=period)
-            return float(
-                wma_values[-1]) if not np.isnan(wma_values[-1]) else None
+            return float(wma_values[-1]) if not np.isnan(wma_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib WMA error: {e}, using fallback")
 
@@ -269,8 +266,7 @@ def calculate_dema(
     if TALIB_AVAILABLE:
         try:
             dema_values = talib.DEMA(prices_array, timeperiod=period)
-            return float(
-                dema_values[-1]) if not np.isnan(dema_values[-1]) else None
+            return float(dema_values[-1]) if not np.isnan(dema_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib DEMA error: {e}, using fallback")
 
@@ -311,8 +307,7 @@ def calculate_tema(
     if TALIB_AVAILABLE:
         try:
             tema_values = talib.TEMA(prices_array, timeperiod=period)
-            return float(
-                tema_values[-1]) if not np.isnan(tema_values[-1]) else None
+            return float(tema_values[-1]) if not np.isnan(tema_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib TEMA error: {e}, using fallback")
 
@@ -371,7 +366,7 @@ def calculate_hull_ma(
     # Calculate rolling WMA for half period
     wma_half_series = []
     for i in range(half_period - 1, len(prices_array)):
-        window = prices_array[i - half_period + 1: i + 1]
+        window = prices_array[i - half_period + 1 : i + 1]
         weights = np.arange(1, half_period + 1)
         wma_val = np.average(window, weights=weights)
         wma_half_series.append(wma_val)
@@ -379,7 +374,7 @@ def calculate_hull_ma(
     # Calculate rolling WMA for full period
     wma_full_series = []
     for i in range(period - 1, len(prices_array)):
-        window = prices_array[i - period + 1: i + 1]
+        window = prices_array[i - period + 1 : i + 1]
         weights = np.arange(1, period + 1)
         wma_val = np.average(window, weights=weights)
         wma_full_series.append(wma_val)
@@ -440,15 +435,14 @@ def calculate_adaptive_ma(
     if TALIB_AVAILABLE and hasattr(talib, "KAMA"):
         try:
             kama_values = talib.KAMA(prices_array, timeperiod=period)
-            return float(
-                kama_values[-1]) if not np.isnan(kama_values[-1]) else None
+            return float(kama_values[-1]) if not np.isnan(kama_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib KAMA error: {e}, using fallback")
 
     # Manual calculation
     # Calculate efficiency ratio
     change = abs(prices_array[-1] - prices_array[-period - 1])
-    volatility = np.sum(np.abs(np.diff(prices_array[-period - 1:])))
+    volatility = np.sum(np.abs(np.diff(prices_array[-period - 1 :])))
 
     efficiency_ratio = 0 if volatility == 0 else change / volatility
 
@@ -649,8 +643,7 @@ def calculate_ema_series_cached(
         if cached_series is not None and len(cached_series) <= len(prices_array):
             # Check if we can extend existing series
             # Calculate only new values
-            new_series = _extend_ema_series(
-                prices_array, cached_series, period)
+            new_series = _extend_ema_series(prices_array, cached_series, period)
             if new_series:
                 cache.set(cache_key, new_series, symbol)
                 return new_series
@@ -735,10 +728,7 @@ def calculate_sma_cached(
         return sma_value
 
 
-def _create_ema_state(
-        prices: np.ndarray,
-        period: int,
-        current_ema: float) -> dict:
+def _create_ema_state(prices: np.ndarray, period: int, current_ema: float) -> dict:
     """Create EMA state for incremental caching."""
     return {
         "last_ema": float(current_ema),
@@ -750,11 +740,8 @@ def _create_ema_state(
 
 
 def _calculate_ema_incremental(
-        prices: np.ndarray,
-        cached_state: dict,
-        period: int,
-        symbol: str,
-        cache_key: str) -> float | None:
+    prices: np.ndarray, cached_state: dict, period: int, symbol: str, cache_key: str
+) -> float | None:
     """Calculate EMA incrementally using cached state."""
     try:
         cache = get_indicator_cache()
@@ -858,10 +845,8 @@ def get_ma_cross_signal_cached(
         if ma_type == "ema":
             fast_ma = calculate_ema_cached(prices, symbol, fast_period)
             slow_ma = calculate_ema_cached(prices, symbol, slow_period)
-            fast_series = calculate_ema_series_cached(
-                prices, symbol, fast_period)
-            slow_series = calculate_ema_series_cached(
-                prices, symbol, slow_period)
+            fast_series = calculate_ema_series_cached(prices, symbol, fast_period)
+            slow_series = calculate_ema_series_cached(prices, symbol, slow_period)
         else:  # sma
             fast_ma = calculate_sma_cached(prices, symbol, fast_period)
             slow_ma = calculate_sma_cached(prices, symbol, slow_period)
@@ -871,10 +856,8 @@ def get_ma_cross_signal_cached(
             slow_series = calculate_sma_series(prices, slow_period)
 
         # Detect crossovers (filter None values)
-        fast_filtered = [
-            x for x in fast_series if x is not None] if fast_series else []
-        slow_filtered = [
-            x for x in slow_series if x is not None] if slow_series else []
+        fast_filtered = [x for x in fast_series if x is not None] if fast_series else []
+        slow_filtered = [x for x in slow_series if x is not None] if slow_series else []
         bullish_cross = (
             crossover(fast_filtered, slow_filtered)
             if fast_filtered and slow_filtered

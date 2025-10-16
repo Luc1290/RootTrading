@@ -22,8 +22,7 @@ class MACD_Crossover_Strategy(BaseStrategy):
     - SELL: MACD croise en-dessous Signal + confirmations baissières
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres MACD ASSOUPLIS (moins de sur-filtrage)
         self.min_macd_distance = 0.005  # Distance durcie (0.002 → 0.005)
@@ -86,16 +85,32 @@ class MACD_Crossover_Strategy(BaseStrategy):
             pass
         return None
 
-    def _validate_macd_data(self, _is_valid) -> tuple[bool, dict[str, Any] | None, dict[str, Any] | None, float | None, float | None, float | None, float | None]:
+    def _validate_macd_data(self, _is_valid) -> tuple[
+        bool,
+        dict[str, Any] | None,
+        dict[str, Any] | None,
+        float | None,
+        float | None,
+        float | None,
+        float | None,
+    ]:
         """Valide les données MACD. Returns (is_valid, error_response, values, macd_line, macd_signal, macd_histogram, macd_distance)."""
         if not self.validate_data():
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Données insuffisantes",
-                "metadata": {"strategy": self.name},
-            }, None, None, None, None, None
+            return (
+                False,
+                {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "Données insuffisantes",
+                    "metadata": {"strategy": self.name},
+                },
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
 
         values = self._get_current_values()
 
@@ -105,57 +120,106 @@ class MACD_Crossover_Strategy(BaseStrategy):
             macd_signal_val = values.get("macd_signal")
             macd_histogram_val = values.get("macd_histogram")
 
-            macd_line = float(macd_line_val) if macd_line_val is not None and _is_valid(macd_line_val) else None
-            macd_signal = float(macd_signal_val) if macd_signal_val is not None and _is_valid(macd_signal_val) else None
-            macd_histogram = float(macd_histogram_val) if macd_histogram_val is not None and _is_valid(macd_histogram_val) else None
+            macd_line = (
+                float(macd_line_val)
+                if macd_line_val is not None and _is_valid(macd_line_val)
+                else None
+            )
+            macd_signal = (
+                float(macd_signal_val)
+                if macd_signal_val is not None and _is_valid(macd_signal_val)
+                else None
+            )
+            macd_histogram = (
+                float(macd_histogram_val)
+                if macd_histogram_val is not None and _is_valid(macd_histogram_val)
+                else None
+            )
         except (ValueError, TypeError) as e:
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Erreur conversion MACD: {e}",
-                "metadata": {"strategy": self.name},
-            }, None, None, None, None, None
+            return (
+                False,
+                {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Erreur conversion MACD: {e}",
+                    "metadata": {"strategy": self.name},
+                },
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
 
         if not (_is_valid(macd_line) and _is_valid(macd_signal)):
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "MACD line ou signal invalides/NaN",
-                "metadata": {"strategy": self.name},
-            }, None, None, None, None, None
+            return (
+                False,
+                {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "MACD line ou signal invalides/NaN",
+                    "metadata": {"strategy": self.name},
+                },
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
 
         if macd_line is None or macd_signal is None:
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "MACD line ou signal est None",
-                "metadata": {"strategy": self.name},
-            }, None, None, None, None, None
+            return (
+                False,
+                {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "MACD line ou signal est None",
+                    "metadata": {"strategy": self.name},
+                },
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
 
         macd_distance = abs(macd_line - macd_signal)
         if macd_distance < self.min_macd_distance:
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Rejet MACD: séparation insuffisante ({macd_distance:.4f} < {self.min_macd_distance})",
-                "metadata": {
-                    "strategy": self.name,
-                    "symbol": self.symbol,
-                    "macd_line": macd_line,
-                    "macd_signal": macd_signal,
-                    "distance": macd_distance,
+            return (
+                False,
+                {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Rejet MACD: séparation insuffisante ({macd_distance:.4f} < {self.min_macd_distance})",
+                    "metadata": {
+                        "strategy": self.name,
+                        "symbol": self.symbol,
+                        "macd_line": macd_line,
+                        "macd_signal": macd_signal,
+                        "distance": macd_distance,
+                    },
                 },
-            }, None, None, None, None, None
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
 
         return True, None, values, macd_line, macd_signal, macd_histogram, macd_distance
 
     def _validate_macd_signal_requirements(
-        self, signal_side: str, macd_histogram: float | None, rsi_14: float | None,
-        is_strong_uptrend: bool, is_strong_downtrend: bool, _is_valid
+        self,
+        signal_side: str,
+        macd_histogram: float | None,
+        rsi_14: float | None,
+        is_strong_uptrend: bool,
+        is_strong_downtrend: bool,
+        _is_valid,
     ) -> tuple[bool, dict[str, Any] | None]:
         """Valide les exigences pour un signal MACD. Returns (is_valid, rejection_response)."""
         # Histogram validation
@@ -224,6 +288,7 @@ class MACD_Crossover_Strategy(BaseStrategy):
         """
         Génère un signal basé sur les croisements MACD.
         """
+
         # Helper pour valider les nombres (anti-NaN)
         def _is_valid(x):
             try:
@@ -233,7 +298,15 @@ class MACD_Crossover_Strategy(BaseStrategy):
                 return False
 
         # VALIDATIONS PRÉLIMINAIRES GROUPÉES
-        is_valid, error_response, values, macd_line, macd_signal, macd_histogram, macd_distance = self._validate_macd_data(_is_valid)
+        (
+            is_valid,
+            error_response,
+            values,
+            macd_line,
+            macd_signal,
+            macd_histogram,
+            macd_distance,
+        ) = self._validate_macd_data(_is_valid)
         if not is_valid:
             return error_response
 
@@ -322,7 +395,12 @@ class MACD_Crossover_Strategy(BaseStrategy):
         # VALIDATIONS SIGNAL REQUIREMENTS
         rsi_14 = values.get("rsi_14")
         is_valid_signal, rejection_response = self._validate_macd_signal_requirements(
-            signal_side, macd_histogram, rsi_14, is_strong_uptrend, is_strong_downtrend, _is_valid
+            signal_side,
+            macd_histogram,
+            rsi_14,
+            is_strong_uptrend,
+            is_strong_downtrend,
+            _is_valid,
         )
         if not is_valid_signal:
             return rejection_response
@@ -331,9 +409,11 @@ class MACD_Crossover_Strategy(BaseStrategy):
         confidence_boost += conditions_bonus
 
         # Bonus selon la force de la séparation - SEUILS PLUS STRICTS
-        separation_strength = abs(
-            macd_line -
-            macd_signal) if macd_line is not None and macd_signal is not None else 0.0
+        separation_strength = (
+            abs(macd_line - macd_signal)
+            if macd_line is not None and macd_signal is not None
+            else 0.0
+        )
         if separation_strength >= self.strong_separation_threshold:  # 0.02
             confidence_boost += 0.18
             reason += f" - séparation TRÈS forte ({separation_strength:.4f})"
@@ -350,8 +430,9 @@ class MACD_Crossover_Strategy(BaseStrategy):
 
         # Confirmation avec Histogram MACD - SEUILS PLUS STRICTS
         if macd_histogram is not None:
-            if (signal_side == "BUY" and macd_histogram >
-                    self.histogram_threshold * 2):  # Double seuil
+            if (
+                signal_side == "BUY" and macd_histogram > self.histogram_threshold * 2
+            ):  # Double seuil
                 confidence_boost += 0.18
                 reason += f" + histogram TRÈS positif ({macd_histogram:.4f})"
             elif (
@@ -365,7 +446,9 @@ class MACD_Crossover_Strategy(BaseStrategy):
             elif signal_side == "SELL" and macd_histogram < -self.histogram_threshold:
                 confidence_boost += 0.12
                 reason += f" + histogram négatif ({macd_histogram:.4f})"
-            elif (signal_side == "BUY" and macd_histogram > 0) or (signal_side == "SELL" and macd_histogram < 0):
+            elif (signal_side == "BUY" and macd_histogram > 0) or (
+                signal_side == "SELL" and macd_histogram < 0
+            ):
                 confidence_boost += 0.06  # Réduit de 0.10
                 reason += f" + histogram favorable ({macd_histogram:.4f})"
             else:
@@ -390,8 +473,9 @@ class MACD_Crossover_Strategy(BaseStrategy):
         # Confirmation avec macd_trend pré-calculé
         macd_trend = values.get("macd_trend")
         if macd_trend and (
-            (signal_side == "BUY" and macd_trend == "BULLISH") or (
-                signal_side == "SELL" and macd_trend == "BEARISH")):
+            (signal_side == "BUY" and macd_trend == "BULLISH")
+            or (signal_side == "SELL" and macd_trend == "BEARISH")
+        ):
             confidence_boost += 0.10
             reason += f" + trend MACD {macd_trend}"
 
@@ -444,8 +528,10 @@ class MACD_Crossover_Strategy(BaseStrategy):
 
         # Confirmation avec directional_bias
         directional_bias = values.get("directional_bias")
-        if directional_bias and ((signal_side == "BUY" and directional_bias == "BULLISH") or (
-                signal_side == "SELL" and directional_bias == "BEARISH")):
+        if directional_bias and (
+            (signal_side == "BUY" and directional_bias == "BULLISH")
+            or (signal_side == "SELL" and directional_bias == "BEARISH")
+        ):
             confidence_boost += 0.10
             reason += f" + bias {directional_bias}"
 
@@ -472,7 +558,9 @@ class MACD_Crossover_Strategy(BaseStrategy):
         if rsi_14 is not None:
             try:
                 rsi = float(rsi_14)
-                if (signal_side == "BUY" and rsi < 70) or (signal_side == "SELL" and rsi > 30):
+                if (signal_side == "BUY" and rsi < 70) or (
+                    signal_side == "SELL" and rsi > 30
+                ):
                     confidence_boost += 0.05
             except (ValueError, TypeError):
                 pass
@@ -576,9 +664,9 @@ class MACD_Crossover_Strategy(BaseStrategy):
 
         # CALCUL FINAL avec modèle standard
         confidence = max(
-            0.0, min(
-                1.0, self.calculate_confidence(
-                    base_confidence, 1 + confidence_boost)), )
+            0.0,
+            min(1.0, self.calculate_confidence(base_confidence, 1 + confidence_boost)),
+        )
 
         # Filtre final confidence
         if confidence < self.min_confidence_threshold:
@@ -641,8 +729,7 @@ class MACD_Crossover_Strategy(BaseStrategy):
 
         for indicator in required:
             if indicator not in self.indicators:
-                logger.warning(
-                    f"{self.name}: Indicateur manquant: {indicator}")
+                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
                 return False
             if self.indicators[indicator] is None:
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")

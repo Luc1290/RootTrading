@@ -67,8 +67,7 @@ async def get_stats(_request):
 async def process_historical(request):
     """API pour traiter les données historiques."""
     if not data_listener:
-        return web.json_response(
-            {"error": "DataListener not initialized"}, status=503)
+        return web.json_response({"error": "DataListener not initialized"}, status=503)
 
     try:
         # Parser les paramètres
@@ -81,8 +80,8 @@ async def process_historical(request):
 
         # Lancer le traitement optimisé en arrière-plan
         _task = asyncio.create_task(
-            data_listener.process_historical_optimized(
-                symbol, timeframe, limit))
+            data_listener.process_historical_optimized(symbol, timeframe, limit)
+        )
 
         return web.json_response(
             {
@@ -98,12 +97,12 @@ async def process_historical(request):
             {"error": f"Erreur lancement traitement: {e}"}, status=500
         )
 
+
 @routes.get("/coverage")
 async def get_coverage(_request):
     """Analyse de couverture des données."""
     if not data_listener:
-        return web.json_response(
-            {"error": "DataListener not initialized"}, status=503)
+        return web.json_response({"error": "DataListener not initialized"}, status=503)
 
     try:
         # Statistiques par symbole/timeframe
@@ -154,6 +153,7 @@ async def get_coverage(_request):
             {"error": f"Erreur analyse couverture: {e}"}, status=500
         )
 
+
 async def start_http_server():
     """Démarre le serveur HTTP pour l'API."""
     app = web.Application()
@@ -196,8 +196,7 @@ async def shutdown(signal_type, loop):
             if not task.done() and task != asyncio.current_task()
         ]
         if pending_tasks:
-            logger.info(
-                f"Annulation de {len(pending_tasks)} tâches pendantes...")
+            logger.info(f"Annulation de {len(pending_tasks)} tâches pendantes...")
             for task in pending_tasks:
                 task.cancel()
             # Attendre que les tâches se terminent
@@ -255,8 +254,7 @@ async def main():
         )
 
         # Attendre que l'écoute temps réel continue ou que l'arrêt soit demandé
-        logger.info(
-            "✅ Traitement historique terminé - écoute temps réel active")
+        logger.info("✅ Traitement historique terminé - écoute temps réel active")
 
         # Boucle d'attente au lieu d'attendre le listening_task qui peut ne
         # jamais se terminer
@@ -284,8 +282,7 @@ if __name__ == "__main__":
     # Configurer les gestionnaires de signaux
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(
-            sig, lambda s=sig: asyncio.create_task(
-                shutdown(s, loop))  # type: ignore
+            sig, lambda s=sig: asyncio.create_task(shutdown(s, loop))  # type: ignore
         )
 
     try:

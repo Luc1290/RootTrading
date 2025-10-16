@@ -14,10 +14,7 @@ from strategies.base_strategy import BaseStrategy
 from .data_converter import DataConverter
 
 # Ajouter le path pour imports ROOT
-analyzer_root = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "../../"))
+analyzer_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 sys.path.append(analyzer_root)
 
 
@@ -48,8 +45,8 @@ class FreqtradeToRootAdapter:
         """
         if not FREQTRADE_AVAILABLE:
             raise ImportError(
-                "Freqtrade n'est pas installé. "
-                "Installez avec: pip install freqtrade")
+                "Freqtrade n'est pas installé. " "Installez avec: pip install freqtrade"
+            )
 
         self.freqtrade_strategy_class = freqtrade_strategy_class
         self.strategy_name = freqtrade_strategy_class.__name__
@@ -98,8 +95,7 @@ class FreqtradeToRootAdapter:
                 # Métadonnées Freqtrade
                 self.timeframe = getattr(self._ft_strategy, "timeframe", "5m")
                 self.stoploss = getattr(self._ft_strategy, "stoploss", -0.05)
-                self.minimal_roi = getattr(
-                    self._ft_strategy, "minimal_roi", {})
+                self.minimal_roi = getattr(self._ft_strategy, "minimal_roi", {})
 
             def generate_signal(self) -> Dict[str, Any]:
                 """
@@ -143,7 +139,8 @@ class FreqtradeToRootAdapter:
                     if last_row.get("enter_long", 0) == 1:
                         enter_tag = last_row.get("enter_tag", "")
                         confidence, strength = self._extract_confidence_strength(
-                            enter_tag)
+                            enter_tag
+                        )
 
                         return {
                             "side": "BUY",
@@ -163,7 +160,8 @@ class FreqtradeToRootAdapter:
                     if last_row.get("exit_long", 0) == 1:
                         exit_tag = last_row.get("exit_tag", "")
                         confidence, strength = self._extract_confidence_strength(
-                            exit_tag)
+                            exit_tag
+                        )
 
                         return {
                             "side": "SELL",
@@ -187,12 +185,10 @@ class FreqtradeToRootAdapter:
                     return self._no_signal("Aucun signal Freqtrade")
 
                 except Exception as e:
-                    logger.error(
-                        f"Erreur génération signal Freqtrade→ROOT: {e}")
+                    logger.error(f"Erreur génération signal Freqtrade→ROOT: {e}")
                     return self._no_signal(f"Erreur: {str(e)}")
 
-            def _extract_confidence_strength(
-                    self, tag: str) -> tuple[float, str]:
+            def _extract_confidence_strength(self, tag: str) -> tuple[float, str]:
                 """
                 Extrait confidence et strength depuis un tag Freqtrade.
 
@@ -207,10 +203,10 @@ class FreqtradeToRootAdapter:
 
                 # Chercher mots-clés dans le tag
                 for keyword, confidence in sorted(
-                        self._confidence_map.items(), key=lambda x: x[1], reverse=True):
+                    self._confidence_map.items(), key=lambda x: x[1], reverse=True
+                ):
                     if keyword in tag_lower:
-                        strength = self.get_strength_from_confidence(
-                            confidence)
+                        strength = self.get_strength_from_confidence(confidence)
                         return confidence, strength
 
                 # Défaut: moderate
@@ -223,9 +219,7 @@ class FreqtradeToRootAdapter:
                     "confidence": 0.0,
                     "strength": "weak",
                     "reason": reason,
-                    "metadata": {
-                        "source": "freqtrade",
-                        "strategy": strategy_name},
+                    "metadata": {"source": "freqtrade", "strategy": strategy_name},
                 }
 
             def validate_data(self) -> bool:
@@ -249,10 +243,7 @@ class FreqtradeToRootAdapter:
 
         return AdaptedRootStrategy
 
-    def export_to_file(
-            self,
-            output_path: str,
-            include_docstring: bool = True) -> None:
+    def export_to_file(self, output_path: str, include_docstring: bool = True) -> None:
         """
         Exporte la stratégie convertie vers un fichier Python.
 

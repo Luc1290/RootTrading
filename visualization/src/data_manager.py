@@ -257,8 +257,8 @@ class DataManager:
         if end_time:
             query += f" AND md.time <= ${len(params) + 1}"
             params.append(
-                end_time.isoformat() if isinstance(
-                    end_time, datetime) else end_time)
+                end_time.isoformat() if isinstance(end_time, datetime) else end_time
+            )
 
         if use_native:
             query += " ORDER BY md.time DESC"
@@ -450,8 +450,7 @@ class DataManager:
                             ),
                             # Volume
                             "obv": (
-                                float(
-                                    row["obv"]) if row["obv"] is not None else None
+                                float(row["obv"]) if row["obv"] is not None else None
                             ),
                             "vwap_10": (
                                 float(row["vwap_10"])
@@ -576,8 +575,8 @@ class DataManager:
         if end_time:
             query += f" AND timestamp <= ${len(params) + 1}"
             params.append(
-                end_time.isoformat() if isinstance(
-                    end_time, datetime) else end_time)
+                end_time.isoformat() if isinstance(end_time, datetime) else end_time
+            )
 
         query += " ORDER BY timestamp DESC LIMIT $" + str(len(params) + 1)
         params.append(10000)  # Plus de signaux historiques
@@ -608,11 +607,7 @@ class DataManager:
             logger.exception("Error fetching trading signals")
             return []
 
-    async def _build_current_candle(
-            self,
-            conn,
-            symbol: str,
-            interval_minutes: int):
+    async def _build_current_candle(self, conn, symbol: str, interval_minutes: int):
         """Construit la bougie courante en temps réel pour les intervalles > 1m"""
         try:
             now = datetime.now(timezone.utc)
@@ -690,8 +685,7 @@ class DataManager:
                     else None
                 ),
                 "ema_7": (
-                    float(
-                        last_row["ema_7"]) if last_row["ema_7"] is not None else None
+                    float(last_row["ema_7"]) if last_row["ema_7"] is not None else None
                 ),
                 "ema_12": (
                     float(last_row["ema_12"])
@@ -890,8 +884,7 @@ class DataManager:
         else:
             return current_candle
 
-    async def get_portfolio_performance(
-            self, period: str = "24h") -> dict[str, Any]:
+    async def get_portfolio_performance(self, period: str = "24h") -> dict[str, Any]:
         """Fetch portfolio performance data"""
         if not self.postgres_pool:
             return {}
@@ -973,8 +966,7 @@ class DataManager:
         try:
             if channel not in self.subscriptions:
                 ch = await self.redis_client.subscribe(channel)
-                self.subscriptions[channel] = {
-                    "channel": ch[0], "callbacks": []}
+                self.subscriptions[channel] = {"channel": ch[0], "callbacks": []}
 
                 # Start listening to the channel
                 _task = asyncio.create_task(self._listen_to_channel(channel))
@@ -1047,12 +1039,7 @@ class DataManager:
 
                 # If no symbols in database, return default ones
                 if not symbols:
-                    return [
-                        "XRPUSDC",
-                        "SOLUSDC",
-                        "BTCUSDT",
-                        "ETHUSDT",
-                        "ADAUSDT"]
+                    return ["XRPUSDC", "SOLUSDC", "BTCUSDT", "ETHUSDT", "ADAUSDT"]
 
                 return symbols
 

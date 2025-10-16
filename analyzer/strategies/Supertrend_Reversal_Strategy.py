@@ -26,8 +26,7 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
     - SELL: Reversal baissier détecté + confirmations
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
 
         # Paramètres basés sur données DB réelles (momentum médiane=50.02)
@@ -58,8 +57,7 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         momentum_score = values.get("momentum_score")
 
         try:
-            momentum_val = float(
-                momentum_score) if momentum_score is not None else 50.0
+            momentum_val = float(momentum_score) if momentum_score is not None else 50.0
         except (ValueError, TypeError):
             momentum_val = 50.0
 
@@ -108,8 +106,7 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Pas de direction claire (momentum {momentum_val:.0f})",
-                "metadata": {
-                    "strategy": self.name},
+                "metadata": {"strategy": self.name},
             }
 
         # Bonus simples crypto
@@ -117,8 +114,7 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         # Volume durci
         volume_ratio = values.get("volume_ratio")
         try:
-            vol_ratio = float(
-                volume_ratio) if volume_ratio is not None else 1.0
+            vol_ratio = float(volume_ratio) if volume_ratio is not None else 1.0
             if vol_ratio >= 2.0:
                 confidence_boost += 0.15
                 reason += f" + volume exceptionnel ({vol_ratio:.1f}x)"
@@ -133,8 +129,7 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         trend_strength = values.get("trend_strength")
         confluence_score = values.get("confluence_score")
         try:
-            conf_val = float(
-                confluence_score) if confluence_score is not None else 0.0
+            conf_val = float(confluence_score) if confluence_score is not None else 0.0
         except (ValueError, TypeError):
             conf_val = 0.0
 
@@ -154,9 +149,7 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Rejet Supertrend: confluence critique ({conf_val})",
-                "metadata": {
-                    "strategy": self.name,
-                    "confluence_score": conf_val},
+                "metadata": {"strategy": self.name, "confluence_score": conf_val},
             }
         if conf_val < 35:  # Pénalité pour confluence très faible
             confidence_boost -= 0.12

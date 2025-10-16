@@ -11,6 +11,7 @@ import json
 import logging
 import sys
 from datetime import datetime, timezone
+
 # Ajouter les chemins pour les imports
 from pathlib import Path
 from typing import Any
@@ -40,8 +41,7 @@ class DataListener:
         self.processed_count = 0
         self.indicator_processor = IndicatorProcessor()
         # Semaphore pour limiter les connexions DB concurrentes
-        self.db_semaphore = asyncio.Semaphore(
-            15)  # Max 15 connexions simultanées
+        self.db_semaphore = asyncio.Semaphore(15)  # Max 15 connexions simultanées
 
         logger.info("📡 DataListener initialisé")
 
@@ -223,18 +223,13 @@ class DataListener:
                 self.processed_count += 1
 
                 if self.processed_count % 10 == 0:
-                    logger.info(
-                        f"📊 {self.processed_count} analyses complétées")
+                    logger.info(f"📊 {self.processed_count} analyses complétées")
 
         except Exception:
             logger.exception("❌ Erreur traitement notification")
             logger.exception("Payload: ")
 
-    async def _process_new_data(
-            self,
-            symbol: str,
-            timeframe: str,
-            timestamp: datetime):
+    async def _process_new_data(self, symbol: str, timeframe: str, timestamp: datetime):
         """
         Traite une nouvelle donnée en lançant les calculs.
 
@@ -246,8 +241,7 @@ class DataListener:
         try:
             # Vérifier si on a déjà analysé cette donnée
             if await self._is_already_analyzed(symbol, timeframe, timestamp):
-                logger.debug(
-                    f"⏭️ Déjà analysé: {symbol} {timeframe} @ {timestamp}")
+                logger.debug(f"⏭️ Déjà analysé: {symbol} {timeframe} @ {timestamp}")
                 return
 
             # Appeler le processeur d'indicateurs
@@ -296,8 +290,7 @@ class DataListener:
         - Dans l'ordre chronologique
         - Réutilise les calculs précédents
         """
-        logger.info(
-            "🚀 Démarrage traitement optimisé des données non analysées...")
+        logger.info("🚀 Démarrage traitement optimisé des données non analysées...")
 
         # Si pas de symbole spécifique, traiter chaque symbole séparément
         if symbol is None:
@@ -365,8 +358,7 @@ class DataListener:
             query += " AND md.timeframe = $2"
             params.append(timeframe)
 
-        query += " ORDER BY md.timeframe, md.time ASC LIMIT $" + \
-            str(len(params) + 1)
+        query += " ORDER BY md.timeframe, md.time ASC LIMIT $" + str(len(params) + 1)
         params.append(limit)
 
         total_processed = 0
@@ -393,8 +385,7 @@ class DataListener:
 
             # Traiter chaque timeframe séparément dans l'ordre chronologique
             for tf, timestamps in timeframes.items():
-                logger.info(
-                    f"⏱️ {symbol} {tf}: {len(timestamps)} données à traiter")
+                logger.info(f"⏱️ {symbol} {tf}: {len(timestamps)} données à traiter")
 
                 processed = 0
                 errors = 0
@@ -402,7 +393,9 @@ class DataListener:
                 # Traiter dans l'ordre chronologique
                 for timestamp in timestamps:
                     try:
-                        async with self.db_semaphore:  # Limiter les connexions concurrentes
+                        async with (
+                            self.db_semaphore
+                        ):  # Limiter les connexions concurrentes
                             await self.indicator_processor.process_new_data(
                                 symbol, tf, timestamp
                             )
@@ -423,8 +416,7 @@ class DataListener:
                     except Exception:
                         errors += 1
                         if errors <= 5:  # Limiter les logs d'erreur
-                            logger.exception(
-                                "❌ Erreur {symbol} {tf} @ {timestamp}")
+                            logger.exception("❌ Erreur {symbol} {tf} @ {timestamp}")
                         continue
 
                 logger.info(
@@ -531,8 +523,7 @@ class DataListener:
                     await asyncio.wait_for(self.db_pool.close(), timeout=5.0)
                     logger.info("✅ Pool DB fermé proprement")
                 except asyncio.TimeoutError:
-                    logger.warning(
-                        "⚠️ Timeout fermeture pool - connexions forcées")
+                    logger.warning("⚠️ Timeout fermeture pool - connexions forcées")
                     # Force terminate si timeout
                     await self.db_pool.terminate()
                 except Exception as e:

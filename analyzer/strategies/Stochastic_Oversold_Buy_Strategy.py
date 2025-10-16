@@ -25,8 +25,7 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
     - Pas de signaux SELL (stratégie focalisée sur les achats en survente)
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres Stochastic ASSOUPLIS - Oversolds réalistes
         self.oversold_threshold = 22  # Seuil assoupli pour plus de signaux
@@ -207,7 +206,8 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
 
         # États du Stochastic
         is_oversold = (
-            k_val <= self.oversold_threshold and d_val <= self.oversold_threshold)
+            k_val <= self.oversold_threshold and d_val <= self.oversold_threshold
+        )
         is_exiting_oversold = (
             k_val > self.oversold_threshold or d_val > self.oversold_threshold
         ) and (
@@ -215,7 +215,8 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
             or d_val <= self.exit_oversold_threshold
         )
         is_overbought = (
-            k_val >= self.overbought_threshold or d_val >= self.overbought_threshold)
+            k_val >= self.overbought_threshold or d_val >= self.overbought_threshold
+        )
 
         # Croisement %K > %D (signal haussier)
         k_above_d = k_val > d_val
@@ -282,8 +283,7 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
             return None
 
         # Condition principale: oversold OU sortie d'oversold
-        if not (stoch_analysis["is_oversold"]
-                or stoch_analysis["is_exiting_oversold"]):
+        if not (stoch_analysis["is_oversold"] or stoch_analysis["is_exiting_oversold"]):
             return None
 
         # ASSOUPLISSEMENT: Accepter les cas sans croisement si très oversold
@@ -456,8 +456,7 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         if nearest_support is not None and current_price is not None:
             try:
                 support = float(nearest_support)
-                distance_to_support = abs(
-                    current_price - support) / current_price
+                distance_to_support = abs(current_price - support) / current_price
 
                 # Seuil assoupli (3% au lieu de 1.5%)
                 if distance_to_support <= 0.03:
@@ -572,8 +571,8 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
 
         # Calcul final avec clamp à 1.0
         confidence = min(
-            1.0, self.calculate_confidence(
-                base_confidence, 1 + confidence_boost))
+            1.0, self.calculate_confidence(base_confidence, 1 + confidence_boost)
+        )
         strength: str = self.get_strength_from_confidence(confidence)
 
         return {

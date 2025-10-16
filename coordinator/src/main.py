@@ -98,9 +98,7 @@ class CoordinatorService:
             "status": "operational" if self.running else "stopped",
             "timestamp": time.time(),
             "uptime": time.time() - self.start_time,
-            "services": {
-                "trader": trader_health,
-                "portfolio": portfolio_health},
+            "services": {"trader": trader_health, "portfolio": portfolio_health},
             "stats": self.coordinator.get_stats() if self.coordinator else {},
         }
 
@@ -135,8 +133,7 @@ class CoordinatorService:
         """
         Récupère l'univers tradable actuel et les statistiques.
         """
-        if not self.coordinator or not hasattr(
-                self.coordinator, "universe_manager"):
+        if not self.coordinator or not hasattr(self.coordinator, "universe_manager"):
             return jsonify({"status": "not_initialized"}), 503
 
         try:
@@ -240,8 +237,7 @@ class CoordinatorService:
                 time.sleep(5)
 
             if portfolio_health_checks >= 5:
-                logger.error(
-                    "❌ Service Portfolio non disponible après 5 tentatives")
+                logger.error("❌ Service Portfolio non disponible après 5 tentatives")
                 logger.info(
                     "💡 Le Coordinator attendra que le Portfolio soit disponible..."
                 )
@@ -294,8 +290,7 @@ class CoordinatorService:
             if current_time - last_health_check >= 60:
                 try:
                     if not self.check_portfolio_health():
-                        logger.warning(
-                            "Le service Portfolio n'est pas en bonne santé.")
+                        logger.warning("Le service Portfolio n'est pas en bonne santé.")
                     last_health_check = current_time
                 except Exception:
                     logger.exception(

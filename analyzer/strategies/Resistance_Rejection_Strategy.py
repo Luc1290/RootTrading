@@ -33,8 +33,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
     - BUY: Continuation haussiere après échec de cassure baissiere
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
 
         # Paramètres de proximité résistance - DURCIS
@@ -149,8 +148,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
             )
 
         # Vérifier position par rapport à résistance (logique assouplie)
-        price_vs_resistance = (
-            current_price - resistance_level) / resistance_level
+        price_vs_resistance = (current_price - resistance_level) / resistance_level
         if price_vs_resistance > 0.002:  # Si >0.2% au-dessus
             rejection_score += 0.1  # Léger bonus (test résistance)
             rejection_indicators.append("Test actif de la résistance")
@@ -174,8 +172,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                         "STRONG": 0.8,
                         "MAJOR": 1.0,
                     }
-                    strength_val = strength_map.get(
-                        resistance_strength.upper(), 0.5)
+                    strength_val = strength_map.get(resistance_strength.upper(), 0.5)
                 else:
                     strength_val = float(resistance_strength)
 
@@ -219,7 +216,9 @@ class Resistance_Rejection_Strategy(BaseStrategy):
             "distance_pct": distance_to_resistance * 100,
         }
 
-    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _create_rejection_signal(
+        self, reason: str, metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Helper to create rejection signals."""
         base_metadata = {"strategy": self.name}
         if metadata:
@@ -232,7 +231,9 @@ class Resistance_Rejection_Strategy(BaseStrategy):
             "metadata": base_metadata,
         }
 
-    def _validate_initial_conditions(self) -> tuple[float | None, dict[str, Any] | None]:
+    def _validate_initial_conditions(
+        self,
+    ) -> tuple[float | None, dict[str, Any] | None]:
         """Valide les conditions initiales. Retourne (current_price, error_signal) ou (None, error_signal)."""
         if not self.validate_data():
             return None, self._create_rejection_signal("Données insuffisantes", {})
@@ -243,12 +244,13 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                 current_price = float(self.data["close"][-1])
 
         if current_price is None:
-            return None, self._create_rejection_signal("Prix actuel non disponible", {"symbol": self.symbol})
+            return None, self._create_rejection_signal(
+                "Prix actuel non disponible", {"symbol": self.symbol}
+            )
 
         return current_price, None
 
-    def _detect_momentum_exhaustion(
-            self, values: dict[str, Any]) -> dict[str, Any]:
+    def _detect_momentum_exhaustion(self, values: dict[str, Any]) -> dict[str, Any]:
         """Détecte l'essoufflement du momentum haussier."""
         exhaustion_score = 0.0
         exhaustion_indicators = []
@@ -265,8 +267,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                     )
                 elif rsi_val >= self.overbought_rsi_threshold:
                     exhaustion_score += 0.2
-                    exhaustion_indicators.append(
-                        f"RSI surachat ({rsi_val:.1f})")
+                    exhaustion_indicators.append(f"RSI surachat ({rsi_val:.1f})")
             except (ValueError, TypeError):
                 pass
 
@@ -277,8 +278,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                 wr_val = float(williams_r)
                 if wr_val >= self.williams_r_overbought:
                     exhaustion_score += 0.15
-                    exhaustion_indicators.append(
-                        f"Williams%R surachat ({wr_val:.1f})")
+                    exhaustion_indicators.append(f"Williams%R surachat ({wr_val:.1f})")
             except (ValueError, TypeError):
                 pass
 
@@ -323,8 +323,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                 roc_val = float(roc_10)
                 if roc_val < 0:  # ROC négatif = retournement
                     exhaustion_score += 0.15
-                    exhaustion_indicators.append(
-                        f"ROC négatif ({roc_val:.2f}%)")
+                    exhaustion_indicators.append(f"ROC négatif ({roc_val:.2f}%)")
             except (ValueError, TypeError):
                 pass
 
@@ -355,7 +354,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                     "symbol": self.symbol,
                     "current_price": current_price,
                     "rejection_score": rejection_analysis["score"],
-                }
+                },
             )
 
         # Détection de l'essoufflement du momentum
@@ -364,14 +363,16 @@ class Resistance_Rejection_Strategy(BaseStrategy):
         # Essayer d'abord un signal BUY de continuation
         continuation_analysis = self._detect_continuation_buy(values, current_price)
         if continuation_analysis["is_continuation"]:
-            return self._create_continuation_buy_signal(values, current_price, continuation_analysis)
+            return self._create_continuation_buy_signal(
+                values, current_price, continuation_analysis
+            )
 
         # Si marché haussier sans continuation valide, rejeter
         market_regime = values.get("market_regime")
         if market_regime == "TRENDING_BULL":
             return self._create_rejection_signal(
                 "Marché haussier - pas de rejet SELL ni continuation BUY",
-                {"symbol": self.symbol, "market_regime": market_regime}
+                {"symbol": self.symbol, "market_regime": market_regime},
             )
 
         # Signal SELL si rejet (essoufflement optionnel)
@@ -430,7 +431,9 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                 pass
 
         # Calcul confidence
-        confidence = min(1.0, self.calculate_confidence(base_confidence, 1.0 + confidence_boost))
+        confidence = min(
+            1.0, self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
+        )
 
         # Vérification seuil minimum
         if confidence < 0.48:
@@ -441,7 +444,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                     "rejected_confidence": confidence,
                     "rejection_score": rejection_analysis["score"],
                     "exhaustion_score": exhaustion_analysis["score"],
-                }
+                },
             )
 
         strength = self.get_strength_from_confidence(confidence)
@@ -487,8 +490,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
         if nearest_support is not None:
             try:
                 support_level = float(nearest_support)
-                support_distance = abs(
-                    current_price - support_level) / support_level
+                support_distance = abs(current_price - support_level) / support_level
                 if support_distance <= 0.02:  # Dans les 2% du support
                     key_level = support_level
                     level_type = "support"
@@ -522,8 +524,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                 )
             elif price_vs_level > -0.001:  # Juste au niveau
                 continuation_score += 0.15
-                continuation_indicators.append(
-                    f"Test support {key_level:.2f} (hold)")
+                continuation_indicators.append(f"Test support {key_level:.2f} (hold)")
         # Pour résistance: prix peut être légèrement en-dessous (retest après
         # échec)
         elif -0.005 <= price_vs_level <= 0.002:  # Entre -0.5% et +0.2%
@@ -558,8 +559,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                 rsi_val = float(rsi_14)
                 if 40 <= rsi_val <= 65:  # Zone favorable BUY élargie (P25-P75)
                     continuation_score += 0.18  # Bonus augmenté
-                    continuation_indicators.append(
-                        f"RSI favorable ({rsi_val:.1f})")
+                    continuation_indicators.append(f"RSI favorable ({rsi_val:.1f})")
                 elif rsi_val < 35:  # Trop survendu = risqué
                     continuation_score -= 0.1
             except (ValueError, TypeError):
@@ -630,11 +630,8 @@ class Resistance_Rejection_Strategy(BaseStrategy):
 
         # Calcul confidence finale
         confidence = min(
-            1.0,
-            self.calculate_confidence(
-                base_confidence,
-                1.0 +
-                confidence_boost))
+            1.0, self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
+        )
 
         # Seuil minimum pour BUY
         if confidence < 0.42:  # Seuil assoupli pour favoriser BUY
@@ -687,8 +684,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
 
         for indicator in required_indicators:
             if indicator not in self.indicators:
-                logger.warning(
-                    f"{self.name}: Indicateur manquant: {indicator}")
+                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
                 return False
             if self.indicators[indicator] is None:
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")

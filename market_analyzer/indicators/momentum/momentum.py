@@ -94,8 +94,7 @@ def calculate_roc(
     if TALIB_AVAILABLE:
         try:
             roc_values = talib.ROC(prices_array, timeperiod=period)
-            return float(
-                roc_values[-1]) if not np.isnan(roc_values[-1]) else None
+            return float(roc_values[-1]) if not np.isnan(roc_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib ROC error: {e}, using fallback")
 
@@ -128,11 +127,11 @@ def calculate_momentum_series(
     if TALIB_AVAILABLE:
         try:
             momentum_values = talib.MOM(prices_array, timeperiod=period)
-            return [float(val) if not np.isnan(
-                val) else None for val in momentum_values]
+            return [
+                float(val) if not np.isnan(val) else None for val in momentum_values
+            ]
         except Exception as e:
-            logger.warning(
-                f"TA-Lib Momentum series error: {e}, using fallback")
+            logger.warning(f"TA-Lib Momentum series error: {e}, using fallback")
 
     # Manual calculation
     momentum_series: list[float | None] = []
@@ -167,8 +166,7 @@ def calculate_roc_series(
     if TALIB_AVAILABLE:
         try:
             roc_values = talib.ROC(prices_array, timeperiod=period)
-            return [float(val) if not np.isnan(
-                val) else None for val in roc_values]
+            return [float(val) if not np.isnan(val) else None for val in roc_values]
         except Exception as e:
             logger.warning(f"TA-Lib ROC series error: {e}, using fallback")
 
@@ -352,26 +350,36 @@ def calculate_momentum_divergence(
 
     # Check for divergence
     # Bullish divergence: Price makes lower lows, momentum makes higher lows
-    if len(price_lows) >= 2 and len(momentum_lows) >= 2 and (
-        price_lows[-1][1] is not None
-        and price_lows[-2][1] is not None
-        and momentum_lows[-1][1] is not None
-        and momentum_lows[-2][1] is not None
-    ) and (
-        price_lows[-1][1] < price_lows[-2][1]
-        and momentum_lows[-1][1] > momentum_lows[-2][1]
+    if (
+        len(price_lows) >= 2
+        and len(momentum_lows) >= 2
+        and (
+            price_lows[-1][1] is not None
+            and price_lows[-2][1] is not None
+            and momentum_lows[-1][1] is not None
+            and momentum_lows[-2][1] is not None
+        )
+        and (
+            price_lows[-1][1] < price_lows[-2][1]
+            and momentum_lows[-1][1] > momentum_lows[-2][1]
+        )
     ):
         return "bullish_divergence"
 
     # Bearish divergence: Price makes higher highs, momentum makes lower highs
-    if len(price_highs) >= 2 and len(momentum_highs) >= 2 and (
-        price_highs[-1][1] is not None
-        and price_highs[-2][1] is not None
-        and momentum_highs[-1][1] is not None
-        and momentum_highs[-2][1] is not None
-    ) and (
-        price_highs[-1][1] > price_highs[-2][1]
-        and momentum_highs[-1][1] < momentum_highs[-2][1]
+    if (
+        len(price_highs) >= 2
+        and len(momentum_highs) >= 2
+        and (
+            price_highs[-1][1] is not None
+            and price_highs[-2][1] is not None
+            and momentum_highs[-1][1] is not None
+            and momentum_highs[-2][1] is not None
+        )
+        and (
+            price_highs[-1][1] > price_highs[-2][1]
+            and momentum_highs[-1][1] < momentum_highs[-2][1]
+        )
     ):
         return "bearish_divergence"
 
@@ -397,8 +405,7 @@ def calculate_trix(
         try:
             prices_array = _to_numpy_array(prices)
             trix_values = talib.TRIX(prices_array, timeperiod=period)
-            return float(
-                trix_values[-1]) if not np.isnan(trix_values[-1]) else None
+            return float(trix_values[-1]) if not np.isnan(trix_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib TRIX error: {e}, using fallback")
 

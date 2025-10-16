@@ -37,8 +37,7 @@ def calculate_quote_volume_ratio(
     return float(current_quote_volume / avg_quote_volume)
 
 
-def calculate_avg_trade_size(volume: float,
-                             number_of_trades: int) -> float | None:
+def calculate_avg_trade_size(volume: float, number_of_trades: int) -> float | None:
     """
     Calcule la taille moyenne des trades (volume/nombre de trades).
     Permet de détecter si le volume vient de gros trades (baleines) ou petits trades (retail).
@@ -115,16 +114,14 @@ def analyze_volume_quality(
             quote_volumes, lookback
         )
 
-    if volumes and trades_counts and len(
-            volumes) > 0 and len(trades_counts) > 0:
+    if volumes and trades_counts and len(volumes) > 0 and len(trades_counts) > 0:
         current_volume = volumes[-1]
         current_trades = trades_counts[-1]
 
         result["avg_trade_size"] = calculate_avg_trade_size(
             current_volume, current_trades
         )
-        result["trade_intensity"] = calculate_trade_intensity(
-            trades_counts, lookback)
+        result["trade_intensity"] = calculate_trade_intensity(trades_counts, lookback)
 
         # Score de qualité global (0-100)
         if len(volumes) >= lookback and len(trades_counts) >= lookback:
@@ -132,8 +129,7 @@ def analyze_volume_quality(
             for i in range(lookback):
                 idx = -(lookback - i)
                 if trades_counts[idx] > 0:
-                    avg_trade_size_hist.append(
-                        volumes[idx] / trades_counts[idx])
+                    avg_trade_size_hist.append(volumes[idx] / trades_counts[idx])
 
             if avg_trade_size_hist:
                 avg_trade_size_mean = np.mean(avg_trade_size_hist)
@@ -156,28 +152,36 @@ def analyze_volume_quality(
                 quality_factors: list[float] = []
 
                 # Volume élevé + peu de trades = Baleines (haute qualité)
-                if result["quote_volume_ratio"] and result["quote_volume_ratio"] > 1.5 and result["trade_intensity"] and result["trade_intensity"] < 1.5:
+                if (
+                    result["quote_volume_ratio"]
+                    and result["quote_volume_ratio"] > 1.5
+                    and result["trade_intensity"]
+                    and result["trade_intensity"] < 1.5
+                ):
                     quality_factors.append(80)  # Volume de baleines
 
                 # Volume élevé + beaucoup de trades = FOMO retail (qualité
                 # moyenne)
-                if result["quote_volume_ratio"] and result["quote_volume_ratio"] > 1.5 and result["trade_intensity"] and result["trade_intensity"] > 2.0:
+                if (
+                    result["quote_volume_ratio"]
+                    and result["quote_volume_ratio"] > 1.5
+                    and result["trade_intensity"]
+                    and result["trade_intensity"] > 2.0
+                ):
                     quality_factors.append(60)  # FOMO retail
 
                 # Volume normal + trades normaux = Qualité standard
                 if not quality_factors:
                     quality_factors.append(50)
 
-                result["volume_quality_score"] = float(
-                    np.mean(quality_factors))
+                result["volume_quality_score"] = float(np.mean(quality_factors))
 
     return result
 
 
 def detect_volume_anomaly(
-        avg_trade_sizes: list[float],
-        trades_counts: list[int],
-        threshold: float = 3.0) -> str:
+    avg_trade_sizes: list[float], trades_counts: list[int], threshold: float = 3.0
+) -> str:
     """
     Détecte les anomalies dans les patterns de volume.
 
@@ -219,10 +223,11 @@ def detect_volume_anomaly(
         else:
             result = "large_trades_spike"
 
-    elif trades_std > 0 and (current_trades - trades_mean) / \
-            trades_std > threshold:
-        if (avg_size_std > 0 and (current_avg_size -
-                                  avg_size_mean) / avg_size_std < -threshold / 2):
+    elif trades_std > 0 and (current_trades - trades_mean) / trades_std > threshold:
+        if (
+            avg_size_std > 0
+            and (current_avg_size - avg_size_mean) / avg_size_std < -threshold / 2
+        ):
             result = "retail_frenzy"  # Beaucoup de petits trades
         else:
             result = "high_activity_spike"

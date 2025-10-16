@@ -80,7 +80,7 @@ class SimpleSignalAggregatorApp:
                 port=int(self.db_config["port"]),
                 database=str(self.db_config["database"]),
                 user=str(self.db_config["user"]),
-                password=str(self.db_config["password"])
+                password=str(self.db_config["password"]),
             )
             self.db_connection.autocommit = (
                 True  # Important pour éviter les transactions bloquées
@@ -104,7 +104,7 @@ class SimpleSignalAggregatorApp:
                     port=int(self.db_config["port"]),
                     database=str(self.db_config["database"]),
                     user=str(self.db_config["user"]),
-                    password=str(self.db_config["password"])
+                    password=str(self.db_config["password"]),
                 )
                 self.db_connection.autocommit = True
                 logger.info("✅ Reconnexion DB réussie")
@@ -121,7 +121,7 @@ class SimpleSignalAggregatorApp:
                     port=int(self.db_config["port"]),
                     database=str(self.db_config["database"]),
                     user=str(self.db_config["user"]),
-                    password=str(self.db_config["password"])
+                    password=str(self.db_config["password"]),
                 )
                 self.db_connection.autocommit = True
                 logger.info("✅ Reconnexion DB réussie")
@@ -164,8 +164,9 @@ class SimpleSignalAggregatorApp:
                     db_status = "OK"
 
             # Stats du service simplifié
-            stats = (self.aggregator_service.get_stats()
-                     if self.aggregator_service else {})
+            stats = (
+                self.aggregator_service.get_stats() if self.aggregator_service else {}
+            )
 
             return web.json_response(
                 {

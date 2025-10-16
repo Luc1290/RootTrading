@@ -25,8 +25,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
     - SELL: Prix rebondit sur SAR en tendance baissière (SAR > prix) + confirmations
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
 
         # Paramètres SAR VRAIS
@@ -114,8 +113,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                         # Mettre à jour EP et AF
                         if highs[i] > prev_ep:
                             ep_values[i] = highs[i]
-                            af_values[i] = min(
-                                prev_af + self.af_increment, self.af_max)
+                            af_values[i] = min(prev_af + self.af_increment, self.af_max)
                         else:
                             ep_values[i] = prev_ep
                             af_values[i] = prev_af
@@ -140,8 +138,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                     # Mettre à jour EP et AF
                     if lows[i] < prev_ep:
                         ep_values[i] = lows[i]
-                        af_values[i] = min(
-                            prev_af + self.af_increment, self.af_max)
+                        af_values[i] = min(prev_af + self.af_increment, self.af_max)
                     else:
                         ep_values[i] = prev_ep
                         af_values[i] = prev_af
@@ -183,7 +180,9 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
             "momentum_score": self.indicators.get("momentum_score"),
         }
 
-    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _create_rejection_signal(
+        self, reason: str, metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Helper to create rejection signals."""
         base_metadata = {"strategy": self.name}
         if metadata:
@@ -196,35 +195,58 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
             "metadata": base_metadata,
         }
 
-    def _validate_signal_preconditions(self, values: dict[str, Any]) -> tuple[dict[str, Any] | None, float | None, dict[str, Any] | None]:
+    def _validate_signal_preconditions(
+        self, values: dict[str, Any]
+    ) -> tuple[dict[str, Any] | None, float | None, dict[str, Any] | None]:
         """Valide les préconditions du signal. Retourne (sar_data, current_price, error_signal) ou (None, None, error)."""
         ohlc_data = self._get_ohlc_data()
         if not ohlc_data:
-            return None, None, self._create_rejection_signal("Données OHLC insuffisantes pour calcul SAR", {})
+            return (
+                None,
+                None,
+                self._create_rejection_signal(
+                    "Données OHLC insuffisantes pour calcul SAR", {}
+                ),
+            )
 
         sar_data = self._calculate_parabolic_sar(
             ohlc_data["highs"], ohlc_data["lows"], ohlc_data["closes"]
         )
         if not sar_data:
-            return None, None, self._create_rejection_signal("Impossible de calculer le SAR", {})
+            return (
+                None,
+                None,
+                self._create_rejection_signal("Impossible de calculer le SAR", {}),
+            )
 
         current_price = float(ohlc_data["closes"][-1])
         current_sar = sar_data["current_sar"]
 
         # Validation confluence
         confluence_score = values.get("confluence_score", 0)
-        if not confluence_score or float(confluence_score) < self.min_confluence_required:
-            return None, None, self._create_rejection_signal(
-                f"Confluence insuffisante ({confluence_score}) < {self.min_confluence_required}",
-                {}
+        if (
+            not confluence_score
+            or float(confluence_score) < self.min_confluence_required
+        ):
+            return (
+                None,
+                None,
+                self._create_rejection_signal(
+                    f"Confluence insuffisante ({confluence_score}) < {self.min_confluence_required}",
+                    {},
+                ),
             )
 
         # Validation distance SAR
         distance_to_sar = abs(current_price - current_sar) / current_price
         if distance_to_sar > self.max_sar_distance:
-            return None, None, self._create_rejection_signal(
-                f"Prix trop éloigné du SAR ({distance_to_sar:.1%} > {self.max_sar_distance:.1%})",
-                {"distance_to_sar": distance_to_sar}
+            return (
+                None,
+                None,
+                self._create_rejection_signal(
+                    f"Prix trop éloigné du SAR ({distance_to_sar:.1%} > {self.max_sar_distance:.1%})",
+                    {"distance_to_sar": distance_to_sar},
+                ),
             )
 
         return sar_data, current_price, None
@@ -262,7 +284,9 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         values = self._get_current_values()
 
         # Valider les préconditions
-        sar_data, current_price, error_signal = self._validate_signal_preconditions(values)
+        sar_data, current_price, error_signal = self._validate_signal_preconditions(
+            values
+        )
         if error_signal:
             return error_signal
 
@@ -277,7 +301,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
 
         return self._create_rejection_signal(
             f"Prix/SAR non alignés pour rebond (trend={current_trend}, prix={current_price:.4f}, SAR={current_sar:.4f})",
-            {"sar_data": sar_data}
+            {"sar_data": sar_data},
         )
 
     def _analyze_sar_bounce(
@@ -329,7 +353,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         # Détection pattern rebond dans historique
         sar_history = sar_data.get("sar_history", [])
         if len(sar_history) >= 3 and self._detect_sar_bounce_pattern(
-                sar_history, current_price, signal_side):
+            sar_history, current_price, signal_side
+        ):
             confidence_boost += 0.25
             reason += " + pattern rebond SAR détecté"
 
@@ -344,9 +369,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                     "confidence": 0.0,
                     "strength": "weak",
                     "reason": f"Rejet {signal_side}: régime contradictoire ({market_regime})",
-                    "metadata": {
-                        "strategy": self.name,
-                        "market_regime": market_regime},
+                    "metadata": {"strategy": self.name, "market_regime": market_regime},
                 }
             # Bonus si régime aligné
             if (
@@ -380,16 +403,14 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         reason += reason_additions
 
         # Compter confirmations obligatoires
-        confirmations_count = self._count_sar_confirmations(
-            values, signal_side)
+        confirmations_count = self._count_sar_confirmations(values, signal_side)
         if confirmations_count < self.required_confirmations:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Confirmations SAR insuffisantes ({confirmations_count}/{self.required_confirmations})",
-                "metadata": {
-                    "strategy": self.name},
+                "metadata": {"strategy": self.name},
             }
 
         # PÉNALITÉ VOLUME - Empêcher les boosts faciles sans volume
@@ -419,8 +440,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Confiance SAR insuffisante ({confidence:.2f} < {min_confidence:.2f})",
-                "metadata": {
-                    "strategy": self.name},
+                "metadata": {"strategy": self.name},
             }
 
         strength = self.get_strength_from_confidence(confidence)
@@ -555,7 +575,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
             try:
                 rsi = float(rsi_14)
                 if (signal_side == "BUY" and 30 <= rsi <= 60) or (
-                        signal_side == "SELL" and 40 <= rsi <= 70):  # Elargi 55->60
+                    signal_side == "SELL" and 40 <= rsi <= 70
+                ):  # Elargi 55->60
                     boost += 0.12
                     reason_additions += f" + RSI optimal rebond ({rsi:.0f})"
             except (ValueError, TypeError):
@@ -564,7 +585,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         return boost, reason_additions
 
     def _count_sar_confirmations(
-            self, values: dict[str, Any], _signal_side: str) -> int:
+        self, values: dict[str, Any], _signal_side: str
+    ) -> int:
         """Compte les confirmations obligatoires pour SAR."""
         count = 0
 
@@ -580,8 +602,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
 
         # 3. Confluence DURCIE
         confluence_score = values.get("confluence_score")
-        if confluence_score and float(
-                confluence_score) >= self.min_confluence_required:
+        if confluence_score and float(confluence_score) >= self.min_confluence_required:
             count += 1
 
         return count
@@ -594,10 +615,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         # Vérifier données OHLC
         required_ohlc = ["high", "low", "close"]
         for key in required_ohlc:
-            if key not in self.data or not self.data[key] or len(
-                    self.data[key]) < 3:
-                logger.warning(
-                    f"{self.name}: Données {key} insuffisantes pour SAR")
+            if key not in self.data or not self.data[key] or len(self.data[key]) < 3:
+                logger.warning(f"{self.name}: Données {key} insuffisantes pour SAR")
                 return False
 
         # Vérifier indicateurs minimum
@@ -608,8 +627,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 missing += 1
 
         if missing > 1:
-            logger.warning(
-                f"{self.name}: Trop d'indicateurs manquants ({missing})")
+            logger.warning(f"{self.name}: Trop d'indicateurs manquants ({missing})")
             return False
 
         return True

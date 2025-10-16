@@ -36,8 +36,7 @@ class MultiProcessManager:
             "active_workers": 0,
         }
 
-        logger.info(
-            f"MultiProcessManager initialisé avec {self.max_workers} workers")
+        logger.info(f"MultiProcessManager initialisé avec {self.max_workers} workers")
 
     async def start(self):
         """Démarre les executors."""
@@ -49,8 +48,7 @@ class MultiProcessManager:
             )
 
             # Executor pour les tâches I/O (DB, Redis)
-            self.thread_executor = ThreadPoolExecutor(
-                max_workers=self.max_workers * 2)
+            self.thread_executor = ThreadPoolExecutor(max_workers=self.max_workers * 2)
 
             logger.info("Executors démarrés")
 
@@ -115,7 +113,8 @@ class MultiProcessManager:
 
             logger.info(
                 f"Exécution parallèle terminée: {len(processed_results)}/{len(strategy_tasks)} "
-                f"réussies en {execution_time:.2f}s")
+                f"réussies en {execution_time:.2f}s"
+            )
 
         except Exception:
             logger.exception("Erreur exécution parallèle")
@@ -123,8 +122,7 @@ class MultiProcessManager:
         else:
             return processed_results
 
-    async def _execute_strategy_task(
-            self, task_data: dict[str, Any]) -> dict[str, Any]:
+    async def _execute_strategy_task(self, task_data: dict[str, Any]) -> dict[str, Any]:
         """
         Exécute une tâche de stratégie individuelle.
 
@@ -178,8 +176,7 @@ class MultiProcessManager:
         """
         try:
             # Instanciation de la stratégie
-            strategy = strategy_class(
-                symbol=symbol, data=data, indicators=indicators)
+            strategy = strategy_class(symbol=symbol, data=data, indicators=indicators)
 
             # Génération du signal
             signal = strategy.generate_signal()
@@ -259,16 +256,15 @@ class MultiProcessManager:
         all_results = []
 
         # Création des combinaisons symbole/timeframe
-        combinations = [(symbol, tf)
-                        for symbol in symbols for tf in timeframes]
+        combinations = [(symbol, tf) for symbol in symbols for tf in timeframes]
 
         # Traitement par batch
         for i in range(0, len(combinations), batch_size):
-            batch = combinations[i: i + batch_size]
+            batch = combinations[i : i + batch_size]
 
             logger.info(
-                f"Traitement batch {i//batch_size + 1}: "
-                f"{len(batch)} combinaisons")
+                f"Traitement batch {i//batch_size + 1}: " f"{len(batch)} combinaisons"
+            )
 
             # Exécution du batch
             batch_tasks = []
@@ -321,8 +317,7 @@ class MultiProcessManager:
             await asyncio.wait_for(test_task, timeout=1.0)
 
             executors_running = (
-                self.process_executor is not None
-                and self.thread_executor is not None
+                self.process_executor is not None and self.thread_executor is not None
             )
 
             return {

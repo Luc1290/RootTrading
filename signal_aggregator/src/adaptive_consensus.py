@@ -10,9 +10,12 @@ Au lieu d'exiger un nombre fixe de stratégies, le consensus s'adapte selon :
 import logging
 from typing import Any
 
-from .strategy_classification import (STRATEGY_FAMILIES, get_strategy_family,
-                                      is_strategy_acceptable_for_regime,
-                                      is_strategy_optimal_for_regime)
+from .strategy_classification import (
+    STRATEGY_FAMILIES,
+    get_strategy_family,
+    is_strategy_acceptable_for_regime,
+    is_strategy_optimal_for_regime,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -161,8 +164,9 @@ class AdaptiveConsensusAnalyzer:
         if volatility_regime is None:
             # Tenter de lire depuis les signaux
             for s in signals:
-                vr = (s.get("metadata") or {}).get(
-                    "volatility_regime") or s.get("volatility_regime")
+                vr = (s.get("metadata") or {}).get("volatility_regime") or s.get(
+                    "volatility_regime"
+                )
                 if vr:
                     volatility_regime = vr
                     break
@@ -182,15 +186,15 @@ class AdaptiveConsensusAnalyzer:
             if sig.get("side") is None:  # veto / filtre => hors consensus
                 continue
             # Normaliser strategy
-            strat = sig.get("strategy") or (
-                (sig.get("metadata") or {}).get("strategy"))
+            strat = sig.get("strategy") or ((sig.get("metadata") or {}).get("strategy"))
             if strat:
                 sig["strategy"] = strat
             clean_signals.append(sig)
 
         if not clean_signals:
             return False, {
-                "reason": "Uniquement des veto/None, aucun signal de side exploitable"}
+                "reason": "Uniquement des veto/None, aucun signal de side exploitable"
+            }
 
         signals = clean_signals
 
@@ -198,12 +202,10 @@ class AdaptiveConsensusAnalyzer:
         # le consensus)
         signal_sides = {signal.get("side", "BUY") for signal in signals}
         if len(signal_sides) > 1:
-            return False, {
-                "reason": f"Signaux de sides différents: {signal_sides}"}
+            return False, {"reason": f"Signaux de sides différents: {signal_sides}"}
 
         signal_side = signal_sides.pop()
-        logger.info(
-            f"🔍 Side des signaux: {signal_side}, volatilité: {vol_level}")
+        logger.info(f"🔍 Side des signaux: {signal_side}, volatilité: {vol_level}")
 
         # Classifier les signaux par famille
         families_count: dict[str, int] = {}
@@ -222,10 +224,8 @@ class AdaptiveConsensusAnalyzer:
             families_signals[family].append(signal)
 
             # Calculer le score d'adaptabilité au régime
-            is_optimal = is_strategy_optimal_for_regime(
-                strategy, market_regime)
-            is_acceptable = is_strategy_acceptable_for_regime(
-                strategy, market_regime)
+            is_optimal = is_strategy_optimal_for_regime(strategy, market_regime)
+            is_acceptable = is_strategy_acceptable_for_regime(strategy, market_regime)
 
             if is_optimal:
                 adaptability_scores.append(1.0)
@@ -276,8 +276,7 @@ class AdaptiveConsensusAnalyzer:
         )
 
         # Si on a les deux régimes dans le contexte (depuis les métadonnées)
-        has_unified = any(s.get("metadata", {}).get(
-            "unified_regime") for s in signals)
+        has_unified = any(s.get("metadata", {}).get("unified_regime") for s in signals)
         has_timeframe = any(
             s.get("metadata", {}).get("timeframe_regime") for s in signals
         )
@@ -296,13 +295,11 @@ class AdaptiveConsensusAnalyzer:
             # Si confidence timeframe > 40%, l'utiliser, sinon utiliser unifié
             if timeframe_conf > 40:
                 regime = next(
-                    (s.get(
-                        "metadata",
-                        {}).get(
-                        "timeframe_regime",
-                        market_regime) for s in signals if s.get(
-                        "metadata",
-                        {}).get("timeframe_regime")),
+                    (
+                        s.get("metadata", {}).get("timeframe_regime", market_regime)
+                        for s in signals
+                        if s.get("metadata", {}).get("timeframe_regime")
+                    ),
                     market_regime,
                 )
                 logger.debug(
@@ -310,13 +307,11 @@ class AdaptiveConsensusAnalyzer:
                 )
             else:
                 regime = next(
-                    (s.get(
-                        "metadata",
-                        {}).get(
-                        "unified_regime",
-                        market_regime) for s in signals if s.get(
-                        "metadata",
-                        {}).get("unified_regime")),
+                    (
+                        s.get("metadata", {}).get("unified_regime", market_regime)
+                        for s in signals
+                        if s.get("metadata", {}).get("unified_regime")
+                    ),
                     market_regime,
                 )
                 logger.debug(
@@ -357,18 +352,13 @@ class AdaptiveConsensusAnalyzer:
             # Fallback si le side n'existe pas (ancien format)
             requirements: dict[str, int] = regime_requirements
 
-        logger.debug(
-            f"🔍 Requirements pour {regime}/{signal_side}: {requirements}")
+        logger.debug(f"🔍 Requirements pour {regime}/{signal_side}: {requirements}")
 
         # PATCH 2: Assouplir TRENDING_BULL/BUY si excellente qualité
         total_min = requirements.get("total_min", 6)
         if regime == "TRENDING_BULL" and signal_side == "BUY":
             family_diversity = len(
-                [
-                    f
-                    for f in families_count
-                    if f != "unknown" and families_count[f] > 0
-                ]
+                [f for f in families_count if f != "unknown" and families_count[f] > 0]
             )
             if family_diversity >= 3 and avg_conf >= 0.90:
                 total_min = 3  # Assouplir 4→3 si excellente qualité
@@ -418,27 +408,24 @@ class AdaptiveConsensusAnalyzer:
 
             # PATCH 3b: breakout_proxy compte comme breakout
             if family == "breakout":
-                actual_count = families_count.get(
-                    "breakout", 0) + families_count.get("breakout_proxy", 0)
+                actual_count = families_count.get("breakout", 0) + families_count.get(
+                    "breakout_proxy", 0
+                )
             else:
                 actual_count = families_count.get(family, 0)
 
             if actual_count < required_count:
-                missing_families.append(
-                    f"{family}: {actual_count}/{required_count}")
+                missing_families.append(f"{family}: {actual_count}/{required_count}")
 
         # Si des familles critiques manquent, TOLÉRER si autres critères OK
         if missing_families:
             # TOLÉRANCE: Pas grave si une famille manque, on continue quand
             # même
             consensus_strength_preview = self._calculate_preview_consensus_strength(
-                families_count, regime)
+                families_count, regime
+            )
             family_diversity = len(
-                [
-                    f
-                    for f in families_count
-                    if f != "unknown" and families_count[f] > 0
-                ]
+                [f for f in families_count if f != "unknown" and families_count[f] > 0]
             )
 
             # PATCH 4: Bypass durci - exige plus de critères si confidence
@@ -484,10 +471,12 @@ class AdaptiveConsensusAnalyzer:
                 if c > 0
             )
             acceptable_family_hit = any(
-                (STRATEGY_FAMILIES.get(
-                    f,
-                    {}).get("acceptable_regimes") or []).__contains__(regime) for f,
-                c in families_count.items() if c > 0)
+                (
+                    STRATEGY_FAMILIES.get(f, {}).get("acceptable_regimes") or []
+                ).__contains__(regime)
+                for f, c in families_count.items()
+                if c > 0
+            )
             if not best_family_hit and not acceptable_family_hit:
                 return False, {
                     "reason": "SELL sans famille optimale/acceptable au régime",
@@ -497,9 +486,7 @@ class AdaptiveConsensusAnalyzer:
                 }
 
             # En bull fort, durcir encore plus les SELL
-            if regime in [
-                "TRENDING_BULL",
-                    "BREAKOUT_BULL"] and not best_family_hit:
+            if regime in ["TRENDING_BULL", "BREAKOUT_BULL"] and not best_family_hit:
                 return False, {
                     "reason": f"SELL en {regime} sans famille OPTIMALE (seulement acceptable)",
                     "families_count": families_count,
@@ -531,11 +518,7 @@ class AdaptiveConsensusAnalyzer:
         # PÉNALITÉ DIVERSITÉ PROGRESSIVE : Réduction lissée selon nombre de
         # familles
         unique_families = len(
-            [
-                f
-                for f in families_count
-                if f != "unknown" and families_count[f] > 0
-            ]
+            [f for f in families_count if f != "unknown" and families_count[f] > 0]
         )
         if unique_families < 3:
             # Pénalité progressive : -25% pour 1 famille, -15% pour 2 familles
@@ -586,8 +569,7 @@ class AdaptiveConsensusAnalyzer:
             )
 
         # PATCH 2b: Rabais spécial breakout manquant si excellente qualité
-        if missing_families == [
-                "breakout: 0/1"] and avg_conf >= 0.90 and hi_conf >= 3:
+        if missing_families == ["breakout: 0/1"] and avg_conf >= 0.90 and hi_conf >= 3:
             min_consensus_strength *= 0.90  # -10% supplémentaire
             logger.info(
                 f"🚀 Rabais breakout manquant: avg_conf={avg_conf:.2f}, hi_conf={hi_conf}"
@@ -599,11 +581,7 @@ class AdaptiveConsensusAnalyzer:
             avg_adaptability >= 0.6
             or consensus_strength >= 1.8
             or len(
-                [
-                    f
-                    for f in families_count
-                    if f != "unknown" and families_count[f] > 0
-                ]
+                [f for f in families_count if f != "unknown" and families_count[f] > 0]
             )
             >= 2
             or total_strategies >= total_min + 1
@@ -736,8 +714,7 @@ class AdaptiveConsensusAnalyzer:
         # Déterminer le side des signaux (MTF post-conflit)
         signal_sides = {signal.get("side", "BUY") for signal in signals}
         if len(signal_sides) > 1:
-            return False, {
-                "reason": f"Signaux MTF de sides différents: {signal_sides}"}
+            return False, {"reason": f"Signaux MTF de sides différents: {signal_sides}"}
 
         signal_side = signal_sides.pop()
 
@@ -763,10 +740,8 @@ class AdaptiveConsensusAnalyzer:
             families_signals[family].append(signal)
 
             # Score d'adaptabilité
-            is_optimal = is_strategy_optimal_for_regime(
-                strategy, market_regime)
-            is_acceptable = is_strategy_acceptable_for_regime(
-                strategy, market_regime)
+            is_optimal = is_strategy_optimal_for_regime(strategy, market_regime)
+            is_acceptable = is_strategy_acceptable_for_regime(strategy, market_regime)
 
             if is_optimal:
                 adaptability_scores.append(1.0)

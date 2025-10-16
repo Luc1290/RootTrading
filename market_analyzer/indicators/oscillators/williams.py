@@ -68,13 +68,11 @@ def calculate_williams_r(
             williams_r = talib.WILLR(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return float(
-                williams_r[-1]) if not np.isnan(williams_r[-1]) else None
+            return float(williams_r[-1]) if not np.isnan(williams_r[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib Williams %R error: {e}, using fallback")
 
-    return _calculate_williams_r_manual(
-        highs_array, lows_array, closes_array, period)
+    return _calculate_williams_r_manual(highs_array, lows_array, closes_array, period)
 
 
 def calculate_williams_r_series(
@@ -110,11 +108,9 @@ def calculate_williams_r_series(
             williams_r = talib.WILLR(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return [float(val) if not np.isnan(
-                val) else None for val in williams_r]
+            return [float(val) if not np.isnan(val) else None for val in williams_r]
         except Exception as e:
-            logger.warning(
-                f"TA-Lib Williams %R series error: {e}, using fallback")
+            logger.warning(f"TA-Lib Williams %R series error: {e}, using fallback")
 
     # Manual calculation
     return _calculate_williams_r_series_manual(
@@ -338,8 +334,7 @@ def calculate_williams_r_divergence(
     return "none"
 
 
-def williams_r_trend_strength(
-        values: list[float | None], period: int = 10) -> str:
+def williams_r_trend_strength(values: list[float | None], period: int = 10) -> str:
     """
     Assess trend strength based on Williams %R persistence.
 
@@ -412,8 +407,7 @@ def _calculate_williams_r_manual(
     if highest_high == lowest_low:
         return 0.0  # No range, neutral
 
-    williams_r = ((highest_high - current_close) /
-                  (highest_high - lowest_low)) * -100
+    williams_r = ((highest_high - current_close) / (highest_high - lowest_low)) * -100
 
     return float(williams_r)
 
@@ -429,8 +423,8 @@ def _calculate_williams_r_series_manual(
             williams_series.append(None)
         else:
             # Get window for calculation
-            high_window = highs[i - period + 1: i + 1]
-            low_window = lows[i - period + 1: i + 1]
+            high_window = highs[i - period + 1 : i + 1]
+            low_window = lows[i - period + 1 : i + 1]
             current_close = closes[i]
 
             # Calculate highest high and lowest low
@@ -441,8 +435,9 @@ def _calculate_williams_r_series_manual(
             if highest_high == lowest_low:
                 williams_r = 0.0  # No range
             else:
-                williams_r = ((highest_high - current_close) /
-                              (highest_high - lowest_low)) * -100
+                williams_r = (
+                    (highest_high - current_close) / (highest_high - lowest_low)
+                ) * -100
 
             williams_series.append(float(williams_r))
 

@@ -14,7 +14,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 
 try:
     from market_analyzer.indicators.trend.moving_averages import (
-        calculate_ema, calculate_sma, calculate_sma_series)
+        calculate_ema,
+        calculate_sma,
+        calculate_sma_series,
+    )
 except ImportError:
     # Fallback si market_analyzer pas disponible
     def calculate_sma(prices, period):
@@ -34,7 +37,7 @@ except ImportError:
             if i < period - 1:
                 sma_series.append(None)
             else:
-                sma = float(np.mean(prices_array[i - period + 1: i + 1]))
+                sma = float(np.mean(prices_array[i - period + 1 : i + 1]))
                 sma_series.append(sma)
         return sma_series
 

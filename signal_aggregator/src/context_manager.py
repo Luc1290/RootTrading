@@ -166,8 +166,7 @@ class ContextManager:
             return 30
         return 60  # défaut raisonnable au-delà
 
-    def get_market_context(
-            self, symbol: str, timeframe: str) -> dict[str, Any]:
+    def get_market_context(self, symbol: str, timeframe: str) -> dict[str, Any]:
         """
         Récupère le contexte de marché complet pour un symbole et timeframe.
 
@@ -228,11 +227,9 @@ class ContextManager:
                 # confusion
                 original_regime = indicators.get("market_regime")
                 original_regime_strength = indicators.get("regime_strength")
-                original_regime_confidence = indicators.get(
-                    "regime_confidence")
+                original_regime_confidence = indicators.get("regime_confidence")
                 original_directional_bias = indicators.get("directional_bias")
-                original_volatility_regime = indicators.get(
-                    "volatility_regime")
+                original_volatility_regime = indicators.get("volatility_regime")
 
                 # Tous les indicateurs au niveau racine
                 context.update(indicators)
@@ -240,10 +237,26 @@ class ContextManager:
                 # Sauvegarder le régime original du timeframe
                 if original_regime:
                     context["timeframe_regime"] = original_regime
-                    context["timeframe_regime_strength"] = original_regime_strength if original_regime_strength is not None else 0.5
-                    context["timeframe_regime_confidence"] = original_regime_confidence if original_regime_confidence is not None else 50.0
-                    context["timeframe_directional_bias"] = original_directional_bias if original_directional_bias is not None else "NEUTRAL"
-                    context["timeframe_volatility_regime"] = original_volatility_regime if original_volatility_regime is not None else "normal"
+                    context["timeframe_regime_strength"] = (
+                        original_regime_strength
+                        if original_regime_strength is not None
+                        else 0.5
+                    )
+                    context["timeframe_regime_confidence"] = (
+                        original_regime_confidence
+                        if original_regime_confidence is not None
+                        else 50.0
+                    )
+                    context["timeframe_directional_bias"] = (
+                        original_directional_bias
+                        if original_directional_bias is not None
+                        else "NEUTRAL"
+                    )
+                    context["timeframe_volatility_regime"] = (
+                        original_volatility_regime
+                        if original_volatility_regime is not None
+                        else "normal"
+                    )
 
             # Ajouter les données HTF au contexte pour validation MTF
             if htf_data:
@@ -304,8 +317,7 @@ class ContextManager:
             return context
 
         except Exception:
-            logger.exception(
-                "Erreur récupération contexte {symbol} {timeframe}")
+            logger.exception("Erreur récupération contexte {symbol} {timeframe}")
             return {}
 
     def _get_ohlcv_data(
@@ -428,18 +440,15 @@ class ContextManager:
             if "atr_14" in indicators:
                 logger.debug(f"ATR_14 trouvé: {indicators['atr_14']}")
             if "atr_percentile" in indicators:
-                logger.debug(
-                    f"ATR_percentile trouvé: {indicators['atr_percentile']}")
+                logger.debug(f"ATR_percentile trouvé: {indicators['atr_percentile']}")
 
             return indicators
 
         except Exception:
-            logger.exception(
-                "Erreur récupération indicateurs {symbol} {timeframe}")
+            logger.exception("Erreur récupération indicateurs {symbol} {timeframe}")
             return {}
 
-    def _get_market_structure(
-            self, symbol: str, timeframe: str) -> dict[str, Any]:
+    def _get_market_structure(self, symbol: str, timeframe: str) -> dict[str, Any]:
         """
         Analyse la structure de marché (support/résistance, pivots, etc.).
 
@@ -487,19 +496,16 @@ class ContextManager:
             }
 
             # Détection de niveaux psychologiques simples
-            psychological_levels = self._find_psychological_levels(
-                current_price)
+            psychological_levels = self._find_psychological_levels(current_price)
             structure["psychological_levels"] = psychological_levels
 
             return structure
 
         except Exception:
-            logger.exception(
-                "Erreur analyse structure marché {symbol} {timeframe}")
+            logger.exception("Erreur analyse structure marché {symbol} {timeframe}")
             return {}
 
-    def _get_volume_profile(
-            self, symbol: str, timeframe: str) -> dict[str, Any]:
+    def _get_volume_profile(self, symbol: str, timeframe: str) -> dict[str, Any]:
         """
         Analyse le profil de volume.
 
@@ -530,8 +536,7 @@ class ContextManager:
             return {
                 "current_volume": current_volume,
                 "average_volume": avg_volume,
-                "volume_ratio": current_volume /
-                avg_volume if avg_volume > 0 else 1,
+                "volume_ratio": current_volume / avg_volume if avg_volume > 0 else 1,
                 "total_quote_volume": sum(quote_volumes),
                 "volume_trend": self._calculate_volume_trend(volumes),
             }
@@ -631,8 +636,7 @@ class ContextManager:
             # MICRO-CAPS: Adaptation dynamique pour prix < 1 (PEPE, etc.)
             # Déterminer le nombre de décimales significatives
             elif price > 0:
-                significant_digits = max(
-                    2, -math.floor(math.log10(price)) + 1)
+                significant_digits = max(2, -math.floor(math.log10(price)) + 1)
                 base = round(price, significant_digits)
                 step = 10 ** (
                     -significant_digits + 1
@@ -719,8 +723,7 @@ class ContextManager:
                     )
 
                     # Moyenne ATR historique
-                    historical_atrs = [float(r[0])
-                                       for r in results_15m if r[0]]
+                    historical_atrs = [float(r[0]) for r in results_15m if r[0]]
                     if historical_atrs:
                         htf_data["mtf_atr15m_ma"] = sum(historical_atrs) / len(
                             historical_atrs
@@ -729,9 +732,14 @@ class ContextManager:
                         # Calculer ratio ATR 15m pour les filtres
                         atr15m_val = htf_data.get("mtf_atr15m")
                         atr15m_ma_val = htf_data.get("mtf_atr15m_ma")
-                        if atr15m_val is not None and atr15m_ma_val is not None and atr15m_ma_val > 0:
-                            htf_data["mtf_atr15m_ratio"] = float(
-                                atr15m_val) / float(atr15m_ma_val)
+                        if (
+                            atr15m_val is not None
+                            and atr15m_ma_val is not None
+                            and atr15m_ma_val > 0
+                        ):
+                            htf_data["mtf_atr15m_ratio"] = float(atr15m_val) / float(
+                                atr15m_ma_val
+                            )
 
             finally:
                 cursor.close()
@@ -795,8 +803,7 @@ class ContextManager:
             "1m": [],  # Pas de fallback pour 1m
         }
 
-        timeframes_to_try = fallback_sequence.get(
-            original_timeframe, ["3m", "1m"])
+        timeframes_to_try = fallback_sequence.get(original_timeframe, ["3m", "1m"])
 
         try:
             cursor = self.db_connection.cursor(cursor_factory=RealDictCursor)
@@ -864,8 +871,9 @@ class ContextManager:
                 cursor.close()
 
             if results:
-                vol_ratios = [float(row["volume_ratio"])
-                              for row in results if row["volume_ratio"]]
+                vol_ratios = [
+                    float(row["volume_ratio"]) for row in results if row["volume_ratio"]
+                ]
                 avg_vol_ratio = sum(vol_ratios) / len(vol_ratios)
 
                 # Convertir volume_ratio en estimation volume_quality_score
@@ -915,16 +923,13 @@ class ContextManager:
                 )
 
             # 3. VOLUME_RATIO mapping depuis relative_volume
-            if "relative_volume" in indicators and not indicators.get(
-                    "volume_ratio"):
+            if "relative_volume" in indicators and not indicators.get("volume_ratio"):
                 indicators["volume_ratio"] = indicators["relative_volume"]
 
         except Exception:
-            logger.exception(
-                "Erreur enrichissement indicateurs {symbol} {timeframe}")
+            logger.exception("Erreur enrichissement indicateurs {symbol} {timeframe}")
 
-    def _calculate_bars_since_ema20_touch(
-            self, symbol: str, cursor) -> int | None:
+    def _calculate_bars_since_ema20_touch(self, symbol: str, cursor) -> int | None:
         """
         Calcule le nombre de bougies depuis le dernier touch de l'EMA20 (3m).
 
@@ -988,9 +993,7 @@ class ContextManager:
         """
         return {
             "cache_size": len(self.context_cache),
-            "cached_symbols": list(
-                {key.split("_")[0] for key in self.context_cache}
-            ),
+            "cached_symbols": list({key.split("_")[0] for key in self.context_cache}),
             "base_cache_ttl": self.base_cache_ttl,
             "cache_strategy": "dynamic_ttl_per_timeframe",
         }

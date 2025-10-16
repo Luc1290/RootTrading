@@ -19,8 +19,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
     - SELL: CCI en zone de surachat avec conditions favorables
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres CCI durcis pour crypto intraday
         self.oversold_level = -150  # Zone survente stricte (crypto adapté)
@@ -42,7 +41,9 @@ class CCI_Reversal_Strategy(BaseStrategy):
             "extreme": 1.5,  # Très strict en volatilité extrême
         }
 
-    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _create_rejection_signal(
+        self, reason: str, metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Helper to create rejection signals."""
         base_metadata = {"strategy": self.name}
         if metadata:
@@ -55,7 +56,9 @@ class CCI_Reversal_Strategy(BaseStrategy):
             "metadata": base_metadata,
         }
 
-    def _validate_cci_data(self, values: dict[str, Any]) -> tuple[float | None, dict[str, Any] | None]:
+    def _validate_cci_data(
+        self, values: dict[str, Any]
+    ) -> tuple[float | None, dict[str, Any] | None]:
         """Valide les données CCI. Retourne (cci_20, error_signal)."""
         cci_20_raw = values["cci_20"]
         if cci_20_raw is None:
@@ -65,7 +68,9 @@ class CCI_Reversal_Strategy(BaseStrategy):
             cci_20 = float(cci_20_raw)
             return cci_20, None
         except (ValueError, TypeError):
-            return None, self._create_rejection_signal(f"CCI invalide: {cci_20_raw}", {})
+            return None, self._create_rejection_signal(
+                f"CCI invalide: {cci_20_raw}", {}
+            )
 
     def _validate_signal_requirements(
         self, signal_side: str, values: dict[str, Any]
@@ -80,12 +85,12 @@ class CCI_Reversal_Strategy(BaseStrategy):
                 if signal_side == "BUY" and momentum_score < 30:
                     return self._create_rejection_signal(
                         f"Rejet BUY: momentum encore trop faible ({momentum_score:.1f})",
-                        {"momentum_score": momentum_score}
+                        {"momentum_score": momentum_score},
                     )
                 if signal_side == "SELL" and momentum_score > 70:
                     return self._create_rejection_signal(
                         f"Rejet SELL: momentum encore trop fort ({momentum_score:.1f})",
-                        {"momentum_score": momentum_score}
+                        {"momentum_score": momentum_score},
                     )
             except (ValueError, TypeError):
                 pass
@@ -98,7 +103,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
                 if confluence_score < 30:
                     return self._create_rejection_signal(
                         f"Rejet: confluence trop faible ({confluence_score:.0f} < 30)",
-                        {"confluence_score": confluence_score}
+                        {"confluence_score": confluence_score},
                     )
             except (ValueError, TypeError):
                 pass
@@ -111,12 +116,12 @@ class CCI_Reversal_Strategy(BaseStrategy):
                 if signal_side == "BUY" and rsi > 65:
                     return self._create_rejection_signal(
                         f"Rejet BUY: RSI trop haut ({rsi:.1f}) pour reversal",
-                        {"rsi": rsi}
+                        {"rsi": rsi},
                     )
                 if signal_side == "SELL" and rsi < 35:
                     return self._create_rejection_signal(
                         f"Rejet SELL: RSI trop bas ({rsi:.1f}) pour reversal",
-                        {"rsi": rsi}
+                        {"rsi": rsi},
                     )
             except (ValueError, TypeError):
                 pass
@@ -129,7 +134,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
                 if volume_ratio < 0.2:
                     return self._create_rejection_signal(
                         f"Rejet: volume trop faible ({volume_ratio:.2f}x < 0.2x)",
-                        {"volume_ratio": volume_ratio}
+                        {"volume_ratio": volume_ratio},
                     )
             except (ValueError, TypeError):
                 pass
@@ -159,8 +164,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
     # Méthodes d'historique CCI supprimées - stratégie stateless
     # Pas de persistance temporelle requise en crypto 3m
 
-    def _get_adjusted_thresholds(
-            self, volatility_regime: str) -> dict[str, float]:
+    def _get_adjusted_thresholds(self, volatility_regime: str) -> dict[str, float]:
         """Ajuste les seuils selon le régime de volatilité."""
         adjustment = self.volatility_adjustment.get(volatility_regime, 1.0)
         return {
@@ -247,8 +251,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
 
             # Utilisation du trend_strength
             trend_strength_raw = values.get("trend_strength")
-            if trend_strength_raw and str(
-                    trend_strength_raw).lower() in ["strong"]:
+            if trend_strength_raw and str(trend_strength_raw).lower() in ["strong"]:
                 confidence_boost += 0.1
                 reason += f" et tendance {str(trend_strength_raw).lower()}"
 
@@ -306,13 +309,16 @@ class CCI_Reversal_Strategy(BaseStrategy):
                 market_regime
                 and regime_strength_raw
                 and str(regime_strength_raw).upper() in ["STRONG"]
-            ) and ((
-                signal_side == "BUY"
-                and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]
-            ) or (
-                signal_side == "SELL"
-                and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]
-            )):
+            ) and (
+                (
+                    signal_side == "BUY"
+                    and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]
+                )
+                or (
+                    signal_side == "SELL"
+                    and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]
+                )
+            ):
                 confidence_boost += 0.1
                 reason += f" en régime {market_regime}"
 
@@ -364,8 +370,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
 
             # Calcul final avec plafond et clamp strict
             total_boost = min(confidence_boost, 0.30)  # Boost total réduit
-            confidence = self.calculate_confidence(
-                base_confidence, 1 + total_boost)
+            confidence = self.calculate_confidence(base_confidence, 1 + total_boost)
             # Clamp explicite [0,1]
             confidence = min(1.0, max(0.0, confidence))
 

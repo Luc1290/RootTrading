@@ -25,8 +25,7 @@ class TEMA_Slope_Strategy(BaseStrategy):
     - SELL: TEMA pente négative forte + prix en-dessous TEMA + confirmations
     """
 
-    def __init__(self, symbol: str,
-                 data: dict[str, Any], indicators: dict[str, Any]):
+    def __init__(self, symbol: str, data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres TEMA Slope ANTI-SPAM - STRICTEMENT RENFORCÉS
         self.min_slope_threshold = (
@@ -120,8 +119,7 @@ class TEMA_Slope_Strategy(BaseStrategy):
     def _get_recent_prices(self) -> list | None:
         """Récupère les derniers prix pour calculer la pente TEMA."""
         try:
-            if self.data and "close" in self.data and len(
-                    self.data["close"]) >= 3:
+            if self.data and "close" in self.data and len(self.data["close"]) >= 3:
                 return [float(p) for p in self.data["close"][-3:]]
         except (IndexError, ValueError, TypeError):
             pass
@@ -154,8 +152,7 @@ class TEMA_Slope_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name},
             }
 
-        tema_analysis = self._analyze_tema_slope(
-            values, current_price, recent_prices)
+        tema_analysis = self._analyze_tema_slope(values, current_price, recent_prices)
         if tema_analysis is None:
             return {
                 "side": None,
@@ -214,8 +211,7 @@ class TEMA_Slope_Strategy(BaseStrategy):
                 pass
 
         # Méthode 2 AMÉLIORÉE: Fallback EMA plus stable que prix brut
-        if tema_slope is None and recent_prices is not None and len(
-                recent_prices) >= 3:
+        if tema_slope is None and recent_prices is not None and len(recent_prices) >= 3:
             try:
                 # Essayer fallback EMA_12 d'abord (plus stable)
                 ema_12 = values.get("ema_12")
@@ -228,8 +224,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
                     # Fallback prix brut si pas d'EMA
                     price_change = recent_prices[-1] - recent_prices[0]
                     price_slope = (
-                        price_change /
-                        recent_prices[0] if recent_prices[0] != 0 else 0)
+                        price_change / recent_prices[0] if recent_prices[0] != 0 else 0
+                    )
                     price_tema_ratio = current_price / tema_val if tema_val != 0 else 1
                     tema_slope = price_slope * price_tema_ratio
             except (ValueError, TypeError, ZeroDivisionError, IndexError):
@@ -250,8 +246,9 @@ class TEMA_Slope_Strategy(BaseStrategy):
             slope_strength = "weak"
 
         # Direction de la pente
-        slope_direction = ("bullish" if tema_slope >
-                           0 else "bearish" if tema_slope < 0 else "neutral")
+        slope_direction = (
+            "bullish" if tema_slope > 0 else "bearish" if tema_slope < 0 else "neutral"
+        )
 
         # Relation prix/TEMA
         price_above_tema = current_price > tema_val
@@ -275,11 +272,9 @@ class TEMA_Slope_Strategy(BaseStrategy):
         # Raisons de rejet potentielles
         rejection_reasons = []
         if slope_strength == "weak":
-            rejection_reasons.append(
-                f"Pente TEMA trop faible ({abs_slope:.6f})")
+            rejection_reasons.append(f"Pente TEMA trop faible ({abs_slope:.6f})")
         if alignment in ["bullish_divergent", "bearish_divergent"]:
-            rejection_reasons.append(
-                f"Prix et pente TEMA divergents ({alignment})")
+            rejection_reasons.append(f"Prix et pente TEMA divergents ({alignment})")
 
         return {
             "tema_value": tema_val,
@@ -342,13 +337,22 @@ class TEMA_Slope_Strategy(BaseStrategy):
         """Valide les exigences obligatoires pour un signal TEMA. Returns (is_valid, rejection_reason)."""
         # VALIDATION CONFLUENCE
         confluence_score = values.get("confluence_score", 0)
-        if not confluence_score or float(confluence_score) < self.min_confluence_required:
-            return False, f"Confluence insuffisante ({confluence_score}) < {self.min_confluence_required} - signal TEMA rejeté"
+        if (
+            not confluence_score
+            or float(confluence_score) < self.min_confluence_required
+        ):
+            return (
+                False,
+                f"Confluence insuffisante ({confluence_score}) < {self.min_confluence_required} - signal TEMA rejeté",
+            )
 
         # VALIDATION VOLUME
         volume_ratio = values.get("volume_ratio", 0)
         if not volume_ratio or float(volume_ratio) < self.min_volume_required:
-            return False, f"Volume insuffisant ({volume_ratio}) < {self.min_volume_required} - signal TEMA rejeté"
+            return (
+                False,
+                f"Volume insuffisant ({volume_ratio}) < {self.min_volume_required} - signal TEMA rejeté",
+            )
 
         # VALIDATION REGIME/BIAS
         market_regime = values.get("market_regime")
@@ -390,14 +394,19 @@ class TEMA_Slope_Strategy(BaseStrategy):
         reason = f"TEMA pente {slope_direction}: {tema_slope:.6f} ({slope_strength})"
 
         # VALIDATIONS OBLIGATOIRES GROUPÉES
-        is_valid, rejection_reason = self._validate_tema_signal_requirements(values, signal_side)
+        is_valid, rejection_reason = self._validate_tema_signal_requirements(
+            values, signal_side
+        )
         if not is_valid:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": rejection_reason,
-                "metadata": {"strategy": self.name, "rejected_reason": "validation_failed"},
+                "metadata": {
+                    "strategy": self.name,
+                    "rejected_reason": "validation_failed",
+                },
             }
 
         confluence_score = values.get("confluence_score", 0)
@@ -456,9 +465,9 @@ class TEMA_Slope_Strategy(BaseStrategy):
         if hull_20 is not None:
             try:
                 hull_val = float(hull_20)
-                hull_aligned = (
-                    signal_side == "BUY" and current_price > hull_val) or (
-                    signal_side == "SELL" and current_price < hull_val)
+                hull_aligned = (signal_side == "BUY" and current_price > hull_val) or (
+                    signal_side == "SELL" and current_price < hull_val
+                )
 
                 if hull_aligned:
                     confidence_boost += 0.10
@@ -471,9 +480,9 @@ class TEMA_Slope_Strategy(BaseStrategy):
         if dema_12 is not None:
             try:
                 dema_val = float(dema_12)
-                dema_aligned = (
-                    signal_side == "BUY" and current_price > dema_val) or (
-                    signal_side == "SELL" and current_price < dema_val)
+                dema_aligned = (signal_side == "BUY" and current_price > dema_val) or (
+                    signal_side == "SELL" and current_price < dema_val
+                )
 
                 if dema_aligned:
                     confidence_boost += 0.08
@@ -572,9 +581,9 @@ class TEMA_Slope_Strategy(BaseStrategy):
             try:
                 macd_val = float(macd_line)
                 macd_sig = float(macd_signal)
-                macd_aligned = (
-                    signal_side == "BUY" and macd_val > macd_sig) or (
-                    signal_side == "SELL" and macd_val < macd_sig)
+                macd_aligned = (signal_side == "BUY" and macd_val > macd_sig) or (
+                    signal_side == "SELL" and macd_val < macd_sig
+                )
 
                 if macd_aligned:
                     confirmations_count += 1  # COMPTE maintenant
@@ -701,9 +710,9 @@ class TEMA_Slope_Strategy(BaseStrategy):
         if vwap_10 is not None:
             try:
                 vwap = float(vwap_10)
-                vwap_aligned = (
-                    signal_side == "BUY" and current_price > vwap) or (
-                    signal_side == "SELL" and current_price < vwap)
+                vwap_aligned = (signal_side == "BUY" and current_price > vwap) or (
+                    signal_side == "SELL" and current_price < vwap
+                )
 
                 if vwap_aligned:
                     confidence_boost += 0.08
@@ -717,8 +726,7 @@ class TEMA_Slope_Strategy(BaseStrategy):
             if nearest_support is not None:
                 try:
                     support = float(nearest_support)
-                    distance_to_support = abs(
-                        current_price - support) / current_price
+                    distance_to_support = abs(current_price - support) / current_price
                     if distance_to_support <= 0.02:
                         confidence_boost += 0.10
                         reason += " + près support"
@@ -825,9 +833,9 @@ class TEMA_Slope_Strategy(BaseStrategy):
 
         # Clamp explicite de la confiance pour homogénéité
         confidence = min(
-            1.0, max(
-                0.0, self.calculate_confidence(
-                    base_confidence, 1 + confidence_boost)), )
+            1.0,
+            max(0.0, self.calculate_confidence(base_confidence, 1 + confidence_boost)),
+        )
         strength = self.get_strength_from_confidence(confidence)
 
         return {
@@ -882,8 +890,7 @@ class TEMA_Slope_Strategy(BaseStrategy):
         for indicator in essential_indicators:
             if indicator not in self.indicators or self.indicators[indicator] is None:
                 missing_essential += 1
-                logger.debug(
-                    f"{self.name}: Indicateur essentiel manquant: {indicator}")
+                logger.debug(f"{self.name}: Indicateur essentiel manquant: {indicator}")
 
         # Au moins 3/4 indicateurs essentiels requis
         if missing_essential > 1:
@@ -893,9 +900,7 @@ class TEMA_Slope_Strategy(BaseStrategy):
             return False
 
         # Vérifier qualité minimale des données critiques
-        if (
-            self.indicators.get("confluence_score")
-        ):
+        if self.indicators.get("confluence_score"):
             try:
                 conf_val = float(self.indicators["confluence_score"])
                 if (

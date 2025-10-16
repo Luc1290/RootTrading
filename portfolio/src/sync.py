@@ -41,8 +41,7 @@ async def sync_binance_forever():
     """
     while True:
         try:
-            account_manager = BinanceAccountManager(
-                BINANCE_API_KEY, BINANCE_SECRET_KEY)
+            account_manager = BinanceAccountManager(BINANCE_API_KEY, BINANCE_SECRET_KEY)
             balances = account_manager.calculate_asset_values()
 
             db = DBManager()
@@ -60,8 +59,7 @@ async def sync_binance_forever():
 
             portfolio.close()
             db.close()
-            logger.debug(
-                f"🔄 Balances Binance synchronisées ({len(balances)} actifs)")
+            logger.debug(f"🔄 Balances Binance synchronisées ({len(balances)} actifs)")
         except Exception:
             logger.exception("❌ Erreur sync Binance")
         await asyncio.sleep(60)
@@ -103,9 +101,8 @@ async def sync_db_forever():
 
                     # Trier les balances par valeur décroissante
                     balances_sorted = sorted(
-                        summary.balances,
-                        key=lambda x: x.value_usdc or 0,
-                        reverse=True)
+                        summary.balances, key=lambda x: x.value_usdc or 0, reverse=True
+                    )
 
                     for balance in balances_sorted:
                         if balance.total > 0:
@@ -127,8 +124,7 @@ async def sync_db_forever():
 
                 sync_count += 1
             else:
-                logger.warning(
-                    "⚠️ Impossible de récupérer le résumé du portfolio")
+                logger.warning("⚠️ Impossible de récupérer le résumé du portfolio")
 
             portfolio.close()
             db.close()

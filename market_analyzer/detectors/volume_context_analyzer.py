@@ -329,28 +329,22 @@ class VolumeContextAnalyzer:
         # 1. Conditions oversold (pour signaux BUY)
         if signal_type == "BUY" and rsi is not None:
             if rsi < 30 and cci is not None and cci < -200:
-                detected_contexts.append(
-                    (VolumeContextType.DEEP_OVERSOLD, 0.9))
+                detected_contexts.append((VolumeContextType.DEEP_OVERSOLD, 0.9))
             elif rsi < 40 and cci is not None and cci < -150:
-                detected_contexts.append(
-                    (VolumeContextType.MODERATE_OVERSOLD, 0.8))
+                detected_contexts.append((VolumeContextType.MODERATE_OVERSOLD, 0.8))
             elif rsi < 40:
-                detected_contexts.append(
-                    (VolumeContextType.OVERSOLD_BOUNCE, 0.7))
+                detected_contexts.append((VolumeContextType.OVERSOLD_BOUNCE, 0.7))
 
         # 2. Conditions de volatilité
         if adx is not None:
             if adx < 20:
-                detected_contexts.append(
-                    (VolumeContextType.LOW_VOLATILITY, 0.6))
+                detected_contexts.append((VolumeContextType.LOW_VOLATILITY, 0.6))
             elif adx > 35:
-                detected_contexts.append(
-                    (VolumeContextType.HIGH_VOLATILITY, 0.7))
+                detected_contexts.append((VolumeContextType.HIGH_VOLATILITY, 0.7))
 
         # 3. Patterns de volume
         if self._detect_volume_buildup(volumes):
-            detected_contexts.append(
-                (VolumeContextType.CONSOLIDATION_BREAK, 0.7))
+            detected_contexts.append((VolumeContextType.CONSOLIDATION_BREAK, 0.7))
         elif self._detect_volume_spike(volumes):
             detected_contexts.append((VolumeContextType.BREAKOUT, 0.8))
 
@@ -379,8 +373,7 @@ class VolumeContextAnalyzer:
 
         # 5. Tendance continuation
         if adx is not None and adx > 25 and rsi is not None and 40 <= rsi <= 70:
-            detected_contexts.append(
-                (VolumeContextType.TREND_CONTINUATION, 0.6))
+            detected_contexts.append((VolumeContextType.TREND_CONTINUATION, 0.6))
 
         # Sélection du meilleur contexte
         if detected_contexts:
@@ -406,15 +399,13 @@ class VolumeContextAnalyzer:
         return VolumeContext(
             context_type=best_context,
             min_ratio=float(
-                min_ratio if isinstance(
-                    min_ratio,
-                    int | float | str) else 0.0) *
-            tolerance_factor,
+                min_ratio if isinstance(min_ratio, int | float | str) else 0.0
+            )
+            * tolerance_factor,
             ideal_ratio=float(
-                ideal_ratio if isinstance(
-                    ideal_ratio,
-                    int | float | str) else 0.0) *
-            tolerance_factor,
+                ideal_ratio if isinstance(ideal_ratio, int | float | str) else 0.0
+            )
+            * tolerance_factor,
             confidence=confidence,
             pattern_detected=pattern_detected,
             tolerance_factor=tolerance_factor,
@@ -427,7 +418,7 @@ class VolumeContextAnalyzer:
         if len(volumes) < self.buildup_lookback + 1:
             return False
 
-        recent_volumes = volumes[-self.buildup_lookback:]
+        recent_volumes = volumes[-self.buildup_lookback :]
         increases = 0
         min_increase = 1.1  # 10% d'augmentation minimum
 
@@ -450,7 +441,7 @@ class VolumeContextAnalyzer:
         if len(volumes) < self.buildup_lookback + 1:
             return 0
 
-        recent_volumes = volumes[-self.buildup_lookback:]
+        recent_volumes = volumes[-self.buildup_lookback :]
         consecutive_increases = 0
         min_increase = 1.1  # 10% d'augmentation minimum
 
@@ -493,8 +484,7 @@ class VolumeContextAnalyzer:
             return "decreasing"
         return "stable"
 
-    def _identify_volume_pattern(
-            self, volumes: np.ndarray) -> VolumePatternType:
+    def _identify_volume_pattern(self, volumes: np.ndarray) -> VolumePatternType:
         """Identifie le pattern de volume dominant."""
         if self._detect_volume_spike(volumes):
             return VolumePatternType.SPIKE
@@ -512,8 +502,7 @@ class VolumeContextAnalyzer:
 
         return VolumePatternType.NORMAL
 
-    def _calculate_tolerance_factor(
-            self, market_conditions: dict[str, float]) -> float:
+    def _calculate_tolerance_factor(self, market_conditions: dict[str, float]) -> float:
         """Calcule le facteur de tolérance basé sur les conditions market."""
         tolerance_factors = []
 
@@ -550,8 +539,7 @@ class VolumeContextAnalyzer:
             return strength
 
         current_volume = volumes[-1]
-        avg_volume = np.mean(
-            volumes[-10:]) if len(volumes) >= 10 else np.mean(volumes)
+        avg_volume = np.mean(volumes[-10:]) if len(volumes) >= 10 else np.mean(volumes)
         volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
 
         # Bonus basé sur le ratio volume
@@ -616,14 +604,12 @@ class VolumeContextAnalyzer:
         if current_volume_ratio >= context.ideal_ratio:
             recommendations.append("✅ Volume excellent - Signal très fiable")
         elif current_volume_ratio >= context.min_ratio:
-            recommendations.append(
-                "⚠️ Volume acceptable - Signal modérément fiable")
+            recommendations.append("⚠️ Volume acceptable - Signal modérément fiable")
         else:
             recommendations.append("❌ Volume insuffisant - Prudence requise")
 
         if buildup_detected:
-            recommendations.append(
-                "📈 Volume buildup détecté - Momentum building")
+            recommendations.append("📈 Volume buildup détecté - Momentum building")
 
         if spike_detected:
             recommendations.append(
@@ -644,8 +630,7 @@ class VolumeContextAnalyzer:
             )
 
         if context.context_type == VolumeContextType.PUMP_START:
-            recommendations.append(
-                "🔥 Début pump détecté - Volume massif requis")
+            recommendations.append("🔥 Début pump détecté - Volume massif requis")
 
         return recommendations
 

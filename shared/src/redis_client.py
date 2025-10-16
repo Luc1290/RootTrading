@@ -82,8 +82,7 @@ class RedisMetrics:
     def get_stats(self) -> dict[str, Any]:
         """Retourne les statistiques d'utilisation."""
         with self.lock:
-            avg_time = sum(self.operation_times) / \
-                max(len(self.operation_times), 1)
+            avg_time = sum(self.operation_times) / max(len(self.operation_times), 1)
             return {
                 "operations": self.operations,
                 "publishes": self.publish_count,
@@ -186,8 +185,7 @@ class RedisClientPool:
                 f"✅ Pool de connexions Redis créé à {self.host}:{self.port} (DB: {self.db})"
             )
         except (ConnectionError, TimeoutError):
-            logger.exception(
-                "❌ Erreur de création du pool de connexions Redis")
+            logger.exception("❌ Erreur de création du pool de connexions Redis")
             raise
         else:
             return pool
@@ -206,8 +204,7 @@ class RedisClientPool:
         """
         # Redis n'a pas de commande native DECRBYFLOAT, nous utilisons
         # INCRBYFLOAT avec une valeur négative
-        return self._retry_operation(
-            self.redis.incrbyfloat, key, -abs(float(value)))
+        return self._retry_operation(self.redis.incrbyfloat, key, -abs(float(value)))
 
     def _retry_operation(self, operation_func, *args, max_retries=3, **kwargs):
         """
@@ -241,23 +238,20 @@ class RedisClientPool:
                 # Pause exponentielle avec jitter pour éviter la tempête de
                 # reconnexions
                 if retry_count <= max_retries:
-                    wait_time = (0.1 * (2**retry_count)) + \
-                        (random.random() * 0.1)
+                    wait_time = (0.1 * (2**retry_count)) + (random.random() * 0.1)
                     logger.warning(
                         f"⚠️ Erreur Redis (tentative {retry_count}/{max_retries}), "
-                        f"nouvelle tentative dans {wait_time:.2f}s: {e!s}")
+                        f"nouvelle tentative dans {wait_time:.2f}s: {e!s}"
+                    )
                     time.sleep(wait_time)
 
                     # Tenter une reconnexion
                     try:
                         self._reconnect()
                     except Exception:
-                        logger.exception(
-                            "❌ Échec de reconnexion: ")
+                        logger.exception("❌ Échec de reconnexion: ")
                 else:
-                    logger.exception(
-                        "❌ Échec de l'opération Redis après  tentatives"
-                    )
+                    logger.exception("❌ Échec de l'opération Redis après  tentatives")
                     raise last_error from e
             except Exception:
                 # Autres erreurs non liées à la connexion
@@ -399,11 +393,8 @@ class RedisClientPool:
         processor_thread.start()
 
     def _listen_for_messages(
-            self,
-            client_id: str,
-            pubsub,
-            message_queue: Queue,
-            stop_event: threading.Event):
+        self, client_id: str, pubsub, message_queue: Queue, stop_event: threading.Event
+    ):
         """
         Écoute les messages sur un pubsub et les met dans une queue.
 
@@ -445,7 +436,8 @@ class RedisClientPool:
 
                 logger.warning(
                     f"⚠️ Erreur de connexion dans le thread PubSub {client_id} "
-                    f"(tentative {retry_count}/{max_retries}): {e!s}")
+                    f"(tentative {retry_count}/{max_retries}): {e!s}"
+                )
 
                 # Backoff exponentiel
                 time.sleep(delay)
@@ -454,8 +446,7 @@ class RedisClientPool:
                 # Tenter une reconnexion à Redis
                 try:
                     # Créer une nouvelle connexion PubSub
-                    new_pubsub = self.redis.pubsub(
-                        ignore_subscribe_messages=True)
+                    new_pubsub = self.redis.pubsub(ignore_subscribe_messages=True)
 
                     # S'abonner aux mêmes canaux
                     channels = self.pubsub_channels.get(client_id, [])
@@ -469,12 +460,9 @@ class RedisClientPool:
                     # Remplacer le pubsub local
                     pubsub = new_pubsub
 
-                    logger.info(
-                        f"✅ Reconnexion PubSub réussie pour {client_id}")
+                    logger.info(f"✅ Reconnexion PubSub réussie pour {client_id}")
                 except Exception:
-                    logger.exception(
-                        "❌ Échec de reconnexion PubSub pour : "
-                    )
+                    logger.exception("❌ Échec de reconnexion PubSub pour : ")
 
             except Exception as e:
                 # Si connexion fermée ou arrêt demandé, sortir proprement
@@ -484,9 +472,7 @@ class RedisClientPool:
                     )
                     break
 
-                logger.exception(
-                    "❌ Erreur dans le thread d'écoute PubSub : "
-                )
+                logger.exception("❌ Erreur dans le thread d'écoute PubSub : ")
                 time.sleep(1)  # Pause pour éviter de consommer trop de CPU
 
     def _process_messages(
@@ -520,17 +506,13 @@ class RedisClientPool:
                 try:
                     callback(channel, data)
                 except Exception:
-                    logger.exception(
-                        "❌ Erreur dans le callback PubSub pour : "
-                    )
+                    logger.exception("❌ Erreur dans le callback PubSub pour : ")
 
                 # Indiquer que le traitement est terminé
                 message_queue.task_done()
 
             except Exception:
-                logger.exception(
-                    "❌ Erreur dans le thread de traitement PubSub : "
-                )
+                logger.exception("❌ Erreur dans le thread de traitement PubSub : ")
                 # Courte pause pour éviter de consommer trop de CPU
                 time.sleep(0.1)
 
@@ -551,8 +533,7 @@ class RedisClientPool:
         formatted_message = self._format_value(message)
 
         # Publier avec retry
-        result = self._retry_operation(
-            self.redis.publish, channel, formatted_message)
+        result = self._retry_operation(self.redis.publish, channel, formatted_message)
 
         # Enregistrer la métrique
         self.metrics.record_publish()
@@ -698,8 +679,7 @@ class RedisClientPool:
             1 si nouveau champ, 0 si mise à jour
         """
         formatted_value = self._format_value(value)
-        return self._retry_operation(
-            self.redis.hset, name, key, formatted_value)
+        return self._retry_operation(self.redis.hset, name, key, formatted_value)
 
     def hget(self, name: str, key: str) -> Any:
         """
@@ -727,11 +707,8 @@ class RedisClientPool:
             True si réussi
         """
         # Formater chaque valeur
-        formatted_mapping = {
-            k: self._format_value(v) for k,
-            v in mapping.items()}
-        return self._retry_operation(
-            self.redis.hset, key, mapping=formatted_mapping)
+        formatted_mapping = {k: self._format_value(v) for k, v in mapping.items()}
+        return self._retry_operation(self.redis.hset, key, mapping=formatted_mapping)
 
     def hgetall(self, name: str) -> dict[str, Any]:
         """
@@ -746,8 +723,7 @@ class RedisClientPool:
         result = self._retry_operation(self.redis.hgetall, name)
 
         # Parser chaque valeur
-        return {k: self._parse_value(v) for k,
-                v in result.items()} if result else {}
+        return {k: self._parse_value(v) for k, v in result.items()} if result else {}
 
     def hdel(self, name: str, *keys) -> int:
         """
@@ -916,8 +892,8 @@ class RedisPipeline:
                     if key == "mapping" and name in ("hmset", "hset"):
                         # Pour hmset/hset avec mapping, formater chaque valeur
                         formatted_mapping = {
-                            k: self.client._format_value(v) for k,
-                            v in value.items()}
+                            k: self.client._format_value(v) for k, v in value.items()
+                        }
                         formatted_kwargs[key] = formatted_mapping
                     else:
                         formatted_kwargs[key] = value

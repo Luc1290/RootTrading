@@ -171,9 +171,7 @@ class TestEMACoverageBoost:
                 "macd_histogram": 5,
             },  # BUY + MACD > 0
             # MACD confirme mais pas parfait (lignes 235-237)
-            {**base_setup,
-             "macd_line": -30,
-             "macd_signal": -35},
+            {**base_setup, "macd_line": -30, "macd_signal": -35},
             # BUY mais MACD < 0
             # MACD diverge (lignes 239-241)
             {

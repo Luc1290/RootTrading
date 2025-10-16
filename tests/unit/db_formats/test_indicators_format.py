@@ -211,10 +211,8 @@ class TestIndicatorsFormat:
 
             # Vérifier que ce n'est pas NaN ou infinity
             if isinstance(value, float):
-                assert not (
-                    value != value), f"Indicateur {name} est NaN"  # NaN != NaN
-                assert abs(value) != float(
-                    "inf"), f"Indicateur {name} est infini"
+                assert not (value != value), f"Indicateur {name} est NaN"  # NaN != NaN
+                assert abs(value) != float("inf"), f"Indicateur {name} est infini"
 
     def test_indicators_computation_dependency(self):
         """Test dépendances entre indicateurs calculés."""

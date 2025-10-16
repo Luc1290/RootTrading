@@ -40,7 +40,9 @@ class TelegramNotifier:
         if symbol not in self._last_notification:
             return True
 
-        time_since_last = datetime.now(tz=timezone.utc) - self._last_notification[symbol]
+        time_since_last = (
+            datetime.now(tz=timezone.utc) - self._last_notification[symbol]
+        )
         return time_since_last > timedelta(minutes=self._cooldown_minutes)
 
     def send_buy_signal(
@@ -85,8 +87,7 @@ class TelegramNotifier:
         """
         # Vérifier anti-spam
         if not self._can_send_notification(symbol):
-            logger.info(
-                f"⏸️ Notification ignorée pour {symbol} (cooldown actif)")
+            logger.info(f"⏸️ Notification ignorée pour {symbol} (cooldown actif)")
             return False
 
         # Construire le message
@@ -262,12 +263,10 @@ class TelegramNotifier:
 💰 Prix: <b>{price_str}</b>"""
 
         # BADGE EARLY ENTRY (NOUVEAU)
-        if early_signal and early_signal.get(
-                "level") in ["entry_now", "prepare"]:
+        if early_signal and early_signal.get("level") in ["entry_now", "prepare"]:
             early_level = early_signal.get("level", "").upper()
             early_score = early_signal.get("score", 0)
-            entry_window = early_signal.get(
-                "estimated_entry_window_seconds", 0)
+            entry_window = early_signal.get("estimated_entry_window_seconds", 0)
 
             early_emoji = "🚀" if early_level == "ENTRY_NOW" else "⚡"
             message += f"""
@@ -336,12 +335,10 @@ SL: {format_price(stop_loss)} ({sl_loss:.2f}%)
                 # Déterminer le side (BUY pour BUY_NOW, BUY_DCA et EARLY_ENTRY,
                 # sinon déduire du contexte)
                 side = (
-                    "BUY" if action in [
-                        "BUY_NOW",
-                        "BUY_DCA",
-                        "EARLY_ENTRY"] else "SELL" if action in [
-                        "SELL_OVERBOUGHT",
-                        "AVOID"] else "BUY")
+                    "BUY"
+                    if action in ["BUY_NOW", "BUY_DCA", "EARLY_ENTRY"]
+                    else "SELL" if action in ["SELL_OVERBOUGHT", "AVOID"] else "BUY"
+                )
 
                 # Métadonnées additionnelles
                 metadata = {

@@ -197,37 +197,28 @@ class ChartService:
                 indicator_data["rsi_14"] = [c.get("rsi_14") for c in candles]
                 indicator_data["rsi_21"] = [c.get("rsi_21") for c in candles]
             elif indicator == "macd":
-                indicator_data["macd_line"] = [
-                    c.get("macd_line") for c in candles]
-                indicator_data["macd_signal"] = [
-                    c.get("macd_signal") for c in candles]
+                indicator_data["macd_line"] = [c.get("macd_line") for c in candles]
+                indicator_data["macd_signal"] = [c.get("macd_signal") for c in candles]
                 indicator_data["macd_histogram"] = [
                     c.get("macd_histogram") for c in candles
                 ]
             elif indicator == "bollinger_bands":
-                indicator_data["bb_upper"] = [
-                    c.get("bb_upper") for c in candles]
-                indicator_data["bb_middle"] = [
-                    c.get("bb_middle") for c in candles]
-                indicator_data["bb_lower"] = [
-                    c.get("bb_lower") for c in candles]
-                indicator_data["bb_position"] = [
-                    c.get("bb_position") for c in candles]
-                indicator_data["bb_width"] = [
-                    c.get("bb_width") for c in candles]
+                indicator_data["bb_upper"] = [c.get("bb_upper") for c in candles]
+                indicator_data["bb_middle"] = [c.get("bb_middle") for c in candles]
+                indicator_data["bb_lower"] = [c.get("bb_lower") for c in candles]
+                indicator_data["bb_position"] = [c.get("bb_position") for c in candles]
+                indicator_data["bb_width"] = [c.get("bb_width") for c in candles]
             elif indicator == "stochastic":
                 indicator_data["stoch_k"] = [c.get("stoch_k") for c in candles]
                 indicator_data["stoch_d"] = [c.get("stoch_d") for c in candles]
             elif indicator == "williams_r":
-                indicator_data["williams_r"] = [
-                    c.get("williams_r") for c in candles]
+                indicator_data["williams_r"] = [c.get("williams_r") for c in candles]
             elif indicator == "cci":
                 indicator_data["cci_20"] = [c.get("cci_20") for c in candles]
             elif indicator == "adx":
                 indicator_data["adx_14"] = [c.get("adx_14") for c in candles]
             elif indicator == "momentum":
-                indicator_data["momentum_10"] = [
-                    c.get("momentum_10") for c in candles]
+                indicator_data["momentum_10"] = [c.get("momentum_10") for c in candles]
                 indicator_data["roc_10"] = [c.get("roc_10") for c in candles]
                 indicator_data["roc_20"] = [c.get("roc_20") for c in candles]
             elif indicator == "volume":

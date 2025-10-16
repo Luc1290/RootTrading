@@ -12,7 +12,6 @@ Calculation:
 5. MFI = 100 - (100 / (1 + Money Flow Ratio))
 """
 
-
 import numpy as np
 
 
@@ -57,8 +56,8 @@ def calculate_mfi(
     money_flows = typical_prices * volumes_array
 
     # Get the last period+1 values (need period+1 to compare direction)
-    recent_typical = typical_prices[-(period + 1):]
-    recent_flows = money_flows[-(period + 1):]
+    recent_typical = typical_prices[-(period + 1) :]
+    recent_flows = money_flows[-(period + 1) :]
 
     # Separate positive and negative money flows
     positive_flow = 0

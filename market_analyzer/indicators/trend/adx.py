@@ -71,8 +71,7 @@ def calculate_adx(
             adx_values = talib.ADX(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return float(
-                adx_values[-1]) if not np.isnan(adx_values[-1]) else None
+            return float(adx_values[-1]) if not np.isnan(adx_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib ADX error: {e}, using fallback")
 
@@ -123,27 +122,15 @@ def calculate_adx_full(
 
     if TALIB_AVAILABLE:
         try:
-            adx = talib.ADX(
-                highs_array,
-                lows_array,
-                closes_array,
-                timeperiod=period)
+            adx = talib.ADX(highs_array, lows_array, closes_array, timeperiod=period)
             plus_di = talib.PLUS_DI(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
             minus_di = talib.MINUS_DI(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            dx = talib.DX(
-                highs_array,
-                lows_array,
-                closes_array,
-                timeperiod=period)
-            adxr = talib.ADXR(
-                highs_array,
-                lows_array,
-                closes_array,
-                timeperiod=period)
+            dx = talib.DX(highs_array, lows_array, closes_array, timeperiod=period)
+            adxr = talib.ADXR(highs_array, lows_array, closes_array, timeperiod=period)
 
             return {
                 "adx": float(adx[-1]) if not np.isnan(adx[-1]) else None,
@@ -155,8 +142,7 @@ def calculate_adx_full(
         except Exception as e:
             logger.warning(f"TA-Lib ADX full error: {e}, using fallback")
 
-    return _calculate_adx_full_manual(
-        highs_array, lows_array, closes_array, period)
+    return _calculate_adx_full_manual(highs_array, lows_array, closes_array, period)
 
 
 def calculate_dmi(
@@ -213,11 +199,7 @@ def calculate_adx_series(
 
     if TALIB_AVAILABLE:
         try:
-            adx = talib.ADX(
-                highs_array,
-                lows_array,
-                closes_array,
-                timeperiod=period)
+            adx = talib.ADX(highs_array, lows_array, closes_array, timeperiod=period)
             plus_di = talib.PLUS_DI(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
@@ -238,8 +220,7 @@ def calculate_adx_series(
             logger.warning(f"TA-Lib ADX series error: {e}, using fallback")
 
     # Manual calculation
-    return _calculate_adx_series_manual(
-        highs_array, lows_array, closes_array, period)
+    return _calculate_adx_series_manual(highs_array, lows_array, closes_array, period)
 
 
 def adx_trend_strength(adx_value: float | None) -> str:
@@ -344,8 +325,7 @@ def calculate_adxr(
             adxr_values = talib.ADXR(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return float(
-                adxr_values[-1]) if not np.isnan(adxr_values[-1]) else None
+            return float(adxr_values[-1]) if not np.isnan(adxr_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib ADXR error: {e}, using fallback")
 
@@ -405,8 +385,7 @@ def _calculate_adx_manual(
     for i in range(1, len(highs)):
         from ..volatility.atr import calculate_true_range
 
-        tr = calculate_true_range(
-            float(highs[i]), float(lows[i]), float(closes[i - 1]))
+        tr = calculate_true_range(float(highs[i]), float(lows[i]), float(closes[i - 1]))
         tr_series.append(tr)
 
     if len(tr_series) < period:
@@ -477,8 +456,7 @@ def _calculate_adx_full_manual(
     for i in range(1, len(highs)):
         from ..volatility.atr import calculate_true_range
 
-        tr = calculate_true_range(
-            float(highs[i]), float(lows[i]), float(closes[i - 1]))
+        tr = calculate_true_range(float(highs[i]), float(lows[i]), float(closes[i - 1]))
         tr_series.append(tr)
 
     if len(tr_series) < period:
@@ -563,10 +541,7 @@ def _calculate_adx_series_manual(
             plus_di_series.append(result["plus_di"])
             minus_di_series.append(result["minus_di"])
 
-    return {
-        "adx": adx_series,
-        "plus_di": plus_di_series,
-        "minus_di": minus_di_series}
+    return {"adx": adx_series, "plus_di": plus_di_series, "minus_di": minus_di_series}
 
 
 def calculate_trend_angle(

@@ -46,8 +46,7 @@ class CircuitBreaker:
 
         if self.failure_count >= self.failure_threshold:
             self.state = "OPEN"
-            logger.warning(
-                f"Circuit breaker OPEN après {self.failure_count} échecs")
+            logger.warning(f"Circuit breaker OPEN après {self.failure_count} échecs")
 
     def can_execute(self) -> bool:
         """Vérifie si on peut exécuter un appel."""
@@ -55,7 +54,9 @@ class CircuitBreaker:
             return True
 
         if self.state == "OPEN":
-            if self.last_failure_time is not None and datetime.now(tz=timezone.utc) - self.last_failure_time > timedelta(seconds=self.reset_timeout):
+            if self.last_failure_time is not None and datetime.now(
+                tz=timezone.utc
+            ) - self.last_failure_time > timedelta(seconds=self.reset_timeout):
                 self.state = "HALF_OPEN"
                 logger.info("Circuit breaker passé en HALF_OPEN")
                 return True
@@ -86,15 +87,13 @@ class ServiceClient:
             analyzer_url: URL du service Analyzer
         """
         self.endpoints = {
-            "trader": ServiceEndpoint(
-                "trader", trader_url, timeout=15.0), "portfolio": ServiceEndpoint(
-                "portfolio", portfolio_url, timeout=15.0), "analyzer": ServiceEndpoint(
-                "analyzer", analyzer_url, timeout=10.0), }
+            "trader": ServiceEndpoint("trader", trader_url, timeout=15.0),
+            "portfolio": ServiceEndpoint("portfolio", portfolio_url, timeout=15.0),
+            "analyzer": ServiceEndpoint("analyzer", analyzer_url, timeout=10.0),
+        }
 
         # Circuit breakers par service
-        self.circuit_breakers = {
-            name: CircuitBreaker() for name in self.endpoints
-        }
+        self.circuit_breakers = {name: CircuitBreaker() for name in self.endpoints}
 
         # Cache simple avec TTL
         self._cache: dict[str, Any] = {}
@@ -127,8 +126,7 @@ class ServiceClient:
 
         circuit_breaker = self.circuit_breakers[service]
         if not circuit_breaker.can_execute():
-            logger.warning(
-                f"Circuit breaker OPEN pour {service}, requête bloquée")
+            logger.warning(f"Circuit breaker OPEN pour {service}, requête bloquée")
             return None
 
         service_config = self.endpoints[service]
@@ -164,8 +162,7 @@ class ServiceClient:
 
     # === API Trader ===
 
-    def get_active_cycles(self, symbol: str |
-                          None = None) -> list[dict[str, Any]]:
+    def get_active_cycles(self, symbol: str | None = None) -> list[dict[str, Any]]:
         """
         Récupère les positions actives depuis le portfolio service.
 
@@ -182,8 +179,7 @@ class ServiceClient:
             if response and isinstance(response, list):
                 # Filtrer par symbole si spécifié
                 if symbol:
-                    return [
-                        pos for pos in response if pos.get("symbol") == symbol]
+                    return [pos for pos in response if pos.get("symbol") == symbol]
                 return response
             return []
 
@@ -376,8 +372,11 @@ class ServiceClient:
         cache_key = "portfolio:summary"
 
         # Cache de 5 secondes pour le résumé
-        if cache_key in self._cache and datetime.now(timezone.utc).timestamp() - \
-                    self._cache_ttl[cache_key] < 5.0:
+        if (
+            cache_key in self._cache
+            and datetime.now(timezone.utc).timestamp() - self._cache_ttl[cache_key]
+            < 5.0
+        ):
             return self._cache[cache_key]
 
         response = self._make_request("portfolio", "/summary")
@@ -424,8 +423,7 @@ class ServiceClient:
                 required_amount = amount
 
             # Vérifier la balance disponible
-            available_balance = all_balances.get(
-                required_asset, {}).get("free", 0.0)
+            available_balance = all_balances.get(required_asset, {}).get("free", 0.0)
 
             can_trade = available_balance >= required_amount
 

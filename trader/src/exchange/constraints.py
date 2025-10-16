@@ -113,12 +113,9 @@ class BinanceSymbolConstraints:
             constraints["tick_size"] = symbol_data.get("tick_size")
         else:
             # Utiliser les valeurs par défaut
-            constraints["min_qty"] = self.default_min_quantities.get(
-                symbol, 0.001)
-            constraints["step_size"] = self.default_step_sizes.get(
-                symbol, 0.0001)
-            constraints["min_notional"] = self.default_min_notionals.get(
-                symbol, 10.0)
+            constraints["min_qty"] = self.default_min_quantities.get(symbol, 0.001)
+            constraints["step_size"] = self.default_step_sizes.get(symbol, 0.0001)
+            constraints["min_notional"] = self.default_min_notionals.get(symbol, 10.0)
             constraints["tick_size"] = None
 
         # Calculer la précision des prix
@@ -229,8 +226,9 @@ class BinanceSymbolConstraints:
         # la notation scientifique
         if result < 0.0001:
             # Calculer le nombre de décimales nécessaires selon le step_size
-            step_decimals = (len(str(step_dec).split(
-                ".")[-1]) if "." in str(step_dec) else 0)
+            step_decimals = (
+                len(str(step_dec).split(".")[-1]) if "." in str(step_dec) else 0
+            )
             # Formater avec suffisamment de décimales et reconvertir en float
             formatted = f"{result:.{step_decimals}f}"
             logger.debug(
@@ -273,11 +271,7 @@ class BinanceSymbolConstraints:
         min_qty = self.get_min_qty(symbol)
         return quantity >= min_qty
 
-    def is_notional_valid(
-            self,
-            symbol: str,
-            quantity: float,
-            price: float) -> bool:
+    def is_notional_valid(self, symbol: str, quantity: float, price: float) -> bool:
         """
         Vérifie si la valeur totale (quantité * prix) est valide selon les règles de Binance.
 

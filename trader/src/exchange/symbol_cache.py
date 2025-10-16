@@ -28,8 +28,7 @@ class SymbolConstraintsCache:
         self._timestamps: dict[str, float] = {}
         self._lock = Lock()
 
-        logger.info(
-            f"✅ Cache contraintes symboles initialisé (TTL: {ttl_seconds}s)")
+        logger.info(f"✅ Cache contraintes symboles initialisé (TTL: {ttl_seconds}s)")
 
     def get(self, symbol: str) -> dict[str, Any] | None:
         """
@@ -77,8 +76,7 @@ class SymbolConstraintsCache:
             self._cache[symbol] = constraints.copy()
             self._timestamps[symbol] = time.time()
 
-            logger.debug(
-                f"💾 Contraintes mises en cache pour {symbol}: {constraints}")
+            logger.debug(f"💾 Contraintes mises en cache pour {symbol}: {constraints}")
 
     def invalidate(self, symbol: str) -> bool:
         """
@@ -159,10 +157,7 @@ class SymbolConstraintsCache:
                 stats["entries_by_age"][symbol] = {
                     "age_seconds": age_seconds,
                     "age_minutes": age_minutes,
-                    "expires_in_seconds": max(
-                        0,
-                        self.ttl_seconds -
-                        age_seconds),
+                    "expires_in_seconds": max(0, self.ttl_seconds - age_seconds),
                 }
 
             return stats

@@ -18,8 +18,8 @@ sys.path.append(str(Path(__file__).parent.parent.parent.resolve()))
 
 # Configuration du logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger("kafka_producer")
 
 
@@ -40,9 +40,7 @@ class KafkaProducer:
         self.redis_client = RedisClient()
         logger.info(f"✅ Producteur Kafka+Redis initialisé pour {broker}")
 
-    def publish_market_data(
-        self, data: dict[str, Any], key: str | None = None
-    ) -> None:
+    def publish_market_data(self, data: dict[str, Any], key: str | None = None) -> None:
         """
         Publie les données de marché sur le topic Kafka approprié.
 
@@ -51,8 +49,7 @@ class KafkaProducer:
             key: Clé à utiliser pour le partitionnement (généralement le symbole)
         """
         if not data or "symbol" not in data:
-            logger.error(
-                "❌ Données de marché invalides, impossible de publier")
+            logger.error("❌ Données de marché invalides, impossible de publier")
             return
 
         symbol = data["symbol"].lower()
@@ -83,8 +80,7 @@ class KafkaProducer:
                     f"🔄 Données en cours {symbol.upper()}: prix actuel {data['close']}"
                 )
         except Exception:
-            logger.exception(
-                "❌ Erreur lors de la publication sur Kafka: ")
+            logger.exception("❌ Erreur lors de la publication sur Kafka: ")
 
     def publish_to_topic(
         self, topic: str, data: dict[str, Any], key: str | None = None
@@ -105,14 +101,12 @@ class KafkaProducer:
                 symbol = data.get("symbol", "N/A")
                 timeframe = data.get("timeframe", "N/A")
                 price = data.get("close", "N/A")
-                logger.info(
-                    f"📊 Données publiées {symbol} {timeframe}: {price}")
+                logger.info(f"📊 Données publiées {symbol} {timeframe}: {price}")
 
         except Exception:
             logger.exception("❌ Erreur publication topic {topic}")
 
-    def publish_account_data(
-            self, data: dict[str, Any], data_type: str) -> None:
+    def publish_account_data(self, data: dict[str, Any], data_type: str) -> None:
         """
         Publie les données de compte sur le topic Kafka approprié.
 
@@ -126,9 +120,7 @@ class KafkaProducer:
             self.client.produce(topic=topic, message=data)
             logger.info(f"💰 Publié données de compte sur {topic}")
         except Exception:
-            logger.exception(
-                "❌ Erreur lors de la publication des données de compte: "
-            )
+            logger.exception("❌ Erreur lors de la publication des données de compte: ")
 
     def flush(self) -> None:
         """

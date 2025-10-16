@@ -5,6 +5,7 @@ Définit les structures de données et les interactions avec la base de données
 
 import contextlib
 import logging
+
 # Importer les modules partagés
 import sys
 import time
@@ -94,9 +95,7 @@ class DBManager:
             self.conn = psycopg2.connect(self.db_url)
             logger.info("✅ Connexion directe à la base de données établie")
         except Exception:
-            logger.exception(
-                "❌ Erreur lors de la connexion à la base de données: "
-            )
+            logger.exception("❌ Erreur lors de la connexion à la base de données: ")
             self.conn = None
 
     def _ensure_connection(self) -> bool:
@@ -112,9 +111,7 @@ class DBManager:
                 try:
                     self.conn = self.pool.getconn()
                 except Exception:
-                    logger.exception(
-                        "❌ Impossible d'obtenir une connexion du pool: "
-                    )
+                    logger.exception("❌ Impossible d'obtenir une connexion du pool: ")
                     # Fallback: connexion directe
                     self._connect()
                     return self.conn is not None
@@ -149,9 +146,7 @@ class DBManager:
                 try:
                     self.conn = self.pool.getconn()
                 except Exception:
-                    logger.exception(
-                        "❌ Impossible d'obtenir une nouvelle connexion: "
-                    )
+                    logger.exception("❌ Impossible d'obtenir une nouvelle connexion: ")
                     # Fallback: connexion directe
                     self._connect()
                 else:
@@ -270,8 +265,7 @@ class DBManager:
                 return None
 
         if last_error:
-            logger.error(
-                f"❌ Échec après {max_retries} tentatives: {last_error!s}")
+            logger.error(f"❌ Échec après {max_retries} tentatives: {last_error!s}")
         return None
 
     def execute_batch(
@@ -304,8 +298,7 @@ class DBManager:
             if self.conn:
                 with self.conn.cursor() as cursor:
                     # Utiliser execute_values pour les performances
-                    execute_values(
-                        cursor, query, params_list, page_size=page_size)
+                    execute_values(cursor, query, params_list, page_size=page_size)
 
                     if commit and self.conn:
                         self.conn.commit()
@@ -386,9 +379,7 @@ class DBManager:
                     self.conn.close()
                     logger.debug("✅ Connexion à la base de données fermée")
             except Exception:
-                logger.exception(
-                    "❌ Erreur lors de la fermeture de la connexion: "
-                )
+                logger.exception("❌ Erreur lors de la fermeture de la connexion: ")
             finally:
                 self.conn = None
 
@@ -602,7 +593,8 @@ class PortfolioModel:
                 balances=[],
                 total_value=0,
                 active_trades=0,
-                timestamp=datetime.now(tz=timezone.utc))
+                timestamp=datetime.now(tz=timezone.utc),
+            )
         else:
             return summary
 
@@ -652,8 +644,7 @@ class PortfolioModel:
         WHERE total > 0
         AND timestamp > NOW() - INTERVAL '7 days'
         """
-        known_assets_result = self.db.execute_query(
-            known_assets_query, fetch_all=True)
+        known_assets_result = self.db.execute_query(known_assets_query, fetch_all=True)
 
         if known_assets_result and isinstance(known_assets_result, list):
             # Pour chaque actif connu mais absent de Binance, ajouter une
@@ -905,8 +896,7 @@ class PortfolioModel:
                 f"⚠️ Erreur lors du nettoyage des anciens enregistrements: {e}"
             )
 
-    def get_strategy_configs(
-            self, name: str | None = None) -> list[dict[str, Any]]:
+    def get_strategy_configs(self, name: str | None = None) -> list[dict[str, Any]]:
         """
         Récupère les configurations de stratégie.
 

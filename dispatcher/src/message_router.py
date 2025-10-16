@@ -75,14 +75,14 @@ class MessageRouter:
         self.high_priority_queue: deque = deque(maxlen=5000)
 
         # File d'attente pour les messages en cas de panne Redis
-        self.message_queue: deque = deque(
-            maxlen=10000)  # Limiter à 10 000 messages
+        self.message_queue: deque = deque(maxlen=10000)  # Limiter à 10 000 messages
         self.queue_lock = threading.Lock()
         self.queue_processor_running = True
 
         # Démarrer le thread de traitement de la file d'attente
         self.queue_processor_thread = threading.Thread(
-            target=self._process_queue, daemon=True, name="MessageQueueProcessor")
+            target=self._process_queue, daemon=True, name="MessageQueueProcessor"
+        )
         self.queue_processor_thread.start()
 
         # Démarrer le thread de traitement prioritaire
@@ -129,8 +129,7 @@ class MessageRouter:
         # Par défaut = priorité normale
         return "normal"
 
-    def _publish_high_priority(
-            self, channel: str, message: dict[str, Any]) -> None:
+    def _publish_high_priority(self, channel: str, message: dict[str, Any]) -> None:
         """
         Publie un message haute priorité sur Redis.
         Utilise une connexion dédiée pour les messages critiques.
@@ -234,8 +233,7 @@ class MessageRouter:
                         except Exception as e:
                             # En cas d'échec, remettre le message dans la file
                             # d'attente
-                            self.message_queue.append(
-                                (channel, message, priority))
+                            self.message_queue.append((channel, message, priority))
                             logger.warning(
                                 f"Échec de publication depuis la file d'attente: {e!s}"
                             )
@@ -243,9 +241,7 @@ class MessageRouter:
                             # Pause plus longue en cas d'erreur
                             time.sleep(1.0)
             except Exception:
-                logger.exception(
-                    "❌ Erreur dans le traitement de la file d'attente: "
-                )
+                logger.exception("❌ Erreur dans le traitement de la file d'attente: ")
 
             # Courte pause pour éviter de consommer trop de CPU
             time.sleep(0.1)
@@ -286,8 +282,7 @@ class MessageRouter:
 
         return None
 
-    def _transform_message(
-            self, topic: str, message: dict[str, Any]) -> dict[str, Any]:
+    def _transform_message(self, topic: str, message: dict[str, Any]) -> dict[str, Any]:
         """
         Transforme le message si nécessaire et assure que tous les champs essentiels sont présents.
         Optimisé pour les données ultra-enrichies avec indicateurs techniques.
@@ -326,8 +321,7 @@ class MessageRouter:
                     transformed["timeframe"] = timeframe
 
                 # Validation des champs essentiels pour les données de marché
-                required_fields = [
-                    "time", "open", "high", "low", "close", "volume"]
+                required_fields = ["time", "open", "high", "low", "close", "volume"]
                 for field in required_fields:
                     if field not in transformed:
                         logger.warning(
@@ -340,22 +334,19 @@ class MessageRouter:
 
                 # Vérifier que c'est bien des données brutes (pas
                 # d'indicateurs)
-                indicator_fields = [
-                    "rsi_14", "ema_12", "macd_line", "bb_upper"]
-                has_indicators = any(
-                    ind in transformed for ind in indicator_fields)
+                indicator_fields = ["rsi_14", "ema_12", "macd_line", "bb_upper"]
+                has_indicators = any(ind in transformed for ind in indicator_fields)
                 if has_indicators:
                     logger.warning(
                         "ATTENTION: Données avec indicateurs reçues du Gateway - architecture corrompue!"
                     )
                     transformed["_routing"]["data_type"] = "corrupted_enriched_data"
 
-        elif (
-            topic == "market.data"
-            or (topic.startswith("market.data.")
-                and not any(
+        elif topic == "market.data" or (
+            topic.startswith("market.data.")
+            and not any(
                 topic.endswith(f".{tf}") for tf in ["1m", "3m", "5m", "15m", "1h", "1d"]
-            ))
+            )
         ):
             # Format legacy ou données brutes génériques
             transformed["_routing"]["data_type"] = "raw_market_data_legacy"
@@ -398,9 +389,8 @@ class MessageRouter:
             now = time.time()
             # Nettoyage des clés expirées
             self._dedup_cache = {
-                k: t for k,
-                t in self._dedup_cache.items() if now -
-                t < self._dedup_ttl}
+                k: t for k, t in self._dedup_cache.items() if now - t < self._dedup_ttl
+            }
 
             # Clé de déduplication adaptée au type de message
             if topic.startswith("analyzer.signals"):
@@ -432,8 +422,9 @@ class MessageRouter:
             # Déterminer la priorité si non spécifiée
             if priority is None:
                 # Données de marché en temps réel = haute priorité
-                if (topic.startswith("market.data") and message.get(
-                        "is_closed", False)) or topic.startswith("signals"):
+                if (
+                    topic.startswith("market.data") and message.get("is_closed", False)
+                ) or topic.startswith("signals"):
                     priority = "high"
                 else:
                     priority = "normal"
@@ -442,8 +433,7 @@ class MessageRouter:
             channel = self._get_redis_channel(topic)
 
             if not channel:
-                logger.warning(
-                    f"Aucun canal Redis trouvé pour le topic {topic}")
+                logger.warning(f"Aucun canal Redis trouvé pour le topic {topic}")
                 return False
 
             # Transformer le message si nécessaire
@@ -467,15 +457,13 @@ class MessageRouter:
                 self.stats["messages_routed"] += 1
 
                 # Log détaillé en niveau debug
-                logger.debug(
-                    f"Message routé ({priority}): {topic} -> {channel}")
+                logger.debug(f"Message routé ({priority}): {topic} -> {channel}")
 
             except Exception as e:
                 # En cas d'échec, mettre le message en file d'attente
                 with self.queue_lock:
                     # Ajouter la priorité dans le tuple
-                    self.message_queue.append(
-                        (channel, transformed_message, priority))
+                    self.message_queue.append((channel, transformed_message, priority))
                     self.stats["messages_queued"] += 1
 
                 logger.warning(
@@ -490,8 +478,7 @@ class MessageRouter:
             self.stats["errors"] += 1
             return False
 
-    def batch_route_messages(
-            self, messages: list[tuple[str, dict[str, Any]]]) -> int:
+    def batch_route_messages(self, messages: list[tuple[str, dict[str, Any]]]) -> int:
         """
         Route un lot de messages.
 
