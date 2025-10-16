@@ -5,8 +5,7 @@ import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import (FastAPI, HTTPException, Request, WebSocket,
-                     WebSocketDisconnect)
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -14,8 +13,7 @@ from fastapi.templating import Jinja2Templates
 
 from visualization.src.chart_service import ChartService
 from visualization.src.data_manager import DataManager
-from visualization.src.opportunity_calculator_pro import \
-    OpportunityCalculatorPro
+from visualization.src.opportunity_calculator_pro import OpportunityCalculatorPro
 from visualization.src.statistics_service import StatisticsService
 from visualization.src.websocket_hub import WebSocketHub
 
@@ -29,6 +27,7 @@ sys.path.insert(
 
 # Configuration du logging centralisée
 from shared.logging_config import setup_logging
+
 logger = setup_logging("visualization", log_level="INFO")
 
 data_manager: DataManager | None = None

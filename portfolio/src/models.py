@@ -3,11 +3,10 @@ Modèles de données pour le service Portfolio.
 Définit les structures de données et les interactions avec la base de données.
 """
 
-from shared.src.schemas import AssetBalance, PortfolioSummary
-from shared.src.config import get_db_url
 import contextlib
 import logging
 import os
+
 # Importer les modules partagés
 import sys
 import time
@@ -17,6 +16,9 @@ from typing import Any
 import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor, execute_values
+
+from shared.src.config import get_db_url
+from shared.src.schemas import AssetBalance, PortfolioSummary
 
 sys.path.append(
     os.path.abspath(

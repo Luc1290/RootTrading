@@ -3,15 +3,17 @@ Module Kafka Producer pour le Gateway.
 Convertit les données WebSocket Binance en messages Kafka.
 """
 
-from shared.src.redis_client import RedisClient
-from shared.src.kafka_client import KafkaClient
-from shared.src.config import KAFKA_BROKER, KAFKA_TOPIC_MARKET_DATA
 import logging
 import os
+
 # Importer les clients partagés
 import sys
 import time
 from typing import Any
+
+from shared.src.config import KAFKA_BROKER, KAFKA_TOPIC_MARKET_DATA
+from shared.src.kafka_client import KafkaClient
+from shared.src.redis_client import RedisClient
 
 sys.path.append(
     os.path.abspath(

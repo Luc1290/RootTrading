@@ -16,12 +16,13 @@ import redis.asyncio as redis
 from aiohttp import web
 from psycopg2.extras import RealDictCursor
 
+# Configuration du logging centralisée
+from shared.logging_config import setup_logging
+
 from .multiproc_manager import MultiProcessManager
 from .redis_subscriber import RedisPublisher
 from .strategy_loader import StrategyLoader
 
-# Configuration du logging centralisée
-from shared.logging_config import setup_logging
 log_level = "DEBUG" if os.getenv("DEBUG_LOGS", "false").lower() == "true" else "INFO"
 logger = setup_logging("analyzer", log_level=log_level)
 

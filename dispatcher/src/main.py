@@ -3,12 +3,7 @@ Point d'entrée principal pour le microservice Dispatcher.
 Reçoit les messages Kafka et les route vers les bons destinataires.
 """
 
-from shared.src.redis_client import RedisClient
-from shared.src.kafka_client import KafkaClient
-from shared.src.config import KAFKA_BROKER, KAFKA_GROUP_ID, LOG_LEVEL, SYMBOLS
-from dispatcher.src.message_router import MessageRouter
 import json
-import logging
 import os
 import signal
 import sys
@@ -16,6 +11,11 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
+
+from dispatcher.src.message_router import MessageRouter
+from shared.src.config import KAFKA_BROKER, KAFKA_GROUP_ID, LOG_LEVEL, SYMBOLS
+from shared.src.kafka_client import KafkaClient
+from shared.src.redis_client import RedisClient
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(
@@ -27,6 +27,7 @@ sys.path.append(
 
 # Configuration du logging centralisée
 from shared.logging_config import setup_logging
+
 logger = setup_logging("dispatcher", log_level=LOG_LEVEL)
 
 

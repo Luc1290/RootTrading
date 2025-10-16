@@ -7,8 +7,7 @@ import logging
 import time
 from typing import Any
 
-from shared.src.config import (BINANCE_API_KEY, BINANCE_SECRET_KEY, SYMBOLS,
-                               TRADING_MODE)
+from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY, SYMBOLS, TRADING_MODE
 from trader.src.exchange.binance_executor import BinanceExecutor
 from trader.src.trading.order_executor import OrderExecutor
 from trader.src.trading.price_monitor import PriceMonitor

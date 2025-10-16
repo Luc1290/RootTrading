@@ -347,11 +347,10 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
 
         # Détection pattern rebond dans historique
         sar_history = sar_data.get("sar_history", [])
-        if len(sar_history) >= 3:
-            if self._detect_sar_bounce_pattern(
-                    sar_history, current_price, signal_side):
-                confidence_boost += 0.25
-                reason += " + pattern rebond SAR détecté"
+        if len(sar_history) >= 3 and self._detect_sar_bounce_pattern(
+                sar_history, current_price, signal_side):
+            confidence_boost += 0.25
+            reason += " + pattern rebond SAR détecté"
 
         # VALIDATION MARKET REGIME - REJET si contradictoire
         market_regime = values.get("market_regime")

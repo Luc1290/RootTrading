@@ -7,6 +7,7 @@ pour permettre une validation adaptative selon le régime de marché.
 
 # Classification des 28 stratégies par famille principale
 from collections import defaultdict
+
 STRATEGY_FAMILIES = {
     "trend_following": {
         "strategies": [

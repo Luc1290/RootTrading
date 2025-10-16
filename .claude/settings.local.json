@@ -12,7 +12,8 @@
       "Bash(find:*)",
       "Bash(pip uninstall:*)",
       "Bash(pip index:*)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(ruff check:*)"
     ],
     "deny": [],
     "ask": []

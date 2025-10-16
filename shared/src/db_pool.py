@@ -16,8 +16,7 @@ from psycopg2 import extras
 from psycopg2.extras import DictCursor, RealDictCursor
 
 # Importer la configuration
-from shared.src.config import (DB_MAX_CONNECTIONS, DB_MIN_CONNECTIONS,
-                               get_db_url)
+from shared.src.config import DB_MAX_CONNECTIONS, DB_MIN_CONNECTIONS, get_db_url
 
 # Compatibilité pour différentes versions de psycopg2
 # Définir des constantes locales en utilisant getattr pour éviter les

@@ -5,21 +5,20 @@ AUCUN calcul d'indicateur - transmission pure vers le dispatcher.
 """
 
 import asyncio
-import logging
 import signal
 import time
 from collections.abc import Callable
 
 from aiohttp import web
 
+# Configuration du logging centralisée
+from shared.logging_config import setup_logging
 from shared.src.config import SYMBOLS
 
 from .gap_detector import GapDetector
 from .simple_binance_ws import SimpleBinanceWebSocket
 from .simple_data_fetcher import SimpleDataFetcher
 
-# Configuration du logging centralisée
-from shared.logging_config import setup_logging
 logger = setup_logging("gateway", log_level="INFO")
 
 

@@ -4,16 +4,16 @@ Service qui calcule TOUS les indicateurs techniques à partir des données OHLCV
 Architecture propre : Gateway → market_data → Market Analyzer → analyzer_data
 """
 
-from shared.src.config import SYMBOLS
-from market_analyzer.src.data_listener import DataListener
 import asyncio
-import logging
 import os
 import signal
 import sys
 import time
 
 from aiohttp import web
+
+from market_analyzer.src.data_listener import DataListener
+from shared.src.config import SYMBOLS
 
 # Ajouter les chemins pour les imports
 sys.path.append(
@@ -25,6 +25,7 @@ sys.path.append(
 
 # Configuration du logging centralisée
 from shared.logging_config import setup_logging
+
 logger = setup_logging("market_analyzer", log_level="INFO")
 
 # Variables globales

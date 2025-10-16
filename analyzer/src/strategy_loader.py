@@ -3,8 +3,6 @@ Module de chargement et de gestion des stratégies d'analyse.
 Charge dynamiquement les stratégies disponibles et les exécute sur les données reçues.
 """
 
-from strategies.base_strategy import \
-    BaseStrategy  # type: ignore[import-not-found]
 import importlib
 import inspect
 import logging
@@ -12,6 +10,8 @@ import os
 import sys
 from pathlib import Path
 from typing import Any
+
+from strategies.base_strategy import BaseStrategy  # type: ignore[import-not-found]
 
 # Ajouter le répertoire parent au path pour les imports dynamiques
 analyzer_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))

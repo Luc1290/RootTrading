@@ -219,10 +219,9 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
 
         # Hull MA pour confirmation (très réactive)
         hull_20 = mas.get("hull_20")
-        if hull_20:
-            if (direction == "bullish" and current_price > hull_20) or (
-                    direction == "bearish" and current_price < hull_20):
-                alignment_score = min(alignment_score + 0.1, 0.95)
+        if hull_20 and ((direction == "bullish" and current_price > hull_20) or (
+                direction == "bearish" and current_price < hull_20)):
+            alignment_score = min(alignment_score + 0.1, 0.95)
 
         return {
             "alignment_score": alignment_score,

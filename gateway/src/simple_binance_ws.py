@@ -4,19 +4,21 @@ ARCHITECTURE PROPRE : Reçoit uniquement les données OHLCV brutes en temps rée
 AUCUN calcul d'indicateur - transmission pure des données de marché.
 """
 
-from shared.src.kafka_client import KafkaClient
-from shared.src.config import SYMBOLS
-from gateway.src.kafka_producer import get_producer
 import asyncio
 import json
 import logging
 import os
+
 # Importer les clients partagés
 import sys
 import time
 from typing import TYPE_CHECKING, Any
 
 import websockets
+
+from gateway.src.kafka_producer import get_producer
+from shared.src.config import SYMBOLS
+from shared.src.kafka_client import KafkaClient
 
 sys.path.append(
     os.path.abspath(

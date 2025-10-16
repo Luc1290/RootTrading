@@ -109,22 +109,21 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         try:
             if self.data and all(
                 k in self.data for k in [
-                    "high", "low", "close"]):
-                if len(
-                        self.data["high"]) >= 10 and len(
-                        self.data["low"]) >= 10:
-                    recent_highs = [float(h) for h in self.data["high"][-10:]]
-                    recent_lows = [float(l) for l in self.data["low"][-10:]]
-                    recent_closes = [float(c) for c in self.data["close"][-5:]]
+                    "high", "low", "close"]) and len(
+                    self.data["high"]) >= 10 and len(
+                    self.data["low"]) >= 10:
+                recent_highs = [float(h) for h in self.data["high"][-10:]]
+                recent_lows = [float(l) for l in self.data["low"][-10:]]
+                recent_closes = [float(c) for c in self.data["close"][-5:]]
 
-                    return {
-                        "recent_high": max(recent_highs),
-                        "recent_low": min(recent_lows),
-                        "avg_recent_high": sum(recent_highs[-5:]) / 5,
-                        "avg_recent_low": sum(recent_lows[-5:]) / 5,
-                        "price_trend": recent_closes[-1]
-                        - recent_closes[0],  # Direction sur 5 périodes
-                    }
+                return {
+                    "recent_high": max(recent_highs),
+                    "recent_low": min(recent_lows),
+                    "avg_recent_high": sum(recent_highs[-5:]) / 5,
+                    "avg_recent_low": sum(recent_lows[-5:]) / 5,
+                    "price_trend": recent_closes[-1]
+                    - recent_closes[0],  # Direction sur 5 périodes
+                }
         except (IndexError, ValueError, TypeError):
             pass
         return None

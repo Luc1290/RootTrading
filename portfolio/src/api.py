@@ -14,8 +14,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import psutil  # type: ignore[import-untyped]
-from fastapi import (Depends, FastAPI, HTTPException, Path, Query, Request,
-                     Response)
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel

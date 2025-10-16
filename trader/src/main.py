@@ -3,16 +3,17 @@ Point d'entrée principal pour le microservice Trader.
 Démarre le gestionnaire d'ordres et expose une API REST.
 """
 
-from trader.src.utils.logging_config import setup_logging
-from trader.src.trading.order_manager import OrderManager
-from trader.src.api.rest_server import RestApiServer
-from shared.src.config import LOG_LEVEL, SYMBOLS
 import argparse
 import logging
 import os
 import signal
 import sys
 import time
+
+from shared.src.config import LOG_LEVEL, SYMBOLS
+from trader.src.api.rest_server import RestApiServer
+from trader.src.trading.order_manager import OrderManager
+from trader.src.utils.logging_config import setup_logging
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(

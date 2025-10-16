@@ -4,7 +4,6 @@ Utilise le nouveau système sans validators complexes.
 """
 
 import asyncio
-import logging
 import os
 import sys
 from datetime import datetime
@@ -13,12 +12,13 @@ import psycopg2
 import psycopg2.extensions
 from aiohttp import web
 
+# Configuration du logging centralisée
+from shared.logging_config import setup_logging
+
 from .context_manager import ContextManager
 from .database_manager import DatabaseManager
 from .signal_aggregator_simple import SimpleSignalAggregatorService
 
-# Configuration du logging centralisée
-from shared.logging_config import setup_logging
 log_level = "DEBUG" if os.getenv("DEBUG_LOGS", "false").lower() == "true" else "INFO"
 logger = setup_logging("signal_aggregator", log_level=log_level)
 

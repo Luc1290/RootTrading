@@ -8,14 +8,15 @@ Contains volume-based technical indicators:
 - Advanced Volume Metrics (quote volume, trade size, intensity)
 """
 
-from .advanced_metrics import (analyze_volume_quality,
+from .advanced_metrics import (
+                               analyze_volume_quality,
                                calculate_avg_trade_size,
                                calculate_quote_volume_ratio,
                                calculate_trade_intensity,
-                               detect_volume_anomaly)
+                               detect_volume_anomaly,
+)
 from .obv import calculate_obv
-from .vwap import (calculate_vwap, calculate_vwap_quote,
-                   calculate_vwap_quote_series)
+from .vwap import calculate_vwap, calculate_vwap_quote, calculate_vwap_quote_series
 
 __all__ = [
     "analyze_volume_quality",

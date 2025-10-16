@@ -9,6 +9,7 @@ from typing import Any
 
 from shared.src.enums import OrderSide, OrderStatus, TradeRole
 from shared.src.schemas import TradeExecution, TradeOrder
+
 # Imports des modules internes
 from trader.src.exchange.binance_utils import BinanceUtils
 from trader.src.exchange.constraints import BinanceSymbolConstraints

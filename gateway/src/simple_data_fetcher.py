@@ -3,9 +3,6 @@ Simple Data Fetcher - Service de récupération de données OHLCV brutes depuis 
 Ne fait AUCUN calcul d'indicateur - transmet uniquement les données brutes
 """
 
-from shared.src.redis_client import RedisClient
-from shared.src.config import SYMBOLS
-from gateway.src.kafka_producer import get_producer
 import asyncio
 import logging
 import os
@@ -14,6 +11,10 @@ from datetime import datetime
 
 import aiohttp
 from aiohttp import ClientTimeout
+
+from gateway.src.kafka_producer import get_producer
+from shared.src.config import SYMBOLS
+from shared.src.redis_client import RedisClient
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(

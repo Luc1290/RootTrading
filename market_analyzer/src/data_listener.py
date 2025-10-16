@@ -4,11 +4,9 @@ Market Data Listener
 Système trigger-based pour traitement temps réel.
 """
 
-from .indicator_processor import IndicatorProcessor
-from shared.src.config import get_db_config
-import contextlib
-import builtins
 import asyncio
+import builtins
+import contextlib
 import json
 import logging
 import os
@@ -17,6 +15,10 @@ from datetime import datetime
 from typing import Any
 
 import asyncpg  # type: ignore
+
+from shared.src.config import get_db_config
+
+from .indicator_processor import IndicatorProcessor
 
 # Ajouter les chemins pour les imports
 sys.path.append(

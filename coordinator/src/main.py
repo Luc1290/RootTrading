@@ -3,8 +3,6 @@ Point d'entrée principal pour le microservice Coordinator.
 Valide et transmet les signaux de trading au service Trader.
 """
 
-from shared.src.redis_client import RedisClient
-from coordinator import Coordinator  # type: ignore
 import os
 import signal
 import sys
@@ -14,6 +12,9 @@ from urllib.parse import urljoin
 
 import requests  # type: ignore
 from flask import Flask, jsonify
+
+from coordinator import Coordinator  # type: ignore
+from shared.src.redis_client import RedisClient
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(
@@ -25,6 +26,7 @@ sys.path.append(
 
 # Configuration du logging centralisée
 from shared.logging_config import setup_logging
+
 logger = setup_logging("coordinator", log_level="INFO")
 
 

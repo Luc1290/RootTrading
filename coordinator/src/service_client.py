@@ -378,10 +378,9 @@ class ServiceClient:
         cache_key = "portfolio:summary"
 
         # Cache de 5 secondes pour le résumé
-        if cache_key in self._cache:
-            if datetime.now(timezone.utc).timestamp() - \
+        if cache_key in self._cache and datetime.now(timezone.utc).timestamp() - \
                     self._cache_ttl[cache_key] < 5.0:
-                return self._cache[cache_key]
+            return self._cache[cache_key]
 
         response = self._make_request("portfolio", "/summary")
 
