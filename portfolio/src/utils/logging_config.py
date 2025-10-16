@@ -23,7 +23,7 @@ def setup_logging(log_level="INFO"):
         format=log_format,
         handlers=[
             logging.StreamHandler(sys.stdout),
-            logging.FileHandler(f"portfolio_{datetime.now().strftime('%Y%m%d')}.log"),
+            logging.FileHandler(f"portfolio_{datetime.now(tz=timezone.utc).strftime('%Y%m%d')}.log"),
         ],
     )
 

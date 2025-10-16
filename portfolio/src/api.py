@@ -273,7 +273,7 @@ def _register_portfolio_routes(app: FastAPI):
 
     @app.get("/balance/{asset}")
     async def get_balance_by_asset(
-        response: Response,
+        _response: Response,
         asset: str = Path(..., description="Actif à récupérer (BTC, ETH, USDC, etc.)"),
         portfolio: PortfolioModel = Depends(get_portfolio_model),
     ):
@@ -597,7 +597,7 @@ def _register_portfolio_routes(app: FastAPI):
 
         # Configurer les entêtes de cache si les données sont historiques
         if response and (not start_date_obj or start_date_obj <
-                         datetime.now() - timedelta(days=1)):
+                         datetime.now(tz=timezone.utc) - timedelta(days=1)):
             response.headers["Cache-Control"] = "public, max-age=60"
 
         return TradeHistoryResponse(
@@ -993,7 +993,7 @@ def _register_diagnostic_routes(app: FastAPI):
 
 # Gestionnaire de contexte pour l'initialisation
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     """Gestionnaire de cycle de vie de l'application."""
     print("🚀 Initialisation du Portfolio API...")
 

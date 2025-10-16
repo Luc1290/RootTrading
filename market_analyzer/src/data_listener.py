@@ -202,7 +202,7 @@ class DataListener:
         finally:
             await self._cleanup()
 
-    async def _handle_notification(self, connection, pid, channel, payload):
+    async def _handle_notification(self, _connection, _pid, _channel, payload):
         """
         Gestionnaire appelé quand une notification est reçue.
 
@@ -214,7 +214,7 @@ class DataListener:
             data = json.loads(payload)
             symbol = data["symbol"]
             timeframe = data["timeframe"]
-            timestamp = datetime.fromtimestamp(data["time"])
+            timestamp = datetime.fromtimestamp(data["time"], tz=timezone.utc)
             action = data["action"]
 
             logger.debug(
@@ -232,7 +232,7 @@ class DataListener:
 
         except Exception:
             logger.exception("❌ Erreur traitement notification")
-            logger.exception(f"Payload: {payload}")
+            logger.exception("Payload: ")
 
     async def _process_new_data(
             self,

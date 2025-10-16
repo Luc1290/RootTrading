@@ -143,7 +143,7 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
         }
 
     def _calculate_zscore_proxy(
-        self, values: dict[str, Any], current_price: float
+        self, values: dict[str, Any], _current_price: float
     ) -> dict[str, Any]:
         """Calcule une approximation du Z-Score basée sur Bollinger Bands et oscillateurs."""
         zscore_data: dict[str, Any] = {

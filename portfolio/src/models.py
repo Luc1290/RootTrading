@@ -98,9 +98,9 @@ class DBManager:
         try:
             self.conn = psycopg2.connect(self.db_url)
             logger.info("✅ Connexion directe à la base de données établie")
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"❌ Erreur lors de la connexion à la base de données: {e!s}"
+                "❌ Erreur lors de la connexion à la base de données: "
             )
             self.conn = None
 
@@ -117,9 +117,9 @@ class DBManager:
                 try:
                     self.conn = self.pool.getconn()
                     return True
-                except Exception as e:
+                except Exception:
                     logger.exception(
-                        f"❌ Impossible d'obtenir une connexion du pool: {e!s}"
+                        "❌ Impossible d'obtenir une connexion du pool: "
                     )
                     # Fallback: connexion directe
                     self._connect()
@@ -155,7 +155,7 @@ class DBManager:
                     return True
                 except Exception as e:
                     logger.exception(
-                        f"❌ Impossible d'obtenir une nouvelle connexion: {e!s}"
+                        "❌ Impossible d'obtenir une nouvelle connexion: "
                     )
                     # Fallback: connexion directe
                     self._connect()
@@ -260,8 +260,8 @@ class DBManager:
                 if len(query) > 200:
                     logger.exception(f"Query: {query[:200]}...")
                 else:
-                    logger.exception(f"Query: {query}")
-                logger.exception(f"Params: {params}")
+                    logger.exception("Query: ")
+                logger.exception("Params: ")
                 import traceback
 
                 logger.exception(traceback.format_exc())
@@ -388,9 +388,9 @@ class DBManager:
                     # Fermer la connexion
                     self.conn.close()
                     logger.debug("✅ Connexion à la base de données fermée")
-            except Exception as e:
+            except Exception:
                 logger.exception(
-                    f"❌ Erreur lors de la fermeture de la connexion: {e!s}"
+                    "❌ Erreur lors de la fermeture de la connexion: "
                 )
             finally:
                 self.conn = None
@@ -587,7 +587,7 @@ class PortfolioModel:
                 performance_24h=performance_24h,
                 performance_7d=performance_7d,
                 active_trades=active_trades,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(tz=timezone.utc),
             )
 
             # Mettre en cache
@@ -595,9 +595,9 @@ class PortfolioModel:
 
             return summary
 
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"❌ Erreur lors de la récupération du résumé du portefeuille: {e!s}"
+                "❌ Erreur lors de la récupération du résumé du portefeuille: "
             )
             import traceback
 
@@ -608,7 +608,7 @@ class PortfolioModel:
                 balances=[],
                 total_value=0,
                 active_trades=0,
-                timestamp=datetime.utcnow())
+                timestamp=datetime.now(tz=timezone.utc))
 
     def update_balances(self, balances: list[AssetBalance | dict]) -> bool:
         """
@@ -623,7 +623,7 @@ class PortfolioModel:
         if not balances:
             return False
 
-        now = datetime.now()
+        now = datetime.now(tz=timezone.utc)
         values = []
         assets_from_binance = set()
 

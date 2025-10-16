@@ -570,7 +570,7 @@ class ContextManager:
             logger.exception("Erreur contexte multi-timeframe {symbol}")
             return {}
 
-    def _get_correlation_context(self, symbol: str) -> dict[str, Any]:
+    def _get_correlation_context(self, _symbol: str) -> dict[str, Any]:
         """
         Récupère le contexte de corrélation avec d'autres actifs.
         DÉSACTIVÉ pour le moment car non implémenté.

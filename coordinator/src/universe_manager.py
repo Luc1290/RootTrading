@@ -54,7 +54,7 @@ class UniverseManager:
 
         # Cache des données de marché
         self.market_data_cache: dict[str, dict] = {}
-        self.last_update = datetime.now()
+        self.last_update = datetime.now(tz=timezone.utc)
 
         # Vérifier le pool DB
         if not self.db_pool:
@@ -121,7 +121,7 @@ class UniverseManager:
 
     def update_market_data(self, symbol: str, data: dict) -> None:
         """Met à jour les données de marché pour une paire"""
-        self.market_data_cache[symbol] = {**data, "timestamp": datetime.now()}
+        self.market_data_cache[symbol] = {**data, "timestamp": datetime.now(tz=timezone.utc)}
 
     def calculate_score(self, symbol: str) -> PairScore:
         """Calcule le score de tradeabilité d'une paire en utilisant les données de la DB"""
@@ -135,7 +135,7 @@ class UniverseManager:
 
         except Exception:
             logger.exception("Erreur calcul score {symbol}")
-            return PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now())
+            return PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now(tz=timezone.utc))
 
     def _calculate_score_from_db(self, symbol: str) -> PairScore:
         """Calcule le score depuis analyzer_data (tout est déjà calculé)"""
@@ -155,7 +155,7 @@ class UniverseManager:
                 if not data:
                     logger.warning(f"Pas de données analyzer pour {symbol}")
                     return PairScore(
-                        symbol, -1.0, 0, 0, 0, True, datetime.now())
+                        symbol, -1.0, 0, 0, 0, True, datetime.now(tz=timezone.utc))
 
                 # Extraire métriques (tout est déjà calculé !)
                 atr_pct = float(data["natr"]) if data["natr"] else 0
@@ -222,7 +222,7 @@ class UniverseManager:
                     roc=roc,
                     volume_ratio=volume_ratio,
                     is_ranging=is_ranging,
-                    timestamp=datetime.now(),
+                    timestamp=datetime.now(tz=timezone.utc),
                     components={
                         "z_atr": z_atr,
                         "z_roc": z_roc,
@@ -291,7 +291,7 @@ class UniverseManager:
                         roc=roc,
                         volume_ratio=volume_ratio,
                         is_ranging=is_ranging,
-                        timestamp=datetime.now(),
+                        timestamp=datetime.now(tz=timezone.utc),
                     )
                     scores.append(score)
 
@@ -307,7 +307,7 @@ class UniverseManager:
         logger.error(
             f"Pas de données DB disponibles pour {symbol} - retour score par défaut"
         )
-        return PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now())
+        return PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now(tz=timezone.utc))
 
     def _calculate_zscore(
             self,
@@ -472,7 +472,7 @@ class UniverseManager:
                         roc=roc,
                         volume_ratio=volume_ratio,
                         is_ranging=is_ranging,
-                        timestamp=datetime.now(),
+                        timestamp=datetime.now(tz=timezone.utc),
                         components={
                             "z_atr": z_atr,
                             "z_roc": z_roc,
@@ -487,14 +487,14 @@ class UniverseManager:
                     # Cache
                     self.market_data_cache[symbol] = {
                         "score": scores[symbol],
-                        "timestamp": datetime.now(),
+                        "timestamp": datetime.now(tz=timezone.utc),
                     }
 
                 # Symboles manquants = score par défaut
                 for symbol in symbols:
                     if symbol not in scores:
                         scores[symbol] = PairScore(
-                            symbol, -1.0, 0, 0, 0, True, datetime.now()
+                            symbol, -1.0, 0, 0, 0, True, datetime.now(tz=timezone.utc)
                         )
 
         except Exception:
@@ -502,7 +502,7 @@ class UniverseManager:
             # Fallback : score par défaut pour tous
             for symbol in symbols:
                 scores[symbol] = PairScore(
-                    symbol, -1.0, 0, 0, 0, True, datetime.now())
+                    symbol, -1.0, 0, 0, 0, True, datetime.now(tz=timezone.utc))
 
         return scores
 
@@ -566,7 +566,7 @@ class UniverseManager:
         for symbol in symbols:
             if symbol in self.market_data_cache:
                 cache_entry = self.market_data_cache[symbol]
-                if (datetime.now() - cache_entry["timestamp"]).seconds < 180:
+                if (datetime.now(tz=timezone.utc) - cache_entry["timestamp"]).seconds < 180:
                     score = cache_entry.get("score")
                     if isinstance(score, PairScore):
                         scores.append(score)
@@ -587,7 +587,7 @@ class UniverseManager:
             state.score_history.pop(0)
 
         # Vérifier cool-down
-        if state.cooldown_until and datetime.now() < state.cooldown_until:
+        if state.cooldown_until and datetime.now(tz=timezone.utc) < state.cooldown_until:
             return False
 
         # Logique d'hystérésis
@@ -602,7 +602,7 @@ class UniverseManager:
                     >= self.config["periods_above_to_enter"]
                 ):
                     state.is_selected = True
-                    state.last_selected = datetime.now()
+                    state.last_selected = datetime.now(tz=timezone.utc)
                     state.consecutive_above_threshold = 0
                     return True
             else:
@@ -617,8 +617,8 @@ class UniverseManager:
                 >= self.config["periods_below_to_exit"]
             ):
                 state.is_selected = False
-                state.last_deselected = datetime.now()
-                state.cooldown_until = datetime.now() + timedelta(
+                state.last_deselected = datetime.now(tz=timezone.utc)
+                state.cooldown_until = datetime.now(tz=timezone.utc) + timedelta(
                     minutes=self.config["cooldown_minutes"]
                 )
                 state.consecutive_below_threshold = 0
@@ -657,7 +657,7 @@ class UniverseManager:
 
             # Mettre à jour l'univers
             self.selected_universe = selected
-            self.last_update = datetime.now()
+            self.last_update = datetime.now(tz=timezone.utc)
 
             # Publier dans Redis
             self.redis.set(

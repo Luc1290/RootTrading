@@ -301,7 +301,7 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         values: dict[str, Any],
         current_price: float,
         range_info: dict[str, Any],
-        price_data: dict[str, float],
+        _price_data: dict[str, float],
     ) -> dict[str, Any] | None:
         """Analyse si un breakout valide est en cours."""
         support = range_info["support"]
@@ -348,7 +348,7 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         return None
 
     def _check_breakout_confirmations(
-        self, values: dict[str, Any], breakout_type: str, current_price: float
+        self, values: dict[str, Any], breakout_type: str, _current_price: float
     ) -> dict[str, bool]:
         """Vérifie les confirmations du breakout."""
         confirmations = {
@@ -435,7 +435,7 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         current_price: float,
         range_info: dict[str, Any],
         breakout_analysis: dict[str, Any],
-        price_data: dict[str, float],
+        _price_data: dict[str, float],
     ) -> dict[str, Any]:
         """Crée le signal final pour le breakout."""
         breakout_type = breakout_analysis["type"]

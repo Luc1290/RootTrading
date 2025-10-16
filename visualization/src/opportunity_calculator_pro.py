@@ -113,7 +113,7 @@ class OpportunityCalculatorPro:
         current_price: float,
         analyzer_data: dict,
         higher_tf_data: dict | None = None,
-        signals_data: dict | None = None,
+        _signals_data: dict | None = None,
         historical_data: list[dict] | None = None,
     ) -> TradingOpportunity:
         """
@@ -518,7 +518,7 @@ class OpportunityCalculatorPro:
         return action, confidence, reasons, warnings, recommendations
 
     def _calculate_entry_prices(
-        self, current_price: float, ad: dict, action: str
+        self, current_price: float, ad: dict, _action: str
     ) -> tuple[float, float]:
         """
         Calcule prix d'entrée optimal et aggressif.
@@ -682,7 +682,7 @@ class OpportunityCalculatorPro:
         tp1: float,
         stop_loss: float,
         score: OpportunityScore,
-        validation: ValidationSummary,
+        _validation: ValidationSummary,
         ad: dict,
         action: str = "WAIT",
     ) -> tuple[float, str, float]:

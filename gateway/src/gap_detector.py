@@ -67,7 +67,7 @@ class GapDetector:
 
         # Calculer la période à vérifier - forcer UTC explicitement avec
         # timestamps propres
-        now = datetime.utcnow().replace(tzinfo=None, microsecond=0)
+        now = datetime.now(tz=timezone.utc).replace(tzinfo=None, microsecond=0)
         start_time = (now - timedelta(hours=lookback_hours)).replace(
             tzinfo=None, microsecond=0
         )
@@ -250,7 +250,7 @@ class GapDetector:
 
                 # Calculer la durée pour min_candles
                 total_duration_seconds = min_candles * interval_seconds
-                now = datetime.utcnow().replace(tzinfo=None, microsecond=0)
+                now = datetime.now(tz=timezone.utc).replace(tzinfo=None, microsecond=0)
                 start_time = now - timedelta(seconds=total_duration_seconds)
 
                 missing_count = min_candles - current_count
@@ -267,7 +267,7 @@ class GapDetector:
             )
 
     async def detect_all_gaps(
-        self, symbols: list[str] | None = None, lookback_hours: int = 24
+        self, symbols: list[str] | None = None, _lookback_hours: int = 24
     ) -> dict:
         """
         Détection intelligente des gaps pour tous les symboles et timeframes:
@@ -452,9 +452,9 @@ class GapDetector:
                     fetch_periods.append((current_start, current_end))
                     current_start = gap_start
                     current_end = gap_end
-            except TypeError as e:
+            except TypeError:
                 logger.exception(
-                    f"Erreur calcul durée gap: {e} - gap_start: {type(gap_start)}, current_end: {type(current_end)}"
+                    f"Erreur calcul durée gap:  - gap_start: {type(gap_start)}, current_end: {type(current_end)}"
                 )
                 continue
 
@@ -475,9 +475,9 @@ class GapDetector:
                         current = period_end + timedelta(seconds=1)
                 else:
                     final_periods.append((start, end))
-            except TypeError as e:
+            except TypeError:
                 logger.exception(
-                    f"Erreur division période: {e} - start: {type(start)}, end: {type(end)}"
+                    f"Erreur division période:  - start: {type(start)}, end: {type(end)}"
                 )
                 continue
 

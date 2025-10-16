@@ -110,7 +110,7 @@ class RegimeDetector:
         closes: list[float] | np.ndarray,
         volumes: list[float] | np.ndarray,
         symbol: str | None = None,
-        include_analysis: bool = True,
+        _include_analysis: bool = True,
         enable_cache: bool = True,
     ) -> MarketRegime:
         """
@@ -198,8 +198,8 @@ class RegimeDetector:
         highs: np.ndarray,
         lows: np.ndarray,
         closes: np.ndarray,
-        symbol: str | None = None,
-        enable_cache: bool = True,
+        _symbol: str | None = None,
+        _enable_cache: bool = True,
     ) -> dict:
         """Analyse la volatilité du marché."""
         from ..indicators.volatility.atr import calculate_atr_series
@@ -653,7 +653,7 @@ class RegimeDetector:
         return min(sum(confidence_factors), 100)
 
     def _estimate_regime_duration(
-        self, closes: np.ndarray, regime_type: RegimeType
+        self, closes: np.ndarray, _regime_type: RegimeType
     ) -> int:
         """Estime la durée du régime actuel."""
         # Analyse des changements récents (simplifié)

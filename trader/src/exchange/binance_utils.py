@@ -8,7 +8,7 @@ import hmac
 import logging
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import getcontext
 from typing import Any
 from urllib.parse import urlencode
@@ -250,7 +250,7 @@ class BinanceUtils:
 
         except requests.exceptions.RequestException as e:
             logger.exception(
-                f"❌ Erreur lors de la récupération du prix pour {symbol}: {e!s}"
+                f"❌ Erreur lors de la récupération du prix pour : "
             )
             if hasattr(e, "response") and e.response:
                 logger.exception(f"Réponse: {e.response.text}")
@@ -351,7 +351,7 @@ class BinanceUtils:
                 except (ValueError, KeyError, TypeError):
                     error_msg = f"HTTP {response.status_code}"
                     logger.exception(
-                        f"Erreur Binance {response.status_code}: {error_msg}")
+                        f"Erreur Binance {response.status_code}: ")
 
                 self.notify_order_failure(
                     error_msg, params, params.get("newClientOrderId")
@@ -417,7 +417,7 @@ class BinanceUtils:
                 # Si la conversion échoue, traiter comme inconnu et logger
                 # l'erreur
                 logger.exception(
-                    f"❌ Valeur OrderSide non reconnue de Binance: {binance_side}"
+                    f"❌ Valeur OrderSide non reconnue de Binance: "
                 )
                 raise ValueError(
                     f"OrderSide invalide reçu de Binance: {binance_side}")
@@ -434,7 +434,7 @@ class BinanceUtils:
             fee=None,  # Les frais ne sont pas inclus dans la réponse initiale
             fee_asset=None,
             role=None,
-            timestamp=datetime.fromtimestamp(int(data["transactTime"]) / 1000),
+            timestamp=datetime.fromtimestamp(int(data["transactTime"]) / 1000, tz=timezone.utc),
             demo=False,
         )
 
@@ -503,7 +503,7 @@ class BinanceUtils:
                     # Si la conversion échoue, traiter comme inconnu et logger
                     # l'erreur
                     logger.exception(
-                        f"❌ Valeur OrderSide non reconnue de Binance: {binance_side}"
+                        f"❌ Valeur OrderSide non reconnue de Binance: "
                     )
                     raise ValueError(
                         f"OrderSide invalide reçu de Binance: {binance_side}"
@@ -522,14 +522,14 @@ class BinanceUtils:
                 fee_asset=None,
                 role=None,
                 timestamp=datetime.fromtimestamp(
-                    order_response.get("time", time.time() * 1000) / 1000
+                    order_response.get("time", time.time() * 1000) / 1000, tz=timezone.utc
                 ),
                 demo=False,
             )
 
         except Exception as e:
             logger.exception(
-                f"❌ Erreur lors de la récupération du statut de l'ordre: {e!s}"
+                f"❌ Erreur lors de la récupération du statut de l'ordre: "
             )
             return None
 
@@ -679,7 +679,7 @@ class BinanceUtils:
 
         except Exception as e:
             logger.exception(
-                f"❌ Erreur lors de la récupération des frais de trading: {e!s}"
+                f"❌ Erreur lors de la récupération des frais de trading: "
             )
 
             # En cas d'erreur, retourner des frais standard
@@ -725,7 +725,7 @@ class BinanceUtils:
 
         except Exception as e:
             logger.exception(
-                f"❌ Erreur lors de la récupération des ordres ouverts: {e!s}"
+                f"❌ Erreur lors de la récupération des ordres ouverts: "
             )
             if hasattr(e, "response") and e.response:
                 logger.exception(f"Réponse: {e.response.text}")
@@ -794,7 +794,7 @@ class BinanceUtils:
 
         except Exception as e:
             logger.exception(
-                f"❌ Erreur lors de la récupération des informations d'échange: {e!s}"
+                f"❌ Erreur lors de la récupération des informations d'échange: "
             )
             # Retourner des informations par défaut pour les symboles courants
             return {

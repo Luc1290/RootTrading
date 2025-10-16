@@ -57,7 +57,7 @@ class DataConverter:
                 df = pd.DataFrame(
                     [
                         {
-                            "date": data.get("timestamp", datetime.now()),
+                            "date": data.get("timestamp", datetime.now(tz=timezone.utc)),
                             "open": data.get("open_price", 0),
                             "high": data.get("high_price", 0),
                             "low": data.get("low_price", 0),
@@ -128,7 +128,7 @@ class DataConverter:
                 "timestamp": (
                     last_row.name
                     if isinstance(df.index, pd.DatetimeIndex)
-                    else datetime.now()
+                    else datetime.now(tz=timezone.utc)
                 ),
                 "open_price": float(last_row.get("open", 0)),
                 "high_price": float(last_row.get("high", 0)),

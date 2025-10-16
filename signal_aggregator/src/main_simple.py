@@ -47,7 +47,7 @@ class SimpleSignalAggregatorApp:
         self.web_runner = None
 
         # Statistiques
-        self.start_time = datetime.utcnow()
+        self.start_time = datetime.now(tz=timezone.utc)
 
     async def initialize(self):
         """Initialise tous les composants simplifiés."""
@@ -128,8 +128,8 @@ class SimpleSignalAggregatorApp:
                 self.db_connection.autocommit = True
                 logger.info("✅ Reconnexion DB réussie")
                 return self.db_connection
-            except Exception as reconnect_error:
-                logger.exception(f"❌ Échec reconnexion DB: {reconnect_error}")
+            except Exception:
+                logger.exception("❌ Échec reconnexion DB: ")
                 raise
 
     async def setup_web_server(self):
@@ -152,7 +152,7 @@ class SimpleSignalAggregatorApp:
     async def health_check(self, request):
         """Endpoint de health check simplifié."""
         try:
-            uptime = (datetime.utcnow() - self.start_time).total_seconds()
+            uptime = (datetime.now(tz=timezone.utc) - self.start_time).total_seconds()
 
             # Test connexion DB
             if self.db_connection is None:
@@ -189,7 +189,7 @@ class SimpleSignalAggregatorApp:
                         "Pas de validators complexes",
                         "Performance optimisée",
                     ],
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(tz=timezone.utc).isoformat(),
                 }
             )
 
@@ -200,7 +200,7 @@ class SimpleSignalAggregatorApp:
                     "status": "unhealthy",
                     "version": "SIMPLIFIÉ v2.0",
                     "error": str(e),
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(tz=timezone.utc).isoformat(),
                 },
                 status=500,
             )
@@ -220,7 +220,7 @@ class SimpleSignalAggregatorApp:
                 "system_info": {
                     "version": "Signal Aggregator SIMPLIFIÉ v2.0",
                     "uptime_seconds": (
-                        datetime.utcnow() - self.start_time
+                        datetime.now(tz=timezone.utc) - self.start_time
                     ).total_seconds(),
                     "features_removed": [
                         "23+ validators complexes",

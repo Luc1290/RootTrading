@@ -254,12 +254,12 @@ class RedisClientPool:
                     # Tenter une reconnexion
                     try:
                         self._reconnect()
-                    except Exception as reconnect_error:
+                    except Exception:
                         logger.exception(
-                            f"❌ Échec de reconnexion: {reconnect_error!s}")
+                            "❌ Échec de reconnexion: ")
                 else:
                     logger.exception(
-                        f"❌ Échec de l'opération Redis après {max_retries} tentatives"
+                        "❌ Échec de l'opération Redis après  tentatives"
                     )
                     raise last_error
 
@@ -440,7 +440,7 @@ class RedisClientPool:
 
                 if retry_count > max_retries:
                     logger.exception(
-                        f"❌ Trop d'erreurs de connexion dans le thread PubSub {client_id}, arrêt"
+                        "❌ Trop d'erreurs de connexion dans le thread PubSub , arrêt"
                     )
                     stop_event.set()
                     break
@@ -473,9 +473,9 @@ class RedisClientPool:
 
                     logger.info(
                         f"✅ Reconnexion PubSub réussie pour {client_id}")
-                except Exception as reconnect_error:
+                except Exception:
                     logger.exception(
-                        f"❌ Échec de reconnexion PubSub pour {client_id}: {reconnect_error!s}"
+                        "❌ Échec de reconnexion PubSub pour : "
                     )
 
             except Exception as e:
@@ -487,13 +487,13 @@ class RedisClientPool:
                     break
 
                 logger.exception(
-                    f"❌ Erreur dans le thread d'écoute PubSub {client_id}: {e!s}"
+                    "❌ Erreur dans le thread d'écoute PubSub : "
                 )
                 time.sleep(1)  # Pause pour éviter de consommer trop de CPU
 
     def _process_messages(
         self,
-        client_id: str,
+        _client_id: str,
         message_queue: Queue,
         callback: Callable,
         stop_event: threading.Event,
@@ -521,17 +521,17 @@ class RedisClientPool:
                 # Appeler le callback
                 try:
                     callback(channel, data)
-                except Exception as e:
+                except Exception:
                     logger.exception(
-                        f"❌ Erreur dans le callback PubSub pour {client_id}: {e!s}"
+                        "❌ Erreur dans le callback PubSub pour : "
                     )
 
                 # Indiquer que le traitement est terminé
                 message_queue.task_done()
 
-            except Exception as e:
+            except Exception:
                 logger.exception(
-                    f"❌ Erreur dans le thread de traitement PubSub {client_id}: {e!s}"
+                    "❌ Erreur dans le thread de traitement PubSub : "
                 )
                 # Courte pause pour éviter de consommer trop de CPU
                 time.sleep(0.1)

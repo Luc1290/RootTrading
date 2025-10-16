@@ -612,9 +612,9 @@ class FieldConverter:
                 f"volume_zscore: {indicators.get('volume_zscore', 'N/A'):.2f}, "
                 f"returns_zscore: {indicators.get('returns_zscore', 'N/A'):.2f}")
 
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"FieldConverter: Erreur ajout champs Z-Score spécialisés: {e}"
+                "FieldConverter: Erreur ajout champs Z-Score spécialisés: "
             )
             # Valeurs par défaut en cas d'erreur
             default_zscore_fields = {

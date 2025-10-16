@@ -650,7 +650,7 @@ class VolumeContextAnalyzer:
         return recommendations
 
     def _create_default_analysis(
-        self, volumes: np.ndarray, closes: np.ndarray
+        self, volumes: np.ndarray, _closes: np.ndarray
     ) -> VolumeAnalysis:
         """Crée une analyse par défaut en cas de données insuffisantes."""
         default_context = VolumeContext(

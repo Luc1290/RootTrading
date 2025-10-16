@@ -166,9 +166,9 @@ class KafkaClientPool:
 
                     # Réinitialiser les métriques
                     self.metrics.reset()
-                except Exception as e:
+                except Exception:
                     logger.exception(
-                        f"Erreur dans le thread de statistiques Kafka: {e!s}"
+                        "Erreur dans le thread de statistiques Kafka: "
                     )
 
         thread = threading.Thread(target=stats_reporter, daemon=True)
@@ -234,7 +234,7 @@ class KafkaClientPool:
         except KafkaException as e:
             error_msg = str(e).replace("{", "{{").replace("}", "}}")
             logger.exception(
-                f"❌ Erreur lors de la création du producteur Kafka: {error_msg}"
+                "❌ Erreur lors de la création du producteur Kafka: "
             )
             raise
 
@@ -277,9 +277,9 @@ class KafkaClientPool:
                 f"✅ Consommateur Kafka créé pour {self.broker}, topics: {', '.join(topics)}"
             )
             return consumer
-        except KafkaException as e:
+        except KafkaException:
             logger.exception(
-                f"❌ Erreur lors de la création du consommateur Kafka: {e!s}"
+                "❌ Erreur lors de la création du consommateur Kafka: "
             )
             raise
 
@@ -518,7 +518,7 @@ class KafkaClientPool:
             # CORRECTION: Si erreur FATAL, recréer le producteur
             if "_FATAL" in str(e) or "Fatal error" in str(e):
                 logger.exception(
-                    f"❌ Erreur FATALE Kafka détectée, recréation du producteur: {error_msg}"
+                    "❌ Erreur FATALE Kafka détectée, recréation du producteur: "
                 )
 
                 # Fermer l'ancien producteur
@@ -544,22 +544,22 @@ class KafkaClientPool:
                     logger.info(
                         "✅ Message reproduit avec succès après recréation du producteur"
                     )
-                except Exception as retry_error:
+                except Exception:
                     logger.exception(
-                        f"❌ Échec après recréation du producteur: {retry_error!s}"
+                        "❌ Échec après recréation du producteur: "
                     )
                     self.metrics.record_delivery_failure()
                     raise
             else:
                 logger.exception(
-                    f"❌ Erreur lors de la production du message: {error_msg}")
+                    "❌ Erreur lors de la production du message: ")
                 self.metrics.record_delivery_failure()
                 raise
 
         except Exception as e:
             error_msg = str(e).replace("{", "{{").replace("}", "}}")
             logger.exception(
-                f"❌ Erreur lors de la production du message: {error_msg}")
+                "❌ Erreur lors de la production du message: ")
             self.metrics.record_delivery_failure()
             raise
 
@@ -751,15 +751,15 @@ class KafkaClientPool:
                     try:
                         message_queue.put(message_data, timeout=1.0)
                         self.metrics.record_consume()
-                    except Exception as e:
+                    except Exception:
                         logger.exception(
-                            f"❌ Impossible d'ajouter le message à la queue: {e!s}"
+                            "❌ Impossible d'ajouter le message à la queue: "
                         )
 
-            except (KafkaException, RuntimeError) as e:
+            except (KafkaException, RuntimeError):
                 retry_count += 1
                 logger.exception(
-                    f"❌ Erreur Kafka dans le thread de consommation {consumer_id}: {e!s}"
+                    "❌ Erreur Kafka dans le thread de consommation : "
                 )
 
                 if retry_count > max_retries:
@@ -786,21 +786,21 @@ class KafkaClientPool:
                     consumer = new_consumer
                     self.metrics.record_reconnection()
                     logger.info(f"✅ Consommateur {consumer_id} reconnecté")
-                except Exception as reconnect_error:
+                except Exception:
                     logger.exception(
-                        f"❌ Échec de reconnexion du consommateur {consumer_id}: {reconnect_error!s}"
+                        "❌ Échec de reconnexion du consommateur : "
                     )
 
-            except Exception as e:
+            except Exception:
                 logger.exception(
-                    f"❌ Erreur inattendue dans le thread de consommation {consumer_id}: {e!s}"
+                    "❌ Erreur inattendue dans le thread de consommation : "
                 )
                 # Pause pour éviter une boucle d'erreurs trop rapide
                 time.sleep(1.0)
 
     def _process_messages(
         self,
-        consumer_id: str,
+        _consumer_id: str,
         message_queue: Queue,
         callback: Callable,
         stop_event: threading.Event,
@@ -837,9 +837,9 @@ class KafkaClientPool:
                     # Marquer le message comme traité
                     message_queue.task_done()
 
-            except Exception as e:
+            except Exception:
                 logger.exception(
-                    f"❌ Erreur dans le thread de traitement {consumer_id}: {e!s}"
+                    "❌ Erreur dans le thread de traitement : "
                 )
                 time.sleep(0.1)  # Pause pour éviter de surcharger le CPU
 
@@ -878,9 +878,9 @@ class KafkaClientPool:
             try:
                 self.consumers[consumer_id].close()
                 logger.info(f"✅ Consommateur {consumer_id} fermé")
-            except Exception as e:
+            except Exception:
                 logger.exception(
-                    f"❌ Erreur lors de la fermeture du consommateur {consumer_id}: {e!s}"
+                    "❌ Erreur lors de la fermeture du consommateur : "
                 )
 
         # Nettoyer les ressources

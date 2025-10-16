@@ -292,9 +292,9 @@ class BinanceAccountManager:
         except BinanceApiError:
             logger.exception("❌ Erreur lors de la récupération des balances")
             raise
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"❌ Erreur inattendue lors de la récupération des balances: {e!s}"
+                "❌ Erreur inattendue lors de la récupération des balances: "
             )
             logger.exception(traceback.format_exc())
             return []
@@ -358,9 +358,9 @@ class BinanceAccountManager:
                 return self._prices_cache
 
             raise
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"❌ Erreur inattendue lors de la récupération des prix: {e!s}"
+                "❌ Erreur inattendue lors de la récupération des prix: "
             )
             logger.exception(traceback.format_exc())
 
@@ -401,14 +401,14 @@ class BinanceAccountManager:
                 )
             return result
 
-        except BinanceApiError as e:
+        except BinanceApiError:
             logger.exception(
-                f"❌ Erreur lors de la récupération des informations pour {symbol}: {e!s}"
+                "❌ Erreur lors de la récupération des informations pour : "
             )
             raise
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"❌ Erreur inattendue lors de la récupération des informations pour {symbol}: {e!s}"
+                "❌ Erreur inattendue lors de la récupération des informations pour : "
             )
             logger.exception(traceback.format_exc())
             return None
@@ -438,14 +438,14 @@ class BinanceAccountManager:
             return result if isinstance(result, list) else [
                 result] if result else []
 
-        except BinanceApiError as e:
+        except BinanceApiError:
             logger.exception(
-                f"❌ Erreur lors de la récupération des ordres ouverts: {e!s}"
+                "❌ Erreur lors de la récupération des ordres ouverts: "
             )
             raise
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"❌ Erreur inattendue lors de la récupération des ordres ouverts: {e!s}"
+                "❌ Erreur inattendue lors de la récupération des ordres ouverts: "
             )
             logger.exception(traceback.format_exc())
             return []
@@ -473,14 +473,14 @@ class BinanceAccountManager:
             return result if isinstance(result, list) else [
                 result] if result else []
 
-        except BinanceApiError as e:
+        except BinanceApiError:
             logger.exception(
-                f"❌ Erreur lors de la récupération de l'historique des ordres: {e!s}"
+                "❌ Erreur lors de la récupération de l'historique des ordres: "
             )
             raise
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"❌ Erreur inattendue lors de la récupération de l'historique des ordres: {e!s}"
+                "❌ Erreur inattendue lors de la récupération de l'historique des ordres: "
             )
             logger.exception(traceback.format_exc())
             return []
@@ -631,9 +631,9 @@ class BinanceAccountManager:
         except BinanceApiError:
             logger.exception("❌ Erreur API Binance lors du calcul des valeurs")
             raise
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"❌ Erreur inattendue lors du calcul des valeurs en USDC: {e!s}"
+                "❌ Erreur inattendue lors du calcul des valeurs en USDC: "
             )
             logger.exception(traceback.format_exc())
             return []

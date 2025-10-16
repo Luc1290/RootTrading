@@ -268,7 +268,7 @@ class SimpleSignalAggregatorService:
         return signal_groups
 
     def _calculate_group_strength(
-            self, signals: list[dict[str, Any]]) -> float:
+            self, _signals: list[dict[str, Any]]) -> float:
         """
         OBSOLÈTE: Cette méthode n'est plus utilisée depuis l'implémentation du système de vague intelligent.
 
@@ -345,7 +345,7 @@ class SimpleSignalAggregatorService:
             return False
 
         recent = self.recent_signals[symbol]
-        time_diff = (datetime.utcnow() - recent["timestamp"]).total_seconds()
+        time_diff = (datetime.now(tz=timezone.utc) - recent["timestamp"]).total_seconds()
 
         # Si signal opposé récent dans la fenêtre de protection
         return bool(recent["side"] != side and time_diff <
@@ -381,7 +381,7 @@ class SimpleSignalAggregatorService:
     def _track_recent_signal(self, symbol: str, side: str):
         """Enregistre le signal récent pour éviter contradictions."""
         self.recent_signals[symbol] = {
-            "side": side, "timestamp": datetime.utcnow()}
+            "side": side, "timestamp": datetime.now(tz=timezone.utc)}
 
     async def _send_validated_signal(self, signal: dict[str, Any]):
         """Envoie le signal validé vers le coordinator."""
@@ -429,7 +429,7 @@ class SimpleSignalAggregatorService:
 
     def _cleanup_old_signals(self):
         """Nettoie les anciens signaux de la mémoire."""
-        cutoff_time = datetime.utcnow() - timedelta(
+        cutoff_time = datetime.now(tz=timezone.utc) - timedelta(
             seconds=self.contradiction_window * 2
         )
 

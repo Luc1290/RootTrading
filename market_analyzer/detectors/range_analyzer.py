@@ -341,7 +341,7 @@ class RangeAnalyzer:
     def get_trading_levels(
             self,
             range_info: RangeInfo,
-            current_price: float) -> dict:
+            _current_price: float) -> dict:
         """
         Retourne les niveaux de trading optimaux pour le range.
 
@@ -390,7 +390,7 @@ class RangeAnalyzer:
         return levels
 
     def _identify_range_boundaries(
-        self, highs: np.ndarray, lows: np.ndarray, closes: np.ndarray
+        self, highs: np.ndarray, lows: np.ndarray, _closes: np.ndarray
     ) -> tuple[float | None, float | None]:
         """Identifie les limites du range."""
         try:
@@ -644,7 +644,7 @@ class RangeAnalyzer:
         tests_high: int,
         tests_low: int,
         efficiency: float,
-        boundary_volume: float,
+        _boundary_volume: float,
     ) -> float:
         """Calcule la probabilité de breakout."""
         # Facteurs augmentant la probabilité de breakout
@@ -699,8 +699,8 @@ class RangeAnalyzer:
 
     def _analyze_bullish_breakout(
         self,
-        highs: np.ndarray,
-        lows: np.ndarray,
+        _highs: np.ndarray,
+        _lows: np.ndarray,
         closes: np.ndarray,
         volumes: np.ndarray,
         range_info: RangeInfo,
@@ -755,8 +755,8 @@ class RangeAnalyzer:
 
     def _analyze_bearish_breakout(
         self,
-        highs: np.ndarray,
-        lows: np.ndarray,
+        _highs: np.ndarray,
+        _lows: np.ndarray,
         closes: np.ndarray,
         volumes: np.ndarray,
         range_info: RangeInfo,
@@ -825,7 +825,7 @@ class RangeAnalyzer:
     def _calculate_sustainability_score(
         self,
         closes: np.ndarray,
-        volumes: np.ndarray,
+        _volumes: np.ndarray,
         breakout_level: float,
         is_bullish: bool,
     ) -> float:

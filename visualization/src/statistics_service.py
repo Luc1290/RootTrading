@@ -82,14 +82,14 @@ class StatisticsService:
                 "realizedPnl": realized_pnl_24h,
                 "totalWins": performance.get("total_wins", 0),
                 "totalLosses": performance.get("total_losses", 0),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             }
 
         except Exception as e:
             logger.exception("Error getting global statistics")
             return {
                 "error": str(e),
-                "timestamp": datetime.utcnow().isoformat()}
+                "timestamp": datetime.now(tz=timezone.utc).isoformat()}
 
     async def get_all_symbols_statistics(self) -> dict[str, Any]:
         """
@@ -116,7 +116,7 @@ class StatisticsService:
             if not symbols:
                 return {
                     "symbols": [],
-                    "timestamp": datetime.utcnow().isoformat()}
+                    "timestamp": datetime.now(tz=timezone.utc).isoformat()}
 
             # Requête principale pour récupérer toutes les statistiques en une
             # fois
@@ -196,13 +196,13 @@ class StatisticsService:
                 )
 
             return {"symbols": symbol_stats,
-                    "timestamp": datetime.utcnow().isoformat()}
+                    "timestamp": datetime.now(tz=timezone.utc).isoformat()}
 
         except Exception as e:
             logger.exception("Error getting all symbols statistics")
             return {
                 "error": str(e),
-                "timestamp": datetime.utcnow().isoformat()}
+                "timestamp": datetime.now(tz=timezone.utc).isoformat()}
 
     async def get_symbol_statistics(self, symbol: str) -> dict[str, Any]:
         """
@@ -293,7 +293,7 @@ class StatisticsService:
 
             return {
                 "symbols": [symbol_stat],
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             }
 
         except Exception as e:
@@ -301,7 +301,7 @@ class StatisticsService:
             return {
                 "error": str(e),
                 "symbol": symbol,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             }
 
     async def get_performance_history(
@@ -329,7 +329,7 @@ class StatisticsService:
 
             interval_map = {"1h": "hour", "1d": "day"}
 
-            start_time = datetime.utcnow() - period_map.get(period, timedelta(days=7))
+            start_time = datetime.now(tz=timezone.utc) - period_map.get(period, timedelta(days=7))
             pg_interval = interval_map.get(interval, "hour")
 
             query = f"""

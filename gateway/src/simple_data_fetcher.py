@@ -147,7 +147,7 @@ class SimpleDataFetcher:
         for kline in klines:
             # Extraire uniquement les données OHLCV
             candle_data = {
-                "time": datetime.fromtimestamp(kline[0] / 1000).isoformat(),
+                "time": datetime.fromtimestamp(kline[0] / 1000, tz=timezone.utc).isoformat(),
                 "symbol": symbol,
                 "timeframe": timeframe,
                 "open": float(kline[1]),

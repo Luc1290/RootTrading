@@ -88,7 +88,7 @@ class CachedIndicatorFactory:
     def stochastic_rsi(
         self,
         prices: list[float] | Any,
-        symbol: str | None = None,
+        _symbol: str | None = None,
         rsi_period: int = 14,
         stoch_period: int = 14,
     ) -> dict[str, float | None] | None:

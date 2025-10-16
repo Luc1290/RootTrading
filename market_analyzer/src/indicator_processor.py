@@ -243,7 +243,7 @@ class IndicatorProcessor:
             "time": timestamp,
             "symbol": symbol,
             "timeframe": timeframe,
-            "analysis_timestamp": datetime.now(),
+            "analysis_timestamp": datetime.now(tz=timezone.utc),
             "analyzer_version": "1.0",
         }
 

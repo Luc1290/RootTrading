@@ -189,9 +189,9 @@ class MessageRouter:
                             # Pause plus courte en cas d'erreur pour les
                             # messages haute priorité
                             time.sleep(0.2)
-            except Exception as e:
+            except Exception:
                 logger.exception(
-                    f"❌ Erreur dans le traitement de la file d'attente haute priorité: {e!s}"
+                    "❌ Erreur dans le traitement de la file d'attente haute priorité: "
                 )
 
             # Pause très courte pour les messages haute priorité
@@ -242,9 +242,9 @@ class MessageRouter:
 
                             # Pause plus longue en cas d'erreur
                             time.sleep(1.0)
-            except Exception as e:
+            except Exception:
                 logger.exception(
-                    f"❌ Erreur dans le traitement de la file d'attente: {e!s}"
+                    "❌ Erreur dans le traitement de la file d'attente: "
                 )
 
             # Courte pause pour éviter de consommer trop de CPU

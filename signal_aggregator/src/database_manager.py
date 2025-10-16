@@ -66,7 +66,7 @@ class DatabaseManager:
                 # Mise à jour des statistiques
                 self.stats["signals_stored"] = int(
                     self.stats.get("signals_stored", 0)) + 1
-                self.stats["last_storage_time"] = datetime.utcnow()
+                self.stats["last_storage_time"] = datetime.now(tz=timezone.utc)
 
                 logger.debug(f"Signal stocké en DB avec ID: {signal_id}")
                 return signal_id
@@ -79,8 +79,8 @@ class DatabaseManager:
             # Rollback en cas d'erreur
             try:
                 self.db_connection.rollback()
-            except Exception as rollback_error:
-                logger.exception(f"Erreur rollback: {rollback_error}")
+            except Exception:
+                logger.exception("Erreur rollback: ")
 
             return None
 
@@ -219,7 +219,7 @@ class DatabaseManager:
         """
         try:
             if not timestamp_str:
-                return datetime.utcnow()
+                return datetime.now(tz=timezone.utc)
 
             # Essayer différents formats
             formats = [
@@ -239,11 +239,11 @@ class DatabaseManager:
             logger.warning(
                 f"Format timestamp non reconnu: {timestamp_str}, utilisation timestamp actuel"
             )
-            return datetime.utcnow()
+            return datetime.now(tz=timezone.utc)
 
         except Exception:
             logger.exception("Erreur parsing timestamp")
-            return datetime.utcnow()
+            return datetime.now(tz=timezone.utc)
 
     def store_multiple_signals(
         self, validated_signals: list[dict[str, Any]]
@@ -293,7 +293,7 @@ class DatabaseManager:
                     [sid for sid in signal_ids if sid is not None])
                 self.stats["signals_stored"] = int(
                     self.stats.get("signals_stored", 0)) + successful_stores
-                self.stats["last_storage_time"] = datetime.utcnow()
+                self.stats["last_storage_time"] = datetime.now(tz=timezone.utc)
 
                 logger.info(
                     f"Batch de {successful_stores}/{len(validated_signals)} signaux stocké en DB"
@@ -307,8 +307,8 @@ class DatabaseManager:
             # Rollback en cas d'erreur
             try:
                 self.db_connection.rollback()
-            except Exception as rollback_error:
-                logger.exception(f"Erreur rollback batch: {rollback_error}")
+            except Exception:
+                logger.exception("Erreur rollback batch: ")
 
             # Retourner une liste de None de la même taille
             signal_ids = [None] * len(validated_signals)
@@ -405,8 +405,8 @@ class DatabaseManager:
             logger.exception("Erreur marquage signal {signal_id}")
             try:
                 self.db_connection.rollback()
-            except Exception as rollback_error:
-                logger.exception(f"Erreur rollback marquage: {rollback_error}")
+            except Exception:
+                logger.exception("Erreur rollback marquage: ")
             return False
 
     def get_validation_statistics(self, hours: int = 24) -> dict[str, Any]:
@@ -543,7 +543,7 @@ class DatabaseManager:
             logger.exception("Erreur nettoyage anciens signaux")
             try:
                 self.db_connection.rollback()
-            except Exception as rollback_error:
+            except Exception:
                 logger.exception(
-                    f"Erreur rollback nettoyage: {rollback_error}")
+                    "Erreur rollback nettoyage: ")
             return 0

@@ -151,7 +151,7 @@ def calculate_atr_series(
 def calculate_atr_incremental(
     current_high: float,
     current_low: float,
-    current_close: float,
+    _current_close: float,
     prev_close: float,
     prev_atr: float,
     period: int = 14,

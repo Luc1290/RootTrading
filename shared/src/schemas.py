@@ -28,7 +28,7 @@ class MarketData(BaseModel):
     def set_timestamp(self, v, values):
         """Si timestamp n'est pas fourni, le calculer à partir de start_time."""
         if v is None and "start_time" in values:
-            return datetime.fromtimestamp(values["start_time"] / 1000)
+            return datetime.fromtimestamp(values["start_time"] / 1000, tz=timezone.utc)
         return v
 
 

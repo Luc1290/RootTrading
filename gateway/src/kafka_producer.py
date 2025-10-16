@@ -91,7 +91,7 @@ class KafkaProducer:
         except Exception as e:
             error_msg = str(e).replace("{", "{{").replace("}", "}}")
             logger.exception(
-                f"❌ Erreur lors de la publication sur Kafka: {error_msg}")
+                "❌ Erreur lors de la publication sur Kafka: ")
 
     def publish_to_topic(
         self, topic: str, data: dict[str, Any], key: str | None = None
@@ -135,7 +135,7 @@ class KafkaProducer:
         except Exception as e:
             error_msg = str(e).replace("{", "{{").replace("}", "}}")
             logger.exception(
-                f"❌ Erreur lors de la publication des données de compte: {error_msg}"
+                "❌ Erreur lors de la publication des données de compte: "
             )
 
     def flush(self) -> None:

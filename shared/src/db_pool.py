@@ -374,9 +374,9 @@ class AdvancedConnectionPool:
                         self.connection_count += 1
                         self.in_use_connections[id(conn)] = conn
                         return conn
-                    except Exception as e:
+                    except Exception:
                         logger.exception(
-                            f"Impossible de créer une nouvelle connexion: {e!s}"
+                            "Impossible de créer une nouvelle connexion: "
                         )
                         raise
 
@@ -568,9 +568,9 @@ class DBConnectionPool:
                     # Réinitialiser certaines métriques
                     self.metrics.reset()
 
-                except Exception as e:
+                except Exception:
                     logger.exception(
-                        f"Erreur dans le thread de surveillance du pool: {e!s}"
+                        "Erreur dans le thread de surveillance du pool: "
                     )
 
         thread = threading.Thread(target=monitor_pool, daemon=True)

@@ -387,7 +387,7 @@ class Coordinator:
             logger.exception("Erreur marquage signal {signal_id}")
             return False
 
-    def process_signal(self, channel: str, data: dict[str, Any]) -> None:
+    def process_signal(self, _channel: str, data: dict[str, Any]) -> None:
         """
         Traite un signal reçu via Redis.
 
@@ -1052,9 +1052,9 @@ class Coordinator:
             for cycle in all_active_cycles:
                 try:
                     self._check_position_stop_loss(cycle)
-                except Exception as e:
+                except Exception:
                     logger.exception(
-                        f"❌ Erreur vérification stop-loss pour cycle {cycle.get('id', 'unknown')}: {e}"
+                        f"❌ Erreur vérification stop-loss pour cycle {cycle.get('id', 'unknown')}: "
                     )
 
         except Exception:

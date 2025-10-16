@@ -42,7 +42,7 @@ class CircuitBreaker:
     def call_failed(self):
         """Enregistre un appel échoué."""
         self.failure_count += 1
-        self.last_failure_time = datetime.now()
+        self.last_failure_time = datetime.now(tz=timezone.utc)
 
         if self.failure_count >= self.failure_threshold:
             self.state = "OPEN"
@@ -56,7 +56,7 @@ class CircuitBreaker:
 
         if self.state == "OPEN":
             if self.last_failure_time is not None:
-                if datetime.now() - self.last_failure_time > timedelta(seconds=self.reset_timeout):
+                if datetime.now(tz=timezone.utc) - self.last_failure_time > timedelta(seconds=self.reset_timeout):
                     self.state = "HALF_OPEN"
                     logger.info("Circuit breaker passé en HALF_OPEN")
                     return True

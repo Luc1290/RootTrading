@@ -1038,8 +1038,8 @@ class TrailingSellManager:
                             )
                             return float(result[0])
                         logger.warning(f"💾 Aucun résultat DB pour {symbol}")
-                except Exception as db_error:
-                    logger.exception(f"❌ Erreur DB pour {symbol}: {db_error}")
+                except Exception:
+                    logger.exception("❌ Erreur DB pour : ")
             else:
                 logger.warning(f"💾 Pas de connexion DB pour {symbol}")
 

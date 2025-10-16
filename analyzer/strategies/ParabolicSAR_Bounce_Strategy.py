@@ -516,7 +516,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
             return False
 
     def _add_sar_confirmations(
-        self, values: dict[str, Any], signal_side: str, current_price: float
+        self, values: dict[str, Any], signal_side: str, _current_price: float
     ) -> tuple[float, str]:
         """Ajoute confirmations spécifiques au SAR."""
         boost = 0.0
@@ -580,7 +580,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         return boost, reason_additions
 
     def _count_sar_confirmations(
-            self, values: dict[str, Any], signal_side: str) -> int:
+            self, values: dict[str, Any], _signal_side: str) -> int:
         """Compte les confirmations obligatoires pour SAR."""
         count = 0
 

@@ -123,7 +123,7 @@ class BinanceExecutor:
             fee=fee,
             fee_asset=order.symbol.replace("USDC", ""),  # BTC pour BTCUSDC
             role=TradeRole.TAKER,
-            timestamp=datetime.now(),
+            timestamp=datetime.now(tz=timezone.utc),
             demo=True,
         )
 
@@ -215,9 +215,9 @@ class BinanceExecutor:
         try:
             return self.utils.fetch_order_status(
                 symbol, order_id, self.time_offset)
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"❌ Erreur lors de la récupération du statut de l'ordre: {e!s}"
+                "❌ Erreur lors de la récupération du statut de l'ordre: "
             )
             return None
 
@@ -296,8 +296,8 @@ class BinanceExecutor:
 
         try:
             return self.utils.fetch_trade_fee(symbol, self.time_offset)
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"❌ Erreur lors de la récupération des frais de trading: {e!s}"
+                "❌ Erreur lors de la récupération des frais de trading: "
             )
             return (0.001, 0.001)  # Valeurs par défaut en cas d'erreur

@@ -327,7 +327,7 @@ class OpportunityEarlyDetector:
         current: dict,
         historical: list[dict] | None,
         reasons: list[str],
-        warnings: list[str],
+        _warnings: list[str],
     ) -> float:
         """
         Score micro-patterns (LEADING).
@@ -548,7 +548,7 @@ class OpportunityEarlyDetector:
         return min(score, 15)  # Max augmenté de 10 à 15 pour bonus oversold
 
     def _determine_signal_level(
-        self, score: float, current: dict, historical: list[dict] | None
+        self, score: float, current: dict, _historical: list[dict] | None
     ) -> tuple[EarlySignalLevel, int, float]:
         """
         Détermine le niveau de signal + timing estimé.

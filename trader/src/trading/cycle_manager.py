@@ -412,7 +412,7 @@ class CycleManager:
                         "order_id": order_id,
                         "price": str(new_price),
                         "quantity": str(new_quantity),
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
                     }
                 )
 
@@ -530,7 +530,7 @@ class CycleManager:
                     "order_id": order_id,
                     "price": str(exit_price),
                     "quantity": str(exit_quantity),
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(tz=timezone.utc).isoformat(),
                 }
 
                 # Ajouter les détails des frais

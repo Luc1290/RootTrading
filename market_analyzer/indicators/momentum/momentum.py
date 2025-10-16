@@ -257,7 +257,7 @@ def momentum_signal(
 
 def roc_signal(
     current_roc: float | None,
-    previous_roc: float | None = None,
+    _previous_roc: float | None = None,
     threshold: float = 1.0,
 ) -> str:
     """

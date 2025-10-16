@@ -112,17 +112,17 @@ class SimpleSignalProcessor:
                 return None
 
             # Ajouter timestamp de réception
-            signal["received_at"] = datetime.utcnow().isoformat()
+            signal["received_at"] = datetime.now(tz=timezone.utc).isoformat()
 
             return signal
 
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError:
             # Logger un extrait du message brut pour debug
             signal_excerpt = (
                 signal_data[:200] if len(signal_data) > 200 else signal_data
             )
             logger.exception(
-                f"Erreur parsing JSON signal: {e}. Message brut (200 chars): {signal_excerpt}"
+                "Erreur parsing JSON signal: . Message brut (200 chars): "
             )
             self.stats["errors"] += 1
             return None
@@ -146,7 +146,7 @@ class SimpleSignalProcessor:
     ) -> dict[str, Any] | None:
         """Récupère le contexte avec cache TTL dynamique."""
         cache_key = f"{symbol}_{timeframe}"
-        now = datetime.utcnow()
+        now = datetime.now(tz=timezone.utc)
         dynamic_ttl = self._get_dynamic_cache_ttl(timeframe)
 
         if cache_key in self.context_cache:
@@ -344,7 +344,7 @@ class SimpleSignalProcessor:
                             "symbol": signal.get("symbol"),
                             "side": signal.get("side"),
                             "timestamp": signal.get(
-                                "timestamp", datetime.utcnow().isoformat()
+                                "timestamp", datetime.now(tz=timezone.utc).isoformat()
                             ),
                             "confidence": signal.get("confidence"),
                             "price": context.get("current_price", 0.0),
@@ -465,7 +465,7 @@ class SimpleSignalProcessor:
 
         # Hash du contenu pour unicité
         content_hash = hashlib.md5(
-            f"{symbol}_{side}_{timeframe}_{strategies_str}_{datetime.utcnow().strftime('%Y%m%d%H%M')}".encode()
+            f"{symbol}_{side}_{timeframe}_{strategies_str}_{datetime.now(tz=timezone.utc).strftime('%Y%m%d%H%M')}".encode()
         ).hexdigest()[:8]
 
         return f"consensus_{content_hash}"
@@ -541,7 +541,7 @@ class SimpleSignalProcessor:
             "strategy": "CONSENSUS",  # Champ requis pour StrategySignal
             "symbol": symbol,
             "side": side,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             # Prix actuel du marché
             "price": context.get("current_price", 0.0),
             "confidence": normalized_confidence,  # Déjà validée avec seuil 0.5

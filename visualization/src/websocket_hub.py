@@ -58,7 +58,7 @@ class WebSocketHub:
                 "type": "connection",
                 "status": "connected",
                 "client_id": client_id,
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(tz=timezone.utc).isoformat() + "Z",
             },
         )
 
@@ -108,7 +108,7 @@ class WebSocketHub:
                 "type": "subscription",
                 "action": "subscribed",
                 "channel": channel,
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(tz=timezone.utc).isoformat() + "Z",
             },
         )
 
@@ -140,7 +140,7 @@ class WebSocketHub:
                 "type": "subscription",
                 "action": "unsubscribed",
                 "channel": channel,
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(tz=timezone.utc).isoformat() + "Z",
             },
         )
 
@@ -158,7 +158,7 @@ class WebSocketHub:
                     "type": "update",
                     "channel": channel,
                     "data": data,
-                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "timestamp": datetime.now(tz=timezone.utc).isoformat() + "Z",
                 },
             )
 
@@ -193,7 +193,7 @@ class WebSocketHub:
         )
 
     async def _start_market_updates(
-        self, channel: str, params: dict[Any, Any] | None = None
+        self, channel: str, _params: dict[Any, Any] | None = None
     ):
         """Start periodic market data updates for a channel"""
         parts = channel.split(":")
@@ -249,7 +249,7 @@ class WebSocketHub:
                     # Get latest signals
                     signals = await self.data_manager.get_trading_signals(
                         symbol or "BTCUSDT",
-                        start_time=datetime.utcnow() - timedelta(minutes=5),
+                        start_time=datetime.now(tz=timezone.utc) - timedelta(minutes=5),
                     )
 
                     if signals:
@@ -267,7 +267,7 @@ class WebSocketHub:
         self._tasks.append(task)
 
     async def _start_performance_updates(
-        self, channel: str, params: dict[Any, Any] | None = None
+        self, channel: str, _params: dict[Any, Any] | None = None
     ):
         """Start periodic performance updates"""
 

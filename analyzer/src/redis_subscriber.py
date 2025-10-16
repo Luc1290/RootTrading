@@ -223,7 +223,7 @@ class RedisPublisher:
             logger.debug(f"Performance publiée pour {strategy_name}")
 
         except Exception:
-            logger.exception(f"Erreur publication performance {strategy_name}")
+            logger.exception("Erreur publication performance ")
 
 
 class RedisSubscriber:

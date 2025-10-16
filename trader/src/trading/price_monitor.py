@@ -54,7 +54,7 @@ class PriceMonitor:
         logger.info(
             f"✅ PriceMonitor initialisé pour {len(self.symbols)} symboles")
 
-    def _process_price_update(self, channel: str, data: dict) -> None:
+    def _process_price_update(self, _channel: str, data: dict) -> None:
         """
         Traite une mise à jour de prix depuis Redis.
 
@@ -87,7 +87,7 @@ class PriceMonitor:
             with self.price_lock:
                 old_price = self.last_prices.get(symbol)
                 self.last_prices[symbol] = price
-                self.last_update_times[symbol] = datetime.now()
+                self.last_update_times[symbol] = datetime.now(tz=timezone.utc)
 
             # Calculer le pourcentage de changement
             if old_price:
@@ -113,7 +113,7 @@ class PriceMonitor:
         """
         while self.running:
             try:
-                now = datetime.now()
+                now = datetime.now(tz=timezone.utc)
                 alerts = []
 
                 with self.price_lock:

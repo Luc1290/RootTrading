@@ -38,7 +38,7 @@ opportunity_calculator: OpportunityCalculatorPro | None = None
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     global data_manager, chart_service, websocket_hub, statistics_service, opportunity_calculator
 
     logger.info("Starting visualization service...")
@@ -106,7 +106,7 @@ else:
 async def health_check():
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(tz=timezone.utc).isoformat() + "Z",
         "redis_connected": data_manager.is_redis_connected() if data_manager else False,
         "postgres_connected": (
             data_manager.is_postgres_connected() if data_manager else False),
@@ -160,7 +160,7 @@ async def get_system_alerts():
     return {
         "portfolio": portfolio_health,
         "trader": trader_health,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(tz=timezone.utc).isoformat() + "Z",
     }
 
 
@@ -1337,13 +1337,13 @@ async def proxy_portfolio_post(path: str, request: Request):
 if serve_react_app_flag:
 
     @app.get("/", response_class=HTMLResponse)
-    async def serve_react_app(request: Request):
+    async def serve_react_app(_request: Request):
         """Serve React app"""
         with open(f"{frontend_build_path}/index.html") as f:
             return HTMLResponse(content=f.read())
 
     @app.get("/{path:path}", response_class=HTMLResponse)
-    async def serve_react_app_routes(request: Request, path: str):
+    async def serve_react_app_routes(_request: Request, path: str):
         """Serve React app for all routes (SPA routing)"""
         # Skip API routes and WebSocket routes
         if path.startswith(("api/", "ws/", "health")):

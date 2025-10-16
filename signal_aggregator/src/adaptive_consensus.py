@@ -661,7 +661,7 @@ class AdaptiveConsensusAnalyzer:
         return float(weighted_score) / max(1, total_weight)
 
     def get_dynamic_consensus_threshold(
-        self, regime: str, timeframe: str, volatility_level: str = "normal"
+        self, _regime: str, timeframe: str, volatility_level: str = "normal"
     ) -> float:
         """
         Calcule dynamiquement le seuil de consensus selon régime, timeframe et volatilité.
@@ -717,7 +717,7 @@ class AdaptiveConsensusAnalyzer:
         signals: list[dict[str, Any]],
         market_regime: str,
         original_signal_count: int,
-        timeframe: str | None = None,
+        _timeframe: str | None = None,
     ) -> tuple[bool, dict[str, Any]]:
         """
         Analyse le consensus pour les signaux MTF post-conflit avec des critères assouplis.

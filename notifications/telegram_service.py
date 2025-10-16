@@ -40,7 +40,7 @@ class TelegramNotifier:
         if symbol not in self._last_notification:
             return True
 
-        time_since_last = datetime.now() - self._last_notification[symbol]
+        time_since_last = datetime.now(tz=timezone.utc) - self._last_notification[symbol]
         return time_since_last > timedelta(minutes=self._cooldown_minutes)
 
     def send_buy_signal(
@@ -122,7 +122,7 @@ class TelegramNotifier:
             )
 
             if response.status_code == 200:
-                self._last_notification[symbol] = datetime.now()
+                self._last_notification[symbol] = datetime.now(tz=timezone.utc)
                 logger.info(f"✅ Notification Telegram envoyée pour {symbol}")
 
                 # Stocker le signal en DB
@@ -169,9 +169,9 @@ class TelegramNotifier:
         volume_ratio: float | None,
         regime: str | None,
         estimated_hold_time: str | None,
-        grade: str | None,
-        rr_ratio: float | None,
-        risk_level: str | None,
+        _grade: str | None,
+        _rr_ratio: float | None,
+        _risk_level: str | None,
         early_signal: dict | None,
     ) -> str:
         """Construit le message formaté pour Telegram"""
@@ -304,7 +304,7 @@ SL: {format_price(stop_loss)} ({sl_loss:.2f}%)
 💡 <b>Raison:</b>
 {reason}
 
-⏰ {datetime.now().strftime('%H:%M:%S')}"""
+⏰ {datetime.now(tz=timezone.utc).strftime('%H:%M:%S')}"""
 
         return message
 

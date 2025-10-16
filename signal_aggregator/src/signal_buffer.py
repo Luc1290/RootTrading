@@ -187,7 +187,7 @@ class IntelligentSignalBuffer:
                 await asyncio.sleep(1.0)  # Vérifier chaque seconde
 
                 async with self.buffer_lock:
-                    now = datetime.utcnow()
+                    now = datetime.now(tz=timezone.utc)
                     symbols_to_process = []
 
                     for symbol, last_time in self.last_signal_time.items():
@@ -501,7 +501,7 @@ class IntelligentSignalBuffer:
                         > 0,  # True si il y avait un conflit
                         "total_wave_signals": wave_total
                         or len(winning_signals),  # PATCH E: vraie taille vague
-                        "resolution_timestamp": datetime.utcnow().isoformat(),
+                        "resolution_timestamp": datetime.now(tz=timezone.utc).isoformat(),
                     }
                 }
             )
@@ -546,7 +546,7 @@ class IntelligentSignalBuffer:
             "strategy": "WAVE_CONSENSUS",
             "symbol": symbol,
             "side": side,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             "confidence": min(
                 1.0, (avg_confidence + max_confidence) / 2
             ),  # Mix moyenne et max
@@ -612,7 +612,7 @@ class IntelligentSignalBuffer:
             if opposite_key in self.first_mtf_signal_time:
                 opposite_first_time = self.first_mtf_signal_time[opposite_key]
                 time_since_opposite = (
-                    datetime.utcnow() - opposite_first_time
+                    datetime.now(tz=timezone.utc) - opposite_first_time
                 ).total_seconds()
                 return time_since_opposite < 1.0
 
@@ -629,7 +629,7 @@ class IntelligentSignalBuffer:
         async with self.buffer_lock:
             symbol = signal.get("symbol", "UNKNOWN")
             side = signal.get("side")
-            now = datetime.utcnow()
+            now = datetime.now(tz=timezone.utc)
 
             # PATCH D: Exclure side=None dès l'entrée (veto/filtres)
             if side is None:
@@ -795,7 +795,7 @@ class IntelligentSignalBuffer:
         # critique
         first_time = self.first_mtf_signal_time.get(mtf_key)
         if first_time:
-            elapsed = (datetime.utcnow() - first_time).total_seconds()
+            elapsed = (datetime.now(tz=timezone.utc) - first_time).total_seconds()
             if elapsed >= self.sync_window and buffer_size >= self.min_batch_size:
                 # Vérifier les conflits avant le timeout (mais être plus
                 # permissif)
@@ -949,7 +949,7 @@ class IntelligentSignalBuffer:
                 len(signals) for signals in self.symbol_wave_buffer.values()
             )
             waves_count = len(self.symbol_wave_buffer)
-            now = datetime.utcnow()
+            now = datetime.now(tz=timezone.utc)
 
             wave_details = {}
             for symbol, signals in self.symbol_wave_buffer.items():

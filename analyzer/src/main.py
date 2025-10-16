@@ -414,7 +414,7 @@ class AnalyzerService:
 
         except Exception:
             logger.exception(
-                f"Erreur récupération données {symbol} {timeframe}")
+                "Erreur récupération données  ")
             return None
 
     def _log_strategy_debug(
@@ -582,7 +582,7 @@ class AnalyzerService:
 
             except Exception:
                 logger.exception(
-                    f"Erreur stratégie {strategy_name} pour {symbol} {timeframe}"
+                    "Erreur stratégie  pour  "
                 )
                 no_signal_reasons.append(f"{strategy_name}: ERREUR")
 

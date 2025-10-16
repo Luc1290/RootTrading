@@ -55,7 +55,7 @@ def retry(
                     attempt += 1
                     if attempt == max_attempts:
                         logger.exception(
-                            f"Échec de la fonction {func.__name__} après {attempt} tentatives: {e!s}"
+                            f"Échec de la fonction {func.__name__} après  tentatives: "
                         )
                         raise
 
@@ -196,9 +196,9 @@ def redis_lock(lock_name: str, timeout: int = 30) -> Callable:
                         redis_client.delete(lock_key)
                         logger.debug(
                             f"Verrou Redis libéré pour {func.__name__}")
-                except Exception as e:
+                except Exception:
                     logger.exception(
-                        f"Erreur lors de la libération du verrou Redis: {e!s}"
+                        "Erreur lors de la libération du verrou Redis: "
                     )
 
         return wrapper

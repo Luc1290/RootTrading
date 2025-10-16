@@ -127,7 +127,7 @@ class DatabasePersister:
         # Traiter le timestamp pour PostgreSQL
         if isinstance(data["time"], int):
             # Convertir timestamp milliseconds en objet datetime
-            data["time"] = datetime.fromtimestamp(data["time"] / 1000)
+            data["time"] = datetime.fromtimestamp(data["time"] / 1000, tz=timezone.utc)
         elif isinstance(data["time"], str):
             # Convertir string ISO en objet datetime
             try:
@@ -156,7 +156,7 @@ class DatabasePersister:
                 "Erreur lors de l'insertion des données de marché")
             logger.exception(f"Type d'erreur: {type(e).__name__}")
             logger.exception(f"Traceback complet: {traceback.format_exc()}")
-            logger.exception(f"Données problématiques: {data}")
+            logger.exception("Données problématiques: ")
 
     async def _insert_market_data(self, data: dict[str, Any]):
         """
@@ -217,7 +217,7 @@ class DatabasePersister:
             logger.exception("Erreur lors de l'insertion OHLCV en base")
             logger.exception(f"Type d'erreur: {type(e).__name__}")
             logger.exception(f"Traceback: {traceback.format_exc()}")
-            logger.exception(f"Données OHLCV: {data}")
+            logger.exception("Données OHLCV: ")
             raise
 
     async def close(self):

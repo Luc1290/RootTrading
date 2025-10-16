@@ -531,7 +531,7 @@ class SupportResistanceDetector:
         self,
         highs: np.ndarray,
         lows: np.ndarray,
-        closes: np.ndarray,
+        _closes: np.ndarray,
         current_price: float,
         timeframe: str,
     ) -> list[PriceLevel]:
@@ -599,7 +599,7 @@ class SupportResistanceDetector:
         return levels
 
     def _consolidate_levels(
-        self, levels: list[PriceLevel], current_price: float
+        self, levels: list[PriceLevel], _current_price: float
     ) -> list[PriceLevel]:
         """Consolide les niveaux proches pour éviter la redondance."""
         if not levels:
@@ -812,7 +812,7 @@ class SupportResistanceDetector:
             2.0)
 
     def _calculate_trendline(
-        self, prices: np.ndarray, trend_type: str = "support"
+        self, prices: np.ndarray, _trend_type: str = "support"
     ) -> dict | None:
         """Calcule une ligne de tendance par régression linéaire."""
         try:

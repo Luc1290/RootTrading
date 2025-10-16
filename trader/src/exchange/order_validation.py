@@ -141,6 +141,6 @@ class OrderValidator:
             # Capturer les autres erreurs et les convertir en erreurs de
             # validation
             logger.exception(
-                f"❌ Erreur inattendue lors de la validation de l'ordre: {e!s}"
+                "❌ Erreur inattendue lors de la validation de l'ordre: "
             )
             raise OrderValidationError(f"Erreur de validation: {e!s}")

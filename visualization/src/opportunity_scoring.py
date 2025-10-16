@@ -1077,7 +1077,7 @@ class OpportunityScoring:
         return "LOW"
 
     def _calculate_recommendation(
-        self, score: float, confidence: float, category_scores: dict, ad: dict
+        self, score: float, confidence: float, category_scores: dict, _ad: dict
     ) -> tuple[str, list[str], list[str]]:
         """Calcule la recommandation finale."""
         reasons: list[str] = []

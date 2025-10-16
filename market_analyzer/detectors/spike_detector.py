@@ -215,8 +215,8 @@ class SpikeDetector:
 
     def _detect_price_spikes(
         self,
-        highs: np.ndarray,
-        lows: np.ndarray,
+        _highs: np.ndarray,
+        _lows: np.ndarray,
         closes: np.ndarray,
         timestamps: list[str],
     ) -> list[SpikeEvent]:
@@ -682,7 +682,7 @@ class SpikeDetector:
         return SpikeImpact.UNKNOWN
 
     def _predict_combined_impact(
-        self, price_change: float, volume_ratio: float, price_z: float
+        self, _price_change: float, volume_ratio: float, price_z: float
     ) -> SpikeImpact:
         """Prédit l'impact pour spikes combinés."""
         if volume_ratio > 5 and abs(price_z) > 3:
@@ -695,9 +695,9 @@ class SpikeDetector:
         self,
         price_change: float,
         volume_ratio: float,
-        high: float,
-        low: float,
-        close: float,
+        _high: float,
+        _low: float,
+        _close: float,
     ) -> SpikeType:
         """Classifie le type de spike combiné."""
         if price_change > 0.03 and volume_ratio > 5:  # 3% + gros volume
@@ -709,7 +709,7 @@ class SpikeDetector:
         return SpikeType.COMBINED_SPIKE
 
     def _detect_pump_pattern(
-        self, closes: np.ndarray, volumes: np.ndarray, offset: int
+        self, closes: np.ndarray, volumes: np.ndarray, _offset: int
     ) -> dict | None:
         """Détecte un pattern de pump."""
         if len(closes) < 15:
@@ -749,7 +749,7 @@ class SpikeDetector:
         return None
 
     def _detect_dump_pattern(
-        self, closes: np.ndarray, volumes: np.ndarray, offset: int
+        self, closes: np.ndarray, volumes: np.ndarray, _offset: int
     ) -> dict | None:
         """Détecte un pattern de dump."""
         if len(closes) < 10:
@@ -865,7 +865,7 @@ class SpikeDetector:
         )
 
     def _analyze_post_spike_impact(
-        self, spikes: list[SpikeEvent], closes: np.ndarray
+        self, spikes: list[SpikeEvent], _closes: np.ndarray
     ) -> list[SpikeEvent]:
         """Analyse le comportement post-spike pour ajuster les prédictions."""
         # Implémentation simplifiée - peut être étendue

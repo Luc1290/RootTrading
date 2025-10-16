@@ -186,9 +186,9 @@ class StrategyLoader:
 
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"Erreur lors de la validation de {strategy_class.__name__}: {e}"
+                f"Erreur lors de la validation de {strategy_class.__name__}"
             )
             return False
 
@@ -215,7 +215,7 @@ class StrategyLoader:
         }
 
     def filter_strategies(
-        self, enabled_only: bool = True, categories: list[str] | None = None
+        self, _enabled_only: bool = True, _categories: list[str] | None = None
     ) -> dict[str, type[BaseStrategy]]:
         """
         Filtre les stratégies selon des critères.

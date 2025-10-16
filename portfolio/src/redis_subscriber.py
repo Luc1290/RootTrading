@@ -41,7 +41,7 @@ def _subscribe_cycle_created():
         "✅ Abonné au canal Redis des cycles créés (monitoring uniquement).")
 
 
-def _handle_cycle_created(channel, data):
+def _handle_cycle_created(_channel, data):
     """
     Log uniquement - le coordinator gère l'allocation via l'API du portfolio
     """
@@ -68,7 +68,7 @@ def _subscribe_cycle_completed():
     )
 
 
-def _handle_cycle_completed(channel, data):
+def _handle_cycle_completed(_channel, data):
     """
     Log uniquement - le coordinator gère le remboursement via l'API du portfolio
     """
@@ -97,7 +97,7 @@ def _subscribe_cycle_canceled():
         "✅ Abonné au canal Redis des cycles annulés (monitoring uniquement).")
 
 
-def _handle_cycle_canceled(channel, data):
+def _handle_cycle_canceled(_channel, data):
     """
     Log uniquement - le coordinator gère le remboursement via l'API du portfolio
     """
@@ -122,7 +122,7 @@ def _subscribe_cycle_failed():
         "✅ Abonné au canal Redis des cycles échoués (monitoring uniquement).")
 
 
-def _handle_cycle_failed(channel, data):
+def _handle_cycle_failed(_channel, data):
     """
     Log uniquement - le coordinator gère le remboursement via l'API du portfolio
     """

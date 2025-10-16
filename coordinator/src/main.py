@@ -197,9 +197,9 @@ class CoordinatorService:
             )
             return False
 
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"❌ Erreur lors de la vérification de santé du service Portfolio: {e!s}"
+                "❌ Erreur lors de la vérification de santé du service Portfolio: "
             )
             return False
 
@@ -300,9 +300,9 @@ class CoordinatorService:
                         logger.warning(
                             "Le service Portfolio n'est pas en bonne santé.")
                     last_health_check = current_time
-                except Exception as e:
+                except Exception:
                     logger.exception(
-                        f"❌ Erreur lors de la vérification de santé du portfolio: {e!s}"
+                        "❌ Erreur lors de la vérification de santé du portfolio: "
                     )
 
     def stop(self):
