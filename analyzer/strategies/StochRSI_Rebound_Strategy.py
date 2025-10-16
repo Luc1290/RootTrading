@@ -117,7 +117,7 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
             "adx_14": self._safe_float(self.indicators.get("adx_14")),
         }
 
-    def generate_signal(self) -> dict[str, Any]:  # noqa: PLR0911
+    def generate_signal(self) -> dict[str, Any]:
         """
         Génère un signal basé sur les indicateurs StochRSI pré-calculés.
         """

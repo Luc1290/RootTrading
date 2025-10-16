@@ -13,16 +13,10 @@ from collections.abc import Callable
 from queue import Empty, Queue
 from typing import Any
 
-from confluent_kafka import (
-    Consumer,  # type: ignore[import-untyped]
-    KafkaError,
-    KafkaException,
-    Producer,
-)
-from confluent_kafka.admin import (
-    AdminClient,  # type: ignore[import-untyped]
-    NewTopic,
-)
+from confluent_kafka import Consumer  # type: ignore[import-untyped]
+from confluent_kafka import KafkaError, KafkaException, Producer
+from confluent_kafka.admin import AdminClient  # type: ignore[import-untyped]
+from confluent_kafka.admin import NewTopic
 
 from .config import KAFKA_BROKER, KAFKA_GROUP_ID
 

@@ -628,19 +628,18 @@ class ContextManager:
                 # Pour les prix autour de 1, utiliser des décimales
                 base = round(price, 1)
                 levels.extend([base, base + 0.1, base - 0.1])
+            # MICRO-CAPS: Adaptation dynamique pour prix < 1 (PEPE, etc.)
+            # Déterminer le nombre de décimales significatives
+            elif price > 0:
+                significant_digits = max(
+                    2, -math.floor(math.log10(price)) + 1)
+                base = round(price, significant_digits)
+                step = 10 ** (
+                    -significant_digits + 1
+                )  # Un ordre de grandeur plus grand
+                levels.extend([base, base + step, base - step])
             else:
-                # MICRO-CAPS: Adaptation dynamique pour prix < 1 (PEPE, etc.)
-                # Déterminer le nombre de décimales significatives
-                if price > 0:
-                    significant_digits = max(
-                        2, -math.floor(math.log10(price)) + 1)
-                    base = round(price, significant_digits)
-                    step = 10 ** (
-                        -significant_digits + 1
-                    )  # Un ordre de grandeur plus grand
-                    levels.extend([base, base + step, base - step])
-                else:
-                    levels = [0.1]  # Fallback pour prix = 0
+                levels = [0.1]  # Fallback pour prix = 0
 
             # Filtrer les niveaux négatifs et trier
             levels = [level for level in levels if level > 0]

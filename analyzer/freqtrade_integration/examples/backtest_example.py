@@ -12,12 +12,13 @@ Prérequis:
 - freqtrade setup pour télécharger données historiques
 """
 
-from analyzer.strategies.EMA_Cross_Strategy import EMA_Cross_Strategy
-from analyzer.freqtrade_integration import RootToFreqtradeAdapter
 import logging
 import os
 import sys
 from pathlib import Path
+
+from analyzer.freqtrade_integration import RootToFreqtradeAdapter
+from analyzer.strategies.EMA_Cross_Strategy import EMA_Cross_Strategy
 
 # Ajouter les paths nécessaires
 analyzer_root = os.path.abspath(

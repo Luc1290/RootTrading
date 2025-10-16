@@ -6,12 +6,12 @@ Charge dynamiquement les stratégies disponibles et les exécute sur les donnée
 import importlib
 import inspect
 import logging
-import os
 import sys
 from pathlib import Path
 from typing import Any
 
-from strategies.base_strategy import BaseStrategy  # type: ignore[import-not-found]
+from strategies.base_strategy import \
+    BaseStrategy  # type: ignore[import-not-found]
 
 # Ajouter le répertoire parent au path pour les imports dynamiques
 analyzer_root = str((Path(__file__).parent / "..").resolve())
@@ -183,8 +183,7 @@ class StrategyLoader:
                     f"{strategy_class.__name__} manque les paramètres: {missing}"
                 )
                 return False
-            else:
-                return True
+            return True
 
         except Exception:
             logger.exception(

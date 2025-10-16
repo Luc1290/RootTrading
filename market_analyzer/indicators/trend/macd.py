@@ -12,7 +12,8 @@ import logging
 import numpy as np
 import pandas as pd
 
-from .moving_averages import calculate_ema, calculate_ema_incremental, calculate_ema_series
+from .moving_averages import (calculate_ema, calculate_ema_incremental,
+                              calculate_ema_series)
 
 logger = logging.getLogger(__name__)
 

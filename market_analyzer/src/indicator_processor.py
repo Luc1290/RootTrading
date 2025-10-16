@@ -6,10 +6,11 @@ Architecture simple : récupère données → appelle modules → sauvegarde ré
 
 import json
 import logging
-import os
 import sys
 import time
 from datetime import datetime, timezone
+# Ajouter les chemins pour les imports
+from pathlib import Path
 
 import asyncpg  # type: ignore
 import numpy as np
@@ -17,53 +18,41 @@ import redis.asyncio as redis
 
 from market_analyzer.detectors.regime_detector import RegimeDetector
 from market_analyzer.detectors.spike_detector import SpikeDetector
-from market_analyzer.detectors.support_resistance_detector import SupportResistanceDetector
-from market_analyzer.detectors.volume_context_analyzer import VolumeContextAnalyzer
-from market_analyzer.indicators import (
-    calculate_bollinger_bands_series,
-    calculate_cci,
-    calculate_ema_series,
-    calculate_macd_series,
-    calculate_obv_series,
-    calculate_rsi_series,
-    calculate_sma,
-    calculate_stochastic_series,
-    calculate_vwap_series,
-    calculate_williams_r,
-)
+from market_analyzer.detectors.support_resistance_detector import \
+    SupportResistanceDetector
+from market_analyzer.detectors.volume_context_analyzer import \
+    VolumeContextAnalyzer
+from market_analyzer.indicators import (calculate_bollinger_bands_series,
+                                        calculate_cci, calculate_ema_series,
+                                        calculate_macd_series,
+                                        calculate_obv_series,
+                                        calculate_rsi_series, calculate_sma,
+                                        calculate_stochastic_series,
+                                        calculate_vwap_series,
+                                        calculate_williams_r)
 from market_analyzer.indicators.composite.confluence import (
-    ConfluenceType,
-    calculate_confluence_score,
-)
-from market_analyzer.indicators.composite.signal_strength import calculate_signal_strength
-from market_analyzer.indicators.momentum.momentum import calculate_momentum, calculate_roc
+    ConfluenceType, calculate_confluence_score)
+from market_analyzer.indicators.composite.signal_strength import \
+    calculate_signal_strength
+from market_analyzer.indicators.momentum.momentum import (calculate_momentum,
+                                                          calculate_roc)
 from market_analyzer.indicators.momentum.rsi import calculate_stoch_rsi
 from market_analyzer.indicators.trend.adx import calculate_adx_full
 from market_analyzer.indicators.trend.moving_averages import (
-    calculate_adaptive_ma,
-    calculate_dema,
-    calculate_hull_ma,
-    calculate_tema,
-    calculate_wma,
-)
+    calculate_adaptive_ma, calculate_dema, calculate_hull_ma, calculate_tema,
+    calculate_wma)
 from market_analyzer.indicators.volatility.atr import (
-    calculate_atr,
-    calculate_atr_percentile,
-    calculate_natr,
-    volatility_regime,
-)
-from market_analyzer.indicators.volatility.bollinger import calculate_keltner_channels
+    calculate_atr, calculate_atr_percentile, calculate_natr, volatility_regime)
+from market_analyzer.indicators.volatility.bollinger import \
+    calculate_keltner_channels
 from market_analyzer.indicators.volume.advanced_metrics import (
-    calculate_avg_trade_size,
-    calculate_quote_volume_ratio,
-    calculate_trade_intensity,
-)
-from market_analyzer.indicators.volume.obv import calculate_obv_ma, calculate_obv_oscillator
+    calculate_avg_trade_size, calculate_quote_volume_ratio,
+    calculate_trade_intensity)
+from market_analyzer.indicators.volume.obv import (calculate_obv_ma,
+                                                   calculate_obv_oscillator)
 from market_analyzer.indicators.volume.vwap import calculate_vwap_quote_series
 from shared.src.config import get_db_config
 
-# Ajouter les chemins pour les imports
-from pathlib import Path
 sys.path.append(str((Path(__file__).parent / "../../").resolve()))
 
 # Import des détecteurs
@@ -380,12 +369,10 @@ class IndicatorProcessor:
                     )
 
                     # MACD Signaux binaires
-                    from ..indicators.trend.macd import (
-                        calculate_macd_trend,
-                        calculate_ppo,
-                        macd_signal_cross,
-                        macd_zero_cross,
-                    )
+                    from ..indicators.trend.macd import (calculate_macd_trend,
+                                                         calculate_ppo,
+                                                         macd_signal_cross,
+                                                         macd_zero_cross)
 
                     if (
                         macd_line_series
@@ -464,9 +451,7 @@ class IndicatorProcessor:
                     # Calculer trend_strength depuis ADX (string: "weak",
                     # "strong", etc.)
                     from ..indicators.trend.adx import (
-                        adx_trend_strength,
-                        calculate_directional_bias,
-                    )
+                        adx_trend_strength, calculate_directional_bias)
 
                     adx_value = adx_full.get("adx")
                     if adx_value is not None:
@@ -553,8 +538,7 @@ class IndicatorProcessor:
                     from ..indicators.volatility.bollinger import (
                         calculate_bollinger_breakout_direction,
                         calculate_bollinger_expansion,
-                        calculate_bollinger_squeeze,
-                    )
+                        calculate_bollinger_squeeze)
 
                     squeeze_data = self._safe_call(
                         lambda: calculate_bollinger_squeeze(
@@ -646,8 +630,7 @@ class IndicatorProcessor:
                     # Stochastic Signaux binaires
                     from ..indicators.oscillators.stochastic import (
                         calculate_stochastic_divergence,
-                        calculate_stochastic_signal,
-                    )
+                        calculate_stochastic_signal)
 
                     divergence = self._safe_call(
                         lambda: calculate_stochastic_divergence(
@@ -725,7 +708,8 @@ class IndicatorProcessor:
                         )
 
                 # A/D Line (Accumulation/Distribution Line)
-                from ..indicators.volume.obv import calculate_volume_accumulation_distribution
+                from ..indicators.volume.obv import \
+                    calculate_volume_accumulation_distribution
 
                 indicators["ad_line"] = self._safe_call(
                     lambda: calculate_volume_accumulation_distribution(
@@ -817,7 +801,8 @@ class IndicatorProcessor:
 
                 # Volume Profile (POC, VAH, VAL)
                 if len(volumes) >= 20:
-                    from ..indicators.volume.vwap import calculate_value_area, find_poc
+                    from ..indicators.volume.vwap import (calculate_value_area,
+                                                          find_poc)
 
                     indicators["volume_profile_poc"] = self._safe_call(
                         lambda: find_poc(closes, volumes, 20)

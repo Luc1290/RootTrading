@@ -17,7 +17,8 @@ import pandas as pd
 
 # Import cache and utilities
 from shared.src.indicator_cache import get_indicator_cache
-from shared.src.technical_utils import validate_and_align_arrays, validate_indicator_params
+from shared.src.technical_utils import (validate_and_align_arrays,
+                                        validate_indicator_params)
 
 logger = logging.getLogger(__name__)
 

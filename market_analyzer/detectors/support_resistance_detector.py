@@ -818,46 +818,45 @@ class SupportResistanceDetector:
         try:
             if len(prices) < 10:
                 return None
-            else:
-                # Utiliser les 30 derniers points
-                y = prices[-30:]
-                x = np.arange(len(y))
+            # Utiliser les 30 derniers points
+            y = prices[-30:]
+            x = np.arange(len(y))
 
-                # Régression linéaire
-                slope, intercept, r_value, p_value, std_err = stats.linregress(
-                    x, y)
+            # Régression linéaire
+            slope, intercept, r_value, p_value, std_err = stats.linregress(
+                x, y)
 
-                # R-squared pour la qualité de la ligne
-                r_squared = r_value**2
+            # R-squared pour la qualité de la ligne
+            r_squared = r_value**2
 
-                # Niveau actuel de la trendline
-                current_level = slope * (len(y) - 1) + intercept
+            # Niveau actuel de la trendline
+            current_level = slope * (len(y) - 1) + intercept
 
-                # Compter les touches approximatives
-                touches = 0
-                tolerance = np.std(y) * 0.1
+            # Compter les touches approximatives
+            touches = 0
+            tolerance = np.std(y) * 0.1
 
-                for i, price in enumerate(y):
-                    trendline_value = slope * i + intercept
-                    if abs(price - trendline_value) <= tolerance:
-                        touches += 1
+            for i, price in enumerate(y):
+                trendline_value = slope * i + intercept
+                if abs(price - trendline_value) <= tolerance:
+                    touches += 1
 
-                # Âge du dernier test
-                last_test_age = 0
-                for i in range(len(y) - 1, -1, -1):
-                    trendline_value = slope * i + intercept
-                    if abs(y[i] - trendline_value) <= tolerance:
-                        last_test_age = len(y) - 1 - i
-                        break
+            # Âge du dernier test
+            last_test_age = 0
+            for i in range(len(y) - 1, -1, -1):
+                trendline_value = slope * i + intercept
+                if abs(y[i] - trendline_value) <= tolerance:
+                    last_test_age = len(y) - 1 - i
+                    break
 
-                return {
-                    "slope": slope,
-                    "intercept": intercept,
-                    "r_squared": r_squared,
-                    "current_level": current_level,
-                    "touches": touches,
-                    "last_test_age": last_test_age,
-                }
+            return {
+                "slope": slope,
+                "intercept": intercept,
+                "r_squared": r_squared,
+                "current_level": current_level,
+                "touches": touches,
+                "last_test_age": last_test_age,
+            }
 
         except Exception as e:
             logger.warning(f"Erreur calcul trendline: {e}")

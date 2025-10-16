@@ -257,9 +257,8 @@ class Coordinator:
                 force = strength_map.get(signal.strength, 1.0)
                 return force, 1, 0.7  # Confiance par défaut pour enum
 
-            else:
-                # Fallback : signal basique
-                return 1.0, 1, 0.5
+            # Fallback : signal basique
+            return 1.0, 1, 0.5
 
         except Exception:
             logger.exception("Erreur calcul force signal")
@@ -684,8 +683,7 @@ class Coordinator:
                         f"Valeur position trop faible: {value_usdc:.2f} USDC < {self.min_absolute_trade_usdc} USDC (minimum augmenté)",
                     )
 
-                else:
-                    return True, "OK"
+                return True, "OK"
 
         except Exception as e:
             logger.exception("Erreur vérification faisabilité")
@@ -726,11 +724,10 @@ class Coordinator:
                     f"Frais trop élevés: {fee_percentage:.2f}% de la valeur du trade",
                 )
 
-            else:
-                logger.info(
-                    f"✅ Trade valide: {trade_value:.2f} USDC, frais {fee_percentage:.2f}%"
-                )
-                return True, "Trade valide"
+            logger.info(
+                f"✅ Trade valide: {trade_value:.2f} USDC, frais {fee_percentage:.2f}%"
+            )
+            return True, "Trade valide"
 
         except Exception:
             logger.exception("❌ Erreur vérification trade")
@@ -874,18 +871,17 @@ class Coordinator:
                 quantity = trade_amount / signal.price
 
             # Pour un SELL, vendre toute la position
-            else:  # SELL
-                if isinstance(balances, dict):
-                    quantity = balances.get(base_asset, {}).get("free", 0)
-                else:
-                    quantity = next(
-                        (
-                            b.get("free", 0)
-                            for b in balances
-                            if b.get("asset") == base_asset
-                        ),
-                        0,
-                    )
+            elif isinstance(balances, dict):
+                quantity = balances.get(base_asset, {}).get("free", 0)
+            else:
+                quantity = next(
+                    (
+                        b.get("free", 0)
+                        for b in balances
+                        if b.get("asset") == base_asset
+                    ),
+                    0,
+                )
 
             return quantity
 
@@ -932,8 +928,7 @@ class Coordinator:
                 position = active_positions[0]
                 return position.get("id", f"position_{symbol}")
 
-            else:
-                return None
+            return None
 
         except Exception as e:
             logger.warning(

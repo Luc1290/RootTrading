@@ -13,7 +13,8 @@ import pandas as pd
 
 # Import cache and utilities
 from shared.src.indicator_cache import get_indicator_cache
-from shared.src.technical_utils import validate_and_align_arrays, validate_indicator_params
+from shared.src.technical_utils import (validate_and_align_arrays,
+                                        validate_indicator_params)
 
 logger = logging.getLogger(__name__)
 
@@ -468,8 +469,7 @@ def calculate_rsi_cached(
             rsi_state = _create_rsi_state(prices_array, period)
             cache.set(cache_key, rsi_state, symbol)
             return rsi_value
-        else:
-            return rsi_value
+        return rsi_value
 
     except Exception:
         logger.exception("Erreur RSI cached pour {symbol}")
@@ -525,8 +525,7 @@ def calculate_rsi_series_cached(
         if rsi_series:
             cache.set(cache_key, rsi_series, symbol)
             return rsi_series
-        else:
-            return rsi_series
+        return rsi_series
 
     except Exception:
         logger.exception("Erreur RSI series cached pour {symbol}")
@@ -643,17 +642,16 @@ def _extend_rsi_series(
 
         if prices_length <= cached_length:
             return cached_series[:prices_length]
-        else:
-            # Calculate new RSI values
-            new_series = cached_series.copy()
+        # Calculate new RSI values
+        new_series = cached_series.copy()
 
-            # We need at least period+1 prices for RSI calculation
-            for i in range(max(period, cached_length), prices_length):
-                price_window = prices[i - period: i + 1]
-                rsi_value = calculate_rsi(price_window, period)
-                new_series.append(rsi_value)
+        # We need at least period+1 prices for RSI calculation
+        for i in range(max(period, cached_length), prices_length):
+            price_window = prices[i - period: i + 1]
+            rsi_value = calculate_rsi(price_window, period)
+            new_series.append(rsi_value)
 
-            return new_series
+        return new_series
 
     except Exception as e:
         logger.warning(f"Erreur extension RSI series: {e}")

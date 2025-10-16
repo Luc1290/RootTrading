@@ -2,11 +2,12 @@
 Tests pour MACD_Crossover_Strategy.
 """
 
-from analyzer.strategies.MACD_Crossover_Strategy import MACD_Crossover_Strategy
 import os
 import sys
 
 import pytest
+
+from analyzer.strategies.MACD_Crossover_Strategy import MACD_Crossover_Strategy
 
 # Ajouter le chemin racine pour les imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))

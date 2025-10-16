@@ -4,7 +4,6 @@ Démarre le gestionnaire d'ordres et expose une API REST.
 """
 
 import argparse
-import logging
 import os
 import signal
 import sys

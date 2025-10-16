@@ -2,11 +2,12 @@
 Tests pour RSI_Cross_Strategy.
 """
 
-from analyzer.strategies.RSI_Cross_Strategy import RSI_Cross_Strategy
 import os
 import sys
 
 import pytest
+
+from analyzer.strategies.RSI_Cross_Strategy import RSI_Cross_Strategy
 
 # Ajouter le chemin racine pour les imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))

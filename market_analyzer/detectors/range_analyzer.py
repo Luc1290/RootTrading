@@ -568,8 +568,7 @@ class RangeAnalyzer:
                 return RangeQuality.GOOD
             if score >= 2:
                 return RangeQuality.AVERAGE
-            else:
-                return RangeQuality.POOR
+            return RangeQuality.POOR
 
         except Exception as e:
             logger.warning(f"Erreur évaluation qualité range: {e}")

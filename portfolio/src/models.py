@@ -5,8 +5,6 @@ Définit les structures de données et les interactions avec la base de données
 
 import contextlib
 import logging
-import os
-
 # Importer les modules partagés
 import sys
 import time

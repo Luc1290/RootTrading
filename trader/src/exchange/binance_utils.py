@@ -250,7 +250,7 @@ class BinanceUtils:
 
         except requests.exceptions.RequestException as e:
             logger.exception(
-                f"❌ Erreur lors de la récupération du prix pour : "
+                "❌ Erreur lors de la récupération du prix pour : "
             )
             if hasattr(e, "response") and e.response:
                 logger.exception(f"Réponse: {e.response.text}")
@@ -417,7 +417,7 @@ class BinanceUtils:
                 # Si la conversion échoue, traiter comme inconnu et logger
                 # l'erreur
                 logger.exception(
-                    f"❌ Valeur OrderSide non reconnue de Binance: "
+                    "❌ Valeur OrderSide non reconnue de Binance: "
                 )
                 raise ValueError(
                     f"OrderSide invalide reçu de Binance: {binance_side}")
@@ -503,7 +503,7 @@ class BinanceUtils:
                     # Si la conversion échoue, traiter comme inconnu et logger
                     # l'erreur
                     logger.exception(
-                        f"❌ Valeur OrderSide non reconnue de Binance: "
+                        "❌ Valeur OrderSide non reconnue de Binance: "
                     )
                     raise ValueError(
                         f"OrderSide invalide reçu de Binance: {binance_side}"
@@ -527,9 +527,9 @@ class BinanceUtils:
                 demo=False,
             )
 
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"❌ Erreur lors de la récupération du statut de l'ordre: "
+                "❌ Erreur lors de la récupération du statut de l'ordre: "
             )
             return None
 
@@ -677,9 +677,9 @@ class BinanceUtils:
             # Si pas d'info spécifique, utiliser les frais standard
             return (0.001, 0.001)
 
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"❌ Erreur lors de la récupération des frais de trading: "
+                "❌ Erreur lors de la récupération des frais de trading: "
             )
 
             # En cas d'erreur, retourner des frais standard
@@ -725,7 +725,7 @@ class BinanceUtils:
 
         except Exception as e:
             logger.exception(
-                f"❌ Erreur lors de la récupération des ordres ouverts: "
+                "❌ Erreur lors de la récupération des ordres ouverts: "
             )
             if hasattr(e, "response") and e.response:
                 logger.exception(f"Réponse: {e.response.text}")
@@ -792,9 +792,9 @@ class BinanceUtils:
             )
             return symbol_info
 
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"❌ Erreur lors de la récupération des informations d'échange: "
+                "❌ Erreur lors de la récupération des informations d'échange: "
             )
             # Retourner des informations par défaut pour les symboles courants
             return {

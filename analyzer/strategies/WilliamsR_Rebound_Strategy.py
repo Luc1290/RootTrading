@@ -2,7 +2,7 @@
 WilliamsR_Rebound_Strategy - Stratégie de rebound basée sur Williams %R.
 Williams %R est un oscillateur de momentum qui mesure les niveaux de surachat/survente
 et génère des signaux de rebound depuis les extrêmes.
-"""  # noqa: N999
+"""
 
 import contextlib
 import logging
@@ -13,7 +13,7 @@ from .base_strategy import BaseStrategy
 logger = logging.getLogger(__name__)
 
 
-class WilliamsR_Rebound_Strategy(BaseStrategy):  # noqa: N801
+class WilliamsR_Rebound_Strategy(BaseStrategy):
     """
     Stratégie utilisant Williams %R pour détecter les opportunités de rebound.
 

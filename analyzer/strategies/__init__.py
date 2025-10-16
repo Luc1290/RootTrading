@@ -17,7 +17,8 @@ from .OBV_Crossover_Strategy import OBV_Crossover_Strategy
 from .ParabolicSAR_Bounce_Strategy import ParabolicSAR_Bounce_Strategy
 from .PPO_Crossover_Strategy import PPO_Crossover_Strategy
 from .Pump_Dump_Pattern_Strategy import Pump_Dump_Pattern_Strategy
-from .Range_Breakout_Confirmation_Strategy import Range_Breakout_Confirmation_Strategy
+from .Range_Breakout_Confirmation_Strategy import \
+    Range_Breakout_Confirmation_Strategy
 from .Resistance_Rejection_Strategy import Resistance_Rejection_Strategy
 from .ROC_Threshold_Strategy import ROC_Threshold_Strategy
 from .RSI_Cross_Strategy import RSI_Cross_Strategy

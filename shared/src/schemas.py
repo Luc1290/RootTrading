@@ -8,7 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, validator
 
-from .enums import CycleStatus, OrderSide, OrderStatus, SignalStrength, TradeRole
+from .enums import (CycleStatus, OrderSide, OrderStatus, SignalStrength,
+                    TradeRole)
 
 
 class MarketData(BaseModel):

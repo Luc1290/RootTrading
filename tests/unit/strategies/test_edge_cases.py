@@ -2,12 +2,13 @@
 Tests pour les cas limites et branches conditionnelles.
 """
 
-from analyzer.strategies.RSI_Cross_Strategy import RSI_Cross_Strategy
-from analyzer.strategies.MACD_Crossover_Strategy import MACD_Crossover_Strategy
 import os
 import sys
 
 import pytest
+
+from analyzer.strategies.MACD_Crossover_Strategy import MACD_Crossover_Strategy
+from analyzer.strategies.RSI_Cross_Strategy import RSI_Cross_Strategy
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 

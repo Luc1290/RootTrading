@@ -170,8 +170,7 @@ class CoordinatorService:
                         else None
                     ),
                 }
-            else:
-                return {"status": "unhealthy", "status_code": response.status_code}
+            return {"status": "unhealthy", "status_code": response.status_code}
 
         except Exception as e:
             return {"status": "error", "error": str(e)}
@@ -190,11 +189,10 @@ class CoordinatorService:
             if response.status_code == 200:
                 # Log de santé réussi supprimé pour réduire la verbosité
                 return True
-            else:
-                logger.warning(
-                    f"⚠️ Service Portfolio a retourné un code d'état non-OK: {response.status_code}"
-                )
-                return False
+            logger.warning(
+                f"⚠️ Service Portfolio a retourné un code d'état non-OK: {response.status_code}"
+            )
+            return False
 
         except Exception:
             logger.exception(

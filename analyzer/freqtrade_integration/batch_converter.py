@@ -3,9 +3,6 @@ BatchConverter - Conversion en masse de stratégies ROOT ↔ Freqtrade.
 Permet de convertir toutes les stratégies d'un dossier en une seule opération.
 """
 
-from .root_to_freqtrade import RootToFreqtradeAdapter
-from .freqtrade_to_root import FreqtradeToRootAdapter
-from strategies.base_strategy import BaseStrategy
 import importlib
 import inspect
 import logging
@@ -13,6 +10,11 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from strategies.base_strategy import BaseStrategy
+
+from .freqtrade_to_root import FreqtradeToRootAdapter
+from .root_to_freqtrade import RootToFreqtradeAdapter
 
 # Ajouter le path pour imports ROOT
 analyzer_root = os.path.abspath(

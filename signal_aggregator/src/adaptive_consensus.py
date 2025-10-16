@@ -10,12 +10,9 @@ Au lieu d'exiger un nombre fixe de stratégies, le consensus s'adapte selon :
 import logging
 from typing import Any
 
-from .strategy_classification import (
-    STRATEGY_FAMILIES,
-    get_strategy_family,
-    is_strategy_acceptable_for_regime,
-    is_strategy_optimal_for_regime,
-)
+from .strategy_classification import (STRATEGY_FAMILIES, get_strategy_family,
+                                      is_strategy_acceptable_for_regime,
+                                      is_strategy_optimal_for_regime)
 
 logger = logging.getLogger(__name__)
 

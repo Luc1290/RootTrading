@@ -3,14 +3,15 @@ FreqtradeToRootAdapter - Convertit stratégies Freqtrade vers format ROOT.
 Permet d'importer stratégies de la communauté Freqtrade dans l'écosystème ROOT.
 """
 
-from .data_converter import DataConverter
-from strategies.base_strategy import BaseStrategy
 import logging
 import os
 import sys
 from typing import Any, Dict, Optional, Type
 
 import pandas as pd
+from strategies.base_strategy import BaseStrategy
+
+from .data_converter import DataConverter
 
 # Ajouter le path pour imports ROOT
 analyzer_root = os.path.abspath(

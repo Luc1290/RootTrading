@@ -221,13 +221,12 @@ class HullMA_Slope_Strategy(BaseStrategy):
                         (price_hull_ratio - 1.0) * 10, -0.1
                     ),  # Approximation
                 }
-            else:
-                return {
-                    "direction": "sideways",
-                    "strength": "weak",
-                    "reliable": False,
-                    "slope_proxy": 0.0,
-                }
+            return {
+                "direction": "sideways",
+                "strength": "weak",
+                "reliable": False,
+                "slope_proxy": 0.0,
+            }
 
         except (ValueError, TypeError):
             return {

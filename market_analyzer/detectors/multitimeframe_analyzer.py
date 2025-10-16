@@ -364,7 +364,8 @@ class MultiTimeframeAnalyzer:
         if len(closes) < 20:
             return "neutral", 0.0
 
-        from ..indicators.trend.moving_averages import calculate_ema, calculate_ema_series
+        from ..indicators.trend.moving_averages import (calculate_ema,
+                                                        calculate_ema_series)
 
         # EMA courte vs EMA longue (with caching if symbol provided)
         if symbol and enable_cache:
@@ -415,7 +416,8 @@ class MultiTimeframeAnalyzer:
         if len(closes) < 14:
             return "neutral", 0.0
 
-        from ..indicators.momentum.rsi import calculate_rsi, calculate_rsi_series
+        from ..indicators.momentum.rsi import (calculate_rsi,
+                                               calculate_rsi_series)
 
         # RSI calculation (with caching if symbol provided)
         if symbol and enable_cache:

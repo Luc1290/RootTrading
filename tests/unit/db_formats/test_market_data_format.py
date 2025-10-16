@@ -2,13 +2,14 @@
 Tests pour valider le format des données market_data en DB.
 """
 
-from shared.src.schemas import MarketData
-from pydantic import ValidationError
 import os
 import sys
 from datetime import datetime, timedelta
 
 import pytest
+from pydantic import ValidationError
+
+from shared.src.schemas import MarketData
 
 # Ajouter le chemin racine pour les imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))

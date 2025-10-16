@@ -203,7 +203,8 @@ class RegimeDetector:
     ) -> dict:
         """Analyse la volatilité du marché."""
         from ..indicators.volatility.atr import calculate_atr_series
-        from ..indicators.volatility.bollinger import calculate_bollinger_bands_series
+        from ..indicators.volatility.bollinger import \
+            calculate_bollinger_bands_series
 
         # ATR pour volatilité absolue
         atr_series = calculate_atr_series(highs, lows, closes)
@@ -378,7 +379,8 @@ class RegimeDetector:
         enable_cache: bool = True,
     ) -> dict:
         """Analyse le momentum."""
-        from ..indicators.momentum.rsi import calculate_rsi, calculate_rsi_series
+        from ..indicators.momentum.rsi import (calculate_rsi,
+                                               calculate_rsi_series)
         from ..indicators.trend.macd import calculate_macd_series
 
         # RSI pour momentum (with caching if symbol provided)

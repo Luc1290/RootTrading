@@ -185,8 +185,7 @@ class ServiceClient:
                     return [
                         pos for pos in response if pos.get("symbol") == symbol]
                 return response
-            else:
-                return []
+            return []
 
         except Exception as e:
             logger.warning(f"Erreur récupération positions actives: {e!s}")

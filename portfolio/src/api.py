@@ -14,7 +14,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import psutil  # type: ignore[import-untyped]
-from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response
+from fastapi import (Depends, FastAPI, HTTPException, Path, Query, Request,
+                     Response)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
@@ -943,11 +944,10 @@ def _register_diagnostic_routes(app: FastAPI):
                     "query_time_ms": round(query_time * 1000, 2),
                     "connections": conn_result,
                 }
-            else:
-                return {
-                    "status": "error",
-                    "message": "Problème de connexion à la base de données",
-                }
+            return {
+                "status": "error",
+                "message": "Problème de connexion à la base de données",
+            }
         except Exception as e:
             import traceback
 

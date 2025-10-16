@@ -2,11 +2,12 @@
 Tests pour BaseStrategy - classe de base de toutes les stratégies.
 """
 
-from analyzer.strategies.base_strategy import BaseStrategy
 import os
 import sys
 
 import pytest
+
+from analyzer.strategies.base_strategy import BaseStrategy
 
 # Ajouter le chemin racine pour les imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))

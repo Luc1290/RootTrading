@@ -2,13 +2,14 @@
 Tests pour la gestion d'erreurs dans les stratégies.
 """
 
-from analyzer.strategies.RSI_Cross_Strategy import RSI_Cross_Strategy
-from analyzer.strategies.MACD_Crossover_Strategy import MACD_Crossover_Strategy
-from analyzer.strategies.EMA_Cross_Strategy import EMA_Cross_Strategy
 import os
 import sys
 
 import pytest
+
+from analyzer.strategies.EMA_Cross_Strategy import EMA_Cross_Strategy
+from analyzer.strategies.MACD_Crossover_Strategy import MACD_Crossover_Strategy
+from analyzer.strategies.RSI_Cross_Strategy import RSI_Cross_Strategy
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 
