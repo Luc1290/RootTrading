@@ -4,22 +4,16 @@ Convertit les données WebSocket Binance en messages Kafka.
 """
 
 import logging
-import os
-
-# Importer les clients partagés
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 from shared.src.config import KAFKA_BROKER, KAFKA_TOPIC_MARKET_DATA
 from shared.src.kafka_client import KafkaClient
 from shared.src.redis_client import RedisClient
 
-sys.path.append(
-    os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../../")))
+sys.path.append(str(Path(__file__).parent.parent.parent.resolve()))
 
 
 # Configuration du logging
@@ -88,8 +82,7 @@ class KafkaProducer:
                 logger.debug(
                     f"🔄 Données en cours {symbol.upper()}: prix actuel {data['close']}"
                 )
-        except Exception as e:
-            error_msg = str(e).replace("{", "{{").replace("}", "}}")
+        except Exception:
             logger.exception(
                 "❌ Erreur lors de la publication sur Kafka: ")
 
@@ -132,8 +125,7 @@ class KafkaProducer:
         try:
             self.client.produce(topic=topic, message=data)
             logger.info(f"💰 Publié données de compte sur {topic}")
-        except Exception as e:
-            error_msg = str(e).replace("{", "{{").replace("}", "}}")
+        except Exception:
             logger.exception(
                 "❌ Erreur lors de la publication des données de compte: "
             )
@@ -165,7 +157,7 @@ def get_producer() -> KafkaProducer:
     Returns:
         Instance du producteur Kafka
     """
-    global _producer_instance
+    global _producer_instance  # noqa: PLW0603
     if _producer_instance is None:
         _producer_instance = KafkaProducer()
     return _producer_instance

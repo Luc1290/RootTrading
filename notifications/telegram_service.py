@@ -4,7 +4,7 @@ import builtins
 import contextlib
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import requests  # type: ignore[import-untyped]
 from dotenv import load_dotenv
@@ -145,16 +145,16 @@ class TelegramNotifier:
                     risk_level=risk_level,
                     message_id=str(message_id) if message_id else None,
                 )
-
-                return True
-            logger.error(
-                f"❌ Erreur Telegram API: {response.status_code} - {response.text}"
-            )
-            return False
-
+            else:
+                logger.error(
+                    f"❌ Erreur Telegram API: {response.status_code} - {response.text}"
+                )
+                return False
         except Exception:
             logger.exception("❌ Erreur lors de l'envoi Telegram")
             return False
+        else:
+            return True
 
     def _build_message(
         self,
@@ -404,10 +404,11 @@ SL: {format_price(stop_loss)} ({sl_loss:.2f}%)
                 },
                 timeout=10,
             )
-            return response.status_code == 200
         except Exception:
             logger.exception("❌ Erreur test notification")
             return False
+        else:
+            return response.status_code == 200
 
 
 # Instance globale

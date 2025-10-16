@@ -90,18 +90,15 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                             float(dema_curr) *
                             price_ratio if dema_curr else None)
 
-                    if (
-                        roc_curr and len(close_list) >= 12
-                    ):  # ROC(10) need 12 points for prev calc
+                    if roc_curr and len(close_list) >= 12:  # ROC(10) need 12 points for prev calc
                         # ROC précédent approximé: (close[-2] - close[-12]) /
                         # close[-12]
-                        if len(close_list) >= 12:
-                            close_12_ago = float(close_list[-12])
-                            roc_10_prev = (
-                                (close_prev - close_12_ago) / close_12_ago
-                                if close_12_ago != 0
-                                else 0
-                            )
+                        close_12_ago = float(close_list[-12])
+                        roc_10_prev = (
+                            (close_prev - close_12_ago) / close_12_ago
+                            if close_12_ago != 0
+                            else 0
+                        )
 
                 except (ValueError, TypeError, IndexError):
                     pass
@@ -209,7 +206,7 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                 trix_direction = "neutral"
                 trix_strength = 0.1
 
-            return {
+            result = {
                 "trix_value": trix_proxy,
                 "trix_direction": trix_direction,
                 "trix_strength": trix_strength,
@@ -221,6 +218,8 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                 "trix_value": None,
                 "trix_direction": None,
                 "trix_strength": 0}
+        else:
+            return result
 
     def _detect_signal_line_crossover(
             self, values: dict[str, Any]) -> dict[str, Any]:
@@ -230,14 +229,15 @@ class TRIX_Crossover_Strategy(BaseStrategy):
         tema_12_prev = values.get("tema_12_prev")
         dema_12_prev = values.get("dema_12_prev")
 
+        # Résultat par défaut
+        default_result = {"is_crossover": False, "direction": None, "strength": 0}
+
         if None in (tema_12, dema_12):
-            return {"is_crossover": False, "direction": None, "strength": 0}
+            return default_result
 
         try:
             t = float(tema_12) if tema_12 is not None else 0.0
             d = float(dema_12) if dema_12 is not None else 0.0
-
-            # Différence relative actuelle
             diff = (t - d) / (t or 1e-12)
 
             # Si on a les valeurs précédentes, détecter le fresh crossover
@@ -248,27 +248,18 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                     diff_prev = (tp - dp) / (tp or 1e-12)
 
                     # Détection FRESH crossover (changement de signe récent)
-                    crossed_up = (diff_prev <= 0) and (
-                        diff > self.min_tema_dema_separation
-                    )
-                    crossed_down = (diff_prev >= 0) and (
-                        diff < -self.min_tema_dema_separation
-                    )
+                    crossed_up = (diff_prev <= 0) and (diff > self.min_tema_dema_separation)
+                    crossed_down = (diff_prev >= 0) and (diff < -self.min_tema_dema_separation)
 
-                    if crossed_up:
+                    if crossed_up or crossed_down:
+                        direction = "bullish" if crossed_up else "bearish"
                         return {
                             "is_crossover": True,
-                            "direction": "bullish",
+                            "direction": direction,
                             "strength": min(abs(diff) * 100, 1.0),
                             "tema_dema_diff": diff,
                         }
-                    if crossed_down:
-                        return {
-                            "is_crossover": True,
-                            "direction": "bearish",
-                            "strength": min(abs(diff) * 100, 1.0),
-                            "tema_dema_diff": diff,
-                        }
+
                     return {
                         "is_crossover": False,
                         "direction": "neutral",
@@ -276,24 +267,18 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                         "tema_dema_diff": diff,
                     }
                 except (ValueError, TypeError):
-                    pass
+                    pass  # Continue to fallback
 
-            # Fallback: détection simple avec seuil renforcé si pas de valeurs
-            # précédentes
-            if diff > self.min_tema_dema_separation * 2:
+            # Fallback: détection simple avec seuil renforcé si pas de valeurs précédentes
+            if abs(diff) > self.min_tema_dema_separation * 2:
+                direction = "bullish" if diff > 0 else "bearish"
                 return {
                     "is_crossover": True,
-                    "direction": "bullish",
+                    "direction": direction,
                     "strength": min(abs(diff) * 100, 1.0),
                     "tema_dema_diff": diff,
                 }
-            if diff < -self.min_tema_dema_separation * 2:
-                return {
-                    "is_crossover": True,
-                    "direction": "bearish",
-                    "strength": min(abs(diff) * 100, 1.0),
-                    "tema_dema_diff": diff,
-                }
+
             return {
                 "is_crossover": False,
                 "direction": "neutral",
@@ -302,7 +287,7 @@ class TRIX_Crossover_Strategy(BaseStrategy):
             }
 
         except (ValueError, TypeError):
-            return {"is_crossover": False, "direction": None, "strength": 0}
+            return default_result
 
     def _detect_momentum_alignment(
         self, values: dict[str, Any], trix_direction: str
@@ -421,146 +406,46 @@ class TRIX_Crossover_Strategy(BaseStrategy):
             "indicators": alignment_indicators,
         }
 
-    def generate_signal(self) -> dict[str, Any]:
-        """
-        Génère un signal basé sur TRIX crossover simulé.
-        """
-        if not self.validate_data():
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Données insuffisantes",
-                "metadata": {},
-            }
+    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Helper to create rejection signals."""
+        base_metadata = {"strategy": self.name}
+        if metadata:
+            base_metadata.update(metadata)
+        return {
+            "side": None,
+            "confidence": 0.0,
+            "strength": "weak",
+            "reason": reason,
+            "metadata": base_metadata,
+        }
 
-        values = self._get_current_values()
-
-        # Calculer TRIX proxy
-        trix_data = self._calculate_trix_proxy(values)
-        if trix_data["trix_value"] is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "TEMA/ROC indisponible pour calcul TRIX",
-                "metadata": {"strategy": self.name},
-            }
-
-        trix_direction = trix_data["trix_direction"]
-        if trix_direction == "neutral":
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"TRIX neutre ({trix_data['trix_value']:.4f}) - pas de crossover",
-                "metadata": {
-                    "strategy": self.name,
-                    "trix_value": trix_data["trix_value"],
-                },
-            }
-
-        # Détection signal line crossover (optionnel)
-        crossover_data = self._detect_signal_line_crossover(values)
-
-        # Vérifier alignment du momentum
-        alignment_data = self._detect_momentum_alignment(
-            values, trix_direction)
-
-        if self.momentum_alignment_required and not alignment_data["is_aligned"]:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"TRIX {trix_direction} mais momentum pas aligné",
-                "metadata": {
-                    "strategy": self.name,
-                    "trix_direction": trix_direction,
-                    "alignment_score": alignment_data["score"],
-                },
-            }
-
-        # NOUVEAU: Rejet si bias directionnel contradictoire
-        directional_bias = values.get("directional_bias")
-        if directional_bias:
-            if (trix_direction in ["bullish", "strong_bullish",
-                                   "extreme_bullish"] and directional_bias == "BEARISH"):
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Rejet TRIX BUY: bias contradictoire ({directional_bias})",
-                    "metadata": {
-                        "strategy": self.name,
-                        "trix_direction": trix_direction,
-                        "directional_bias": directional_bias,
-                    },
-                }
-            if (trix_direction in ["bearish", "strong_bearish",
-                                   "extreme_bearish"] and directional_bias == "BULLISH"):
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Rejet TRIX SELL: bias contradictoire ({directional_bias})",
-                    "metadata": {
-                        "strategy": self.name,
-                        "trix_direction": trix_direction,
-                        "directional_bias": directional_bias,
-                    },
-                }
-
-        # Générer signal selon direction TRIX - INCLUANT NOUVEAUX NIVEAUX
-        signal_side = None
-        if trix_direction in ["bullish", "strong_bullish", "extreme_bullish"]:
-            signal_side = "BUY"
-        elif trix_direction in ["bearish", "strong_bearish", "extreme_bearish"]:
-            signal_side = "SELL"
-
-        if signal_side is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Direction TRIX indéterminée: {trix_direction}",
-                "metadata": {"strategy": self.name},
-            }
-
-        # NOUVEAU: ROC bounds - éviter les roquettes tardives
+    def _validate_signal_requirements(
+        self, signal_side: str, values: dict[str, Any], trix_direction: str
+    ) -> dict[str, Any] | None:
+        """Valide les exigences additionnelles pour le signal. Retourne un signal de rejet ou None si valide."""
+        # ROC bounds validation
         roc_10 = values.get("roc_10")
         if roc_10 is not None:
             try:
                 r = float(roc_10)
-                # ROC bounds assouplis: -0.1% < ROC10 < 5% pour BUY
                 if signal_side == "BUY" and not (-0.001 <= r <= 0.05):
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"ROC {'trop faible' if r < -0.001 else 'trop fort'} ({r:.3%})",
-                        "metadata": {
-                            "strategy": self.name},
-                    }
-                # Pour SELL, ROC doit être négatif mais pas extrême
+                    return self._create_rejection_signal(
+                        f"ROC {'trop faible' if r < -0.001 else 'trop fort'} ({r:.3%})",
+                        {"roc_10": r}
+                    )
                 if signal_side == "SELL" and not (-0.05 <= r <= 0.001):
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"ROC {'trop faible' if r > 0.001 else 'trop fort'} ({r:.3%})",
-                        "metadata": {
-                            "strategy": self.name},
-                    }
+                    return self._create_rejection_signal(
+                        f"ROC {'trop faible' if r > 0.001 else 'trop fort'} ({r:.3%})",
+                        {"roc_10": r}
+                    )
             except (ValueError, TypeError):
                 pass
 
-        # NOUVEAU: Pullback obligatoire pour BUY - anti-achat-de-sommet
+        # Pullback validation for BUY
         if signal_side == "BUY":
             ema_12 = values.get("ema_12")
-            values.get("ema_26")
             atr_14 = values.get("atr_14")
-            close = (self.data.get("close",
-                                   [None])[-1] if self.data.get("close") else None)
+            close = (self.data.get("close", [None])[-1] if self.data.get("close") else None)
 
             if None not in (close, ema_12, atr_14):
                 try:
@@ -568,111 +453,157 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                     ema12_val = float(ema_12) if ema_12 is not None else 0.0
                     atr_val = float(atr_14) if atr_14 is not None else 0.0
 
-                    # Détection sur-extension assouplie: prix > EMA12 * 1.01 OU
-                    # prix - EMA12 > 1.5*ATR
                     overextended = (close_val > ema12_val * 1.01) or (
                         close_val - ema12_val > atr_val * 1.5
                     )
 
                     if overextended:
-                        return {
-                            "side": None,
-                            "confidence": 0.0,
-                            "strength": "weak",
-                            "reason": "TRIX BUY mais prix sur-étiré: attente pullback",
-                            "metadata": {
-                                "strategy": self.name},
-                        }
+                        return self._create_rejection_signal(
+                            "TRIX BUY mais prix sur-étiré: attente pullback",
+                            {"close": close_val, "ema_12": ema12_val, "atr_14": atr_val}
+                        )
                 except (ValueError, TypeError):
                     pass
 
-        # Calculer confidence - BASE AUGMENTÉE pour passer le filtre aggregator
-        base_confidence = 0.65  # Augmenté pour atteindre 0.60 minimum avec bonus
+        # Volume validation
+        volume_ratio = values.get("volume_ratio")
+        if volume_ratio is not None:
+            try:
+                vol_ratio = float(volume_ratio)
+                if vol_ratio < 0.5:
+                    return self._create_rejection_signal(
+                        f"Volume anémique ({vol_ratio:.2f}x)",
+                        {"volume_ratio": vol_ratio}
+                    )
+            except (ValueError, TypeError):
+                pass
+
+        # Confluence validation
+        confluence_score = values.get("confluence_score")
+        if confluence_score is not None:
+            try:
+                conf_val = float(confluence_score)
+                if conf_val < 25:
+                    return self._create_rejection_signal(
+                        f"Rejet TRIX: confluence trop faible ({conf_val:.1f})",
+                        {"confluence_score": conf_val, "trix_direction": trix_direction}
+                    )
+            except (ValueError, TypeError):
+                pass
+
+        return None
+
+    def generate_signal(self) -> dict[str, Any]:
+        """
+        Génère un signal basé sur TRIX crossover simulé.
+        """
+        if not self.validate_data():
+            return self._create_rejection_signal("Données insuffisantes", {})
+
+        values = self._get_current_values()
+
+        # Calculer TRIX proxy
+        trix_data = self._calculate_trix_proxy(values)
+        if trix_data["trix_value"] is None or trix_data["trix_direction"] == "neutral":
+            return self._create_rejection_signal(
+                f"TRIX {'indisponible' if trix_data['trix_value'] is None else 'neutre'} ({trix_data.get('trix_value', 'N/A')})",
+                {"trix_value": trix_data.get("trix_value")},
+            )
+
+        trix_direction = trix_data["trix_direction"]
+
+        # Détection signal line crossover (optionnel)
+        crossover_data = self._detect_signal_line_crossover(values)
+
+        # Vérifier alignment du momentum
+        alignment_data = self._detect_momentum_alignment(values, trix_direction)
+        directional_bias = values.get("directional_bias")
+
+        # Valider momentum alignment et directional bias
+        momentum_not_aligned = self.momentum_alignment_required and not alignment_data["is_aligned"]
+        bias_contradicts = directional_bias and (
+            (trix_direction in ["bullish", "strong_bullish", "extreme_bullish"] and directional_bias == "BEARISH") or
+            (trix_direction in ["bearish", "strong_bearish", "extreme_bearish"] and directional_bias == "BULLISH"))
+
+        if momentum_not_aligned or bias_contradicts:
+            reason = (f"TRIX {trix_direction} mais momentum pas aligné" if momentum_not_aligned
+                     else f"Rejet TRIX: bias contradictoire ({directional_bias})")
+            metadata = ({"trix_direction": trix_direction, "alignment_score": alignment_data["score"]}
+                       if momentum_not_aligned
+                       else {"trix_direction": trix_direction, "directional_bias": directional_bias})
+            return self._create_rejection_signal(reason, metadata)
+
+        # Déterminer le signal side et valider les exigences
+        if trix_direction in ["bullish", "strong_bullish", "extreme_bullish"]:
+            signal_side = "BUY"
+        elif trix_direction in ["bearish", "strong_bearish", "extreme_bearish"]:
+            signal_side = "SELL"
+        else:
+            signal_side = None
+
+        if not signal_side:
+            return self._create_rejection_signal(
+                f"Direction TRIX indéterminée: {trix_direction}",
+                {"trix_direction": trix_direction}
+            )
+
+        rejection = self._validate_signal_requirements(signal_side, values, trix_direction)
+        if rejection:
+            return rejection
+
+        # Calculer confidence
+        base_confidence = 0.65
         confidence_boost = 0.0
 
-        # Score TRIX strength - RÉDUIT
-        confidence_boost += trix_data["trix_strength"] * 0.25  # Réduit de 0.4
+        confidence_boost += trix_data["trix_strength"] * 0.25
+        confidence_boost += alignment_data["score"] * 0.20
 
-        # Score alignment momentum - RÉDUIT
-        confidence_boost += alignment_data["score"] * 0.20  # Réduit de 0.3
-
-        # TRIX est un oscillateur, pas un %
         reason = f"TRIX {trix_direction} ({trix_data['trix_value']:.4f})"
 
         if alignment_data["indicators"]:
             reason += f" + {alignment_data['indicators'][0]}"
 
-        # Bonus signal line crossover
-        if self.signal_line_crossover and crossover_data["is_crossover"]:
-            if (signal_side == "BUY" and crossover_data["direction"] == "bullish") or (
-                    signal_side == "SELL" and crossover_data["direction"] == "bearish"):
-                # Réduit de 0.2
-                confidence_boost += crossover_data["strength"] * 0.15
-                reason += " + crossover signal line"
+        if self.signal_line_crossover and crossover_data["is_crossover"] and (
+                (signal_side == "BUY" and crossover_data["direction"] == "bullish") or
+                (signal_side == "SELL" and crossover_data["direction"] == "bearish")):
+            confidence_boost += crossover_data["strength"] * 0.15
+            reason += " + crossover signal line"
 
-        # NOUVEAU: Volume floor gate - rejeter les heures mortes
         volume_ratio = values.get("volume_ratio")
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio < 0.5:  # Volume vraiment trop faible = pas de marché
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Volume anémique ({vol_ratio:.2f}x)",
-                        "metadata": {"strategy": self.name},
-                    }
-                # Volume confirmation - seuils durcis
-                if vol_ratio >= self.strong_volume_threshold:  # ≥2.0x
-                    confidence_boost += 0.12  # Bonus major pour volume fort
+                if vol_ratio >= self.strong_volume_threshold:
+                    confidence_boost += 0.12
                     reason += f" + volume fort ({vol_ratio:.1f}x)"
-                elif vol_ratio >= self.volume_confirmation_threshold:  # ≥1.4x
-                    confidence_boost += 0.07  # Bonus mineur
+                elif vol_ratio >= self.volume_confirmation_threshold:
+                    confidence_boost += 0.07
                     reason += f" + volume ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
 
-        # MACD histogram seulement (éviter redondance avec TRIX)
         macd_histogram = values.get("macd_histogram")
         if macd_histogram is not None:
             try:
                 hist_val = float(macd_histogram)
-                if (
-                    signal_side == "BUY" and hist_val > 0.001
-                ) or (  # Seuil significatif
-                    signal_side == "SELL" and hist_val < -0.001
-                ):
-                    confidence_boost += 0.06  # Bonus réduit
+                if (signal_side == "BUY" and hist_val > 0.001) or (
+                    signal_side == "SELL" and hist_val < -0.001):
+                    confidence_boost += 0.06
                     reason += " + MACD histogram"
             except (ValueError, TypeError):
                 pass
 
-        # Confluence score - rejet si trop faible
         confluence_score = values.get("confluence_score")
         if confluence_score is not None:
             try:
                 conf_val = float(confluence_score)
-                if conf_val < 25:  # Confluence minimum assouplie
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet TRIX: confluence trop faible ({conf_val:.1f})",
-                        "metadata": {
-                            "strategy": self.name,
-                            "confluence_score": conf_val,
-                            "trix_direction": trix_direction,
-                        },
-                    }
-                if conf_val > 75:  # Bonus seulement si très élevé
+                if conf_val > 75:
                     confidence_boost += 0.08
                     reason += " + haute confluence"
             except (ValueError, TypeError):
                 pass
 
-        confidence = self.calculate_confidence(
-            base_confidence, 1.0 + confidence_boost)
+        confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
 
         return {

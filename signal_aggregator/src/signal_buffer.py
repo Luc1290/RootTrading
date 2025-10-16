@@ -7,7 +7,7 @@ import asyncio
 import contextlib
 import logging
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from .strategy_classification import get_strategy_family
@@ -415,11 +415,7 @@ class IntelligentSignalBuffer:
 
         # PATCH C: Plancher de qualité - pénaliser les signaux tièdes
         quality_floor = 0.55
-        if avg_confidence < quality_floor:
-            # Atténue le score global si qualité médiocre
-            penalty = (quality_floor - avg_confidence) * 0.4
-        else:
-            penalty = 0.0
+        penalty = (quality_floor - avg_confidence) * 0.4 if avg_confidence < quality_floor else 0.0
 
         # Critère 3: Diversité des familles de stratégies (25% du score)
         unique_families = set()
@@ -659,7 +655,7 @@ class IntelligentSignalBuffer:
             wave_size = len(self.symbol_wave_buffer[symbol])
 
             logger.debug(
-                f"➕ Signal ajouté {symbol} {timeframe} {side} (vague: {wave_size} signaux)"
+                f"+ Signal ajouté {symbol} {timeframe} {side} (vague: {wave_size} signaux)"
             )
 
             # Vérifier si taille max atteinte (sécurité)

@@ -35,7 +35,7 @@ STRATEGY_FAMILIES = {
             "WilliamsR_Rebound_Strategy",
             "CCI_Reversal_Strategy",
             "Bollinger_Touch_Strategy",
-            "ZScore_Extreme_Reversal_Strategy",
+            "ZScoreExtremeReversalStrategy",
         ],
         "best_regimes": ["RANGING"],
         "acceptable_regimes": ["VOLATILE", "TRANSITION"],
@@ -102,7 +102,7 @@ STRATEGY_FAMILIES = {
     "contrarian": {
         "strategies": [
             # Stratégies contrariennes pures (contre-tendance extrême)
-            "ZScore_Extreme_Reversal_Strategy",
+            "ZScoreExtremeReversalStrategy",
             # Déjà dans mean_reversion mais très contrarian
             "Exhaustion_Reversal_Strategy",  # Si existe
             "Sentiment_Contrarian_Strategy",  # Si existe
@@ -626,12 +626,11 @@ def get_enhanced_regime_adjustment(
     # Vérifier si c'est un rebond légitime
     if should_allow_counter_trend_rebound(
         market_regime, signal_side, market_indicators
-    ):
+    ) and base_multiplier < 0.8:  # Si fortement pénalisé
         # Réduire la pénalité pour les rebonds légitimes
-        if base_multiplier < 0.8:  # Si fortement pénalisé
-            base_multiplier = max(
-                base_multiplier * 1.4, 0.7
-            )  # Boost significatif mais limité
+        base_multiplier = max(
+            base_multiplier * 1.4, 0.7
+        )  # Boost significatif mais limité
 
     # Appliquer l'ajustement adaptatif
     return adaptive_adjuster.get_adaptive_multiplier(

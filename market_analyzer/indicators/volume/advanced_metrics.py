@@ -156,15 +156,13 @@ def analyze_volume_quality(
                 quality_factors: list[float] = []
 
                 # Volume élevé + peu de trades = Baleines (haute qualité)
-                if result["quote_volume_ratio"] and result["quote_volume_ratio"] > 1.5:
-                    if result["trade_intensity"] and result["trade_intensity"] < 1.5:
-                        quality_factors.append(80)  # Volume de baleines
+                if result["quote_volume_ratio"] and result["quote_volume_ratio"] > 1.5 and result["trade_intensity"] and result["trade_intensity"] < 1.5:
+                    quality_factors.append(80)  # Volume de baleines
 
                 # Volume élevé + beaucoup de trades = FOMO retail (qualité
                 # moyenne)
-                if result["quote_volume_ratio"] and result["quote_volume_ratio"] > 1.5:
-                    if result["trade_intensity"] and result["trade_intensity"] > 2.0:
-                        quality_factors.append(60)  # FOMO retail
+                if result["quote_volume_ratio"] and result["quote_volume_ratio"] > 1.5 and result["trade_intensity"] and result["trade_intensity"] > 2.0:
+                    quality_factors.append(60)  # FOMO retail
 
                 # Volume normal + trades normaux = Qualité standard
                 if not quality_factors:
@@ -206,6 +204,8 @@ def detect_volume_anomaly(
     current_avg_size = recent_avg_sizes[-1]
     current_trades = recent_trades[-1]
 
+    result = "normal"
+
     # Détection d'anomalies
     if (
         avg_size_std > 0
@@ -215,20 +215,22 @@ def detect_volume_anomaly(
             trades_std > 0
             and (current_trades - trades_mean) / trades_std < -threshold / 2
         ):
-            return "whale_accumulation"  # Gros trades, peu de transactions
-        return "large_trades_spike"
+            result = "whale_accumulation"  # Gros trades, peu de transactions
+        else:
+            result = "large_trades_spike"
 
-    if trades_std > 0 and (current_trades - trades_mean) / \
+    elif trades_std > 0 and (current_trades - trades_mean) / \
             trades_std > threshold:
         if (avg_size_std > 0 and (current_avg_size -
                                   avg_size_mean) / avg_size_std < -threshold / 2):
-            return "retail_frenzy"  # Beaucoup de petits trades
-        return "high_activity_spike"
+            result = "retail_frenzy"  # Beaucoup de petits trades
+        else:
+            result = "high_activity_spike"
 
-    if avg_size_std > 0 and trades_std > 0:
+    elif avg_size_std > 0 and trades_std > 0:
         size_z = abs((current_avg_size - avg_size_mean) / avg_size_std)
         trades_z = abs((current_trades - trades_mean) / trades_std)
         if size_z > threshold / 2 and trades_z > threshold / 2:
-            return "volume_breakout"  # Anomalie dans les deux métriques
+            result = "volume_breakout"  # Anomalie dans les deux métriques
 
-    return "normal"
+    return result

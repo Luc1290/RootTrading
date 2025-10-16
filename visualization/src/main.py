@@ -3,7 +3,8 @@ import json
 import os
 import sys
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,12 +19,7 @@ from visualization.src.statistics_service import StatisticsService
 from visualization.src.websocket_hub import WebSocketHub
 
 # Ajouter le path pour accéder au module notifications
-sys.path.insert(
-    0,
-    os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../..")))
+sys.path.insert(0, str((Path(__file__).parent / "../..").resolve()))
 
 # Configuration du logging centralisée
 from shared.logging_config import setup_logging
@@ -53,7 +49,7 @@ async def lifespan(_app: FastAPI):
         OpportunityCalculatorPro()
     )  # PRO: Scoring 7 catégories + Validation 4 niveaux + 108 indicateurs
 
-    asyncio.create_task(websocket_hub.start())
+    _websocket_task = asyncio.create_task(websocket_hub.start())
 
     yield
 
@@ -81,7 +77,7 @@ app.mount("/static", StaticFiles(directory="src/static"), name="static")
 
 # Configuration des templates et fichiers statiques (temporaire)
 frontend_build_path = "frontend/dist"
-serve_react_app_flag = os.path.exists(frontend_build_path)
+serve_react_app_flag = Path(frontend_build_path).exists()
 
 if serve_react_app_flag:
     # Serve static assets first
@@ -200,7 +196,7 @@ async def get_market_chart(
         )
     except Exception as e:
         logger.exception("Error getting market chart")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/charts/signals/{symbol}")
@@ -222,7 +218,7 @@ async def get_signals_chart(
         )
     except Exception as e:
         logger.exception("Error getting signals chart")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/charts/telegram-signals/{symbol}")
@@ -302,7 +298,7 @@ async def get_telegram_signals(symbol: str, hours: int = 24, limit: int = 100):
 
     except Exception as e:
         logger.exception("Error getting Telegram signals")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/charts/performance")
@@ -317,7 +313,7 @@ async def get_performance_chart(period: str = "24h", metric: str = "pnl"):
         return await chart_service.get_performance_chart(period=period, metric=metric)
     except Exception as e:
         logger.exception("Error getting performance chart")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/charts/indicators/{symbol}")
@@ -352,7 +348,7 @@ async def get_indicators_chart(
         )
     except Exception as e:
         logger.exception("Error getting indicators chart")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.websocket("/ws/charts/{client_id}")
@@ -391,21 +387,18 @@ async def get_available_symbols():
     """Get list of available trading symbols"""
     try:
         symbols = await data_manager.get_available_symbols()
-        return {"symbols": symbols}
     except Exception as e:
         logger.exception("Error getting available symbols")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    else:
+        return {"symbols": symbols}
 
 
 @app.get("/api/configured-symbols")
 async def get_configured_symbols():
     """Get list of configured trading symbols from shared config"""
     try:
-        # Import standard depuis shared.src.config
         from shared.src.config import SYMBOLS
-
-        return {"symbols": SYMBOLS}
-
     except Exception:
         logger.exception("Error getting configured symbols")
         # Fallback avec symboles par défaut en cas d'erreur
@@ -423,6 +416,8 @@ async def get_configured_symbols():
         ]
         logger.info(f"Using fallback symbols: {default_symbols}")
         return {"symbols": default_symbols}
+    else:
+        return {"symbols": SYMBOLS}
 
 
 @app.get("/api/trading-opportunities/{symbol}")
@@ -680,7 +675,7 @@ async def get_trading_opportunity(symbol: str):
 
     except Exception as e:
         logger.exception("Error getting trading opportunity for {symbol}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/automatic-signals/{symbol}")
@@ -794,7 +789,7 @@ async def get_automatic_signals(symbol: str):
 
     except Exception as e:
         logger.exception("Error getting automatic signals for {symbol}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/available-indicators")
@@ -833,7 +828,7 @@ async def get_global_statistics():
         return await statistics_service.get_global_statistics()
     except Exception as e:
         logger.exception("Error getting global statistics")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/statistics/symbols")
@@ -848,7 +843,7 @@ async def get_all_symbols_statistics():
         return await statistics_service.get_all_symbols_statistics()
     except Exception as e:
         logger.exception("Error getting all symbols statistics")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/statistics/symbol/{symbol}")
@@ -863,7 +858,7 @@ async def get_symbol_statistics(symbol: str):
         return await statistics_service.get_symbol_statistics(symbol)
     except Exception as e:
         logger.exception("Error getting symbol statistics")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/statistics/performance-history")
@@ -895,7 +890,7 @@ async def get_performance_history(period: str = "7d", interval: str = "1h"):
         raise
     except Exception as e:
         logger.exception("Error getting performance history")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/statistics/strategies")
@@ -910,7 +905,7 @@ async def get_strategy_comparison():
         return await statistics_service.get_strategy_comparison()
     except Exception as e:
         logger.exception("Error getting strategy comparison")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/ema-sentiment")
@@ -1093,7 +1088,7 @@ async def get_ema_sentiment(timeframe: str = "1m", limit: int = 100):
 
     except Exception as e:
         logger.exception("Error getting EMA sentiment")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/top-signals")
@@ -1185,7 +1180,7 @@ async def get_top_signals(
                     "timeframe_minutes": timeframe_minutes}
     except Exception as e:
         logger.exception("Error getting top signals")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/trade-cycles")
@@ -1202,10 +1197,11 @@ async def get_trade_cycles(
         cycles = await data_manager.get_trade_cycles(
             symbol=symbol, status=status, limit=limit
         )
-        return {"cycles": cycles}
     except Exception as e:
         logger.exception("Error getting trade cycles")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    else:
+        return {"cycles": cycles}
 
 
 # ============================================================================
@@ -1236,7 +1232,7 @@ async def proxy_portfolio(path: str, request: Request):
         logger.exception("Error proxying to portfolio service")
         raise HTTPException(
             status_code=503, detail=f"Portfolio service unavailable: {e!s}"
-        )
+        ) from e
 
 
 @app.get("/api/trader/{path:path}")
@@ -1262,7 +1258,7 @@ async def proxy_trader(path: str, request: Request):
         logger.exception("Error proxying to trader service")
         raise HTTPException(
             status_code=503, detail=f"Trader service unavailable: {e!s}"
-        )
+        ) from e
 
 
 @app.post("/api/trader/{path:path}")
@@ -1296,7 +1292,7 @@ async def proxy_trader_post(path: str, request: Request):
         logger.exception("Error proxying POST to trader service")
         raise HTTPException(
             status_code=503, detail=f"Trader service unavailable: {e!s}"
-        )
+        ) from e
 
 
 @app.post("/api/portfolio/{path:path}")
@@ -1330,7 +1326,7 @@ async def proxy_portfolio_post(path: str, request: Request):
         logger.exception("Error proxying POST to portfolio service")
         raise HTTPException(
             status_code=503, detail=f"Portfolio service unavailable: {e!s}"
-        )
+        ) from e
 
 
 # Routes React (à la fin pour ne pas intercepter les routes API)
@@ -1339,8 +1335,8 @@ if serve_react_app_flag:
     @app.get("/", response_class=HTMLResponse)
     async def serve_react_app(_request: Request):
         """Serve React app"""
-        with open(f"{frontend_build_path}/index.html") as f:
-            return HTMLResponse(content=f.read())
+        index_path = Path(frontend_build_path) / "index.html"
+        return HTMLResponse(content=index_path.read_text())
 
     @app.get("/{path:path}", response_class=HTMLResponse)
     async def serve_react_app_routes(_request: Request, path: str):
@@ -1350,8 +1346,8 @@ if serve_react_app_flag:
             from fastapi import HTTPException
 
             raise HTTPException(status_code=404, detail="Not found")
-        with open(f"{frontend_build_path}/index.html") as f:
-            return HTMLResponse(content=f.read())
+        index_path = Path(frontend_build_path) / "index.html"
+        return HTMLResponse(content=index_path.read_text())
 
 
 if __name__ == "__main__":

@@ -91,10 +91,9 @@ class PortfolioService:
             db = DBManager()
             result = db.execute_query("SELECT 1 as test", fetch_one=True)
             db.close()
-            if result and result.get("test") == 1:
-                logger.info("✅ Connexion à la base de données vérifiée")
-            else:
-                raise Exception("Réponse de test invalide")
+            if result and result.get("test") != 1:
+                raise RuntimeError("Réponse de test invalide")
+            logger.info("✅ Connexion à la base de données vérifiée")
         except Exception:
             logger.exception("❌ Erreur de connexion à la base de données")
             raise
@@ -190,7 +189,7 @@ def setup_signal_handlers(portfolio_service):
         portfolio_service: Instance du service Portfolio
     """
 
-    def signal_handler(sig, frame):
+    def signal_handler(sig, _frame):
         logger.info(f"Signal {sig} reçu, arrêt en cours...")
         portfolio_service.stop()
         sys.exit(0)

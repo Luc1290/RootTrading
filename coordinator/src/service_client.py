@@ -6,7 +6,7 @@ Client centralisé pour les appels aux services externes.
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import requests  # type: ignore
@@ -55,11 +55,10 @@ class CircuitBreaker:
             return True
 
         if self.state == "OPEN":
-            if self.last_failure_time is not None:
-                if datetime.now(tz=timezone.utc) - self.last_failure_time > timedelta(seconds=self.reset_timeout):
-                    self.state = "HALF_OPEN"
-                    logger.info("Circuit breaker passé en HALF_OPEN")
-                    return True
+            if self.last_failure_time is not None and datetime.now(tz=timezone.utc) - self.last_failure_time > timedelta(seconds=self.reset_timeout):
+                self.state = "HALF_OPEN"
+                logger.info("Circuit breaker passé en HALF_OPEN")
+                return True
             return False
 
         # HALF_OPEN
@@ -186,8 +185,8 @@ class ServiceClient:
                     return [
                         pos for pos in response if pos.get("symbol") == symbol]
                 return response
-
-            return []
+            else:
+                return []
 
         except Exception as e:
             logger.warning(f"Erreur récupération positions actives: {e!s}")
@@ -431,7 +430,7 @@ class ServiceClient:
 
             can_trade = available_balance >= required_amount
 
-            return {
+            result = {
                 "can_trade": can_trade,
                 "available_balance": available_balance,
                 "required_amount": required_amount,
@@ -446,6 +445,8 @@ class ServiceClient:
         except Exception as e:
             logger.exception("Erreur lors de la vérification de balance")
             return {"can_trade": False, "reason": f"Erreur: {e!s}"}
+        else:
+            return result
 
     def get_all_balances(self) -> dict[str, dict[str, float]]:
         """

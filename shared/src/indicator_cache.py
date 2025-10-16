@@ -368,21 +368,20 @@ class IndicatorCache:
                     values = pipe.execute()
 
                     if isinstance(values, list):
-                        for key, value in zip(keys, values):
+                        for cache_key, value in zip(keys, values):
                             if value:
                                 try:
                                     # Décoder key bytes vers string
-                                    if isinstance(key, bytes):
-                                        key = key.decode("utf-8")
+                                    decoded_key = cache_key.decode("utf-8") if isinstance(cache_key, bytes) else cache_key
 
                                     deserialized = pickle.loads(value)
-                                    self._memory_cache[key] = deserialized
-                                    self._cache_timestamps[key] = time.time()
+                                    self._memory_cache[decoded_key] = deserialized
+                                    self._cache_timestamps[decoded_key] = time.time()
                                     restored_count += 1
 
                                 except Exception as e:
                                     logger.warning(
-                                        f"Erreur désérialisation {key}: {e}")
+                                        f"Erreur désérialisation {cache_key}: {e}")
                                     continue
 
                 self.metrics.restore_count += restored_count

@@ -185,12 +185,12 @@ class RedisClientPool:
             logger.info(
                 f"✅ Pool de connexions Redis créé à {self.host}:{self.port} (DB: {self.db})"
             )
-            return pool
-
         except (ConnectionError, TimeoutError):
             logger.exception(
                 "❌ Erreur de création du pool de connexions Redis")
             raise
+        else:
+            return pool
 
     def decrbyfloat(self, key: str, value: float) -> float:
         """
@@ -233,9 +233,6 @@ class RedisClientPool:
                 # Enregistrer les métriques (succès)
                 duration = time.time() - start_time
                 self.metrics.record_operation(duration)
-
-                return result
-
             except (ConnectionError, TimeoutError) as e:
                 retry_count += 1
                 last_error = e
@@ -261,18 +258,19 @@ class RedisClientPool:
                     logger.exception(
                         "❌ Échec de l'opération Redis après  tentatives"
                     )
-                    raise last_error
-
+                    raise last_error from e
             except Exception:
                 # Autres erreurs non liées à la connexion
                 self.metrics.record_error()
                 logger.exception("❌ Erreur Redis")
                 raise
+            else:
+                return result
 
         # Si on arrive ici, c'est que l'erreur persiste
         if last_error is not None:
             raise last_error
-        raise Exception("Operation failed with unknown error")
+        raise RuntimeError("Operation failed with unknown error")
 
     def _reconnect(self):
         """Réinitialise le pool de connexions."""

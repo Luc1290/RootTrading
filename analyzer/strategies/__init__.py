@@ -30,7 +30,7 @@ from .TEMA_Slope_Strategy import TEMA_Slope_Strategy
 from .TRIX_Crossover_Strategy import TRIX_Crossover_Strategy
 from .VWAP_Support_Resistance_Strategy import VWAP_Support_Resistance_Strategy
 from .WilliamsR_Rebound_Strategy import WilliamsR_Rebound_Strategy
-from .ZScore_Extreme_Reversal_Strategy import ZScore_Extreme_Reversal_Strategy
+from .zscore_extreme_reversal_strategy import ZScoreExtremeReversalStrategy
 
 __all__ = [
     "ADX_Direction_Strategy",
@@ -61,4 +61,4 @@ __all__ = [
     "TRIX_Crossover_Strategy",
     "VWAP_Support_Resistance_Strategy",
     "WilliamsR_Rebound_Strategy",
-    "ZScore_Extreme_Reversal_Strategy"]
+    "ZScoreExtremeReversalStrategy"]

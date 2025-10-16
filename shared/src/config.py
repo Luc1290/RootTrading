@@ -17,9 +17,9 @@ BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY", "")
 
 # Redis
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
-REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
-REDIS_DB = int(os.getenv("REDIS_DB", 0))
+REDIS_DB = int(os.getenv("REDIS_DB", "0"))
 
 # Kafka
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
@@ -30,7 +30,7 @@ PGUSER = os.getenv("PGUSER", "postgres")
 PGPASSWORD = os.getenv("PGPASSWORD", "postgres")
 PGDATABASE = os.getenv("PGDATABASE", "trading")
 PGHOST = os.getenv("PGHOST", "db")
-PGPORT = int(os.getenv("PGPORT", 5432))
+PGPORT = int(os.getenv("PGPORT", "5432"))
 
 # Ajouter des paramètres pour le pool de connexions
 DB_MIN_CONNECTIONS = int(os.getenv("DB_MIN_CONNECTIONS", "5"))

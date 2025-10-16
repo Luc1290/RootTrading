@@ -73,6 +73,50 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
         self.max_atr_spike = 0.10  # ATR maximum 10% (vs 15% cataclysme)
         self.support_proximity_threshold = 0.020  # 2% support bonus plus strict
 
+    def _validate_spike_requirements(
+        self, values: dict[str, Any], current_price: float | None
+    ) -> tuple[bool, str | None, dict[str, Any] | None]:
+        """Valide les exigences préliminaires pour un signal spike. Returns (is_valid, rejection_reason, rejection_metadata)."""
+        # Validation confluence
+        confluence_score = values.get("confluence_score")
+        if confluence_score is not None:
+            try:
+                conf_val = float(confluence_score)
+                if conf_val < self.min_confluence_score:
+                    return False, f"Confluence insuffisante ({conf_val:.1f} < {self.min_confluence_score})", {"confluence_score": conf_val}
+            except (ValueError, TypeError):
+                pass
+
+        # Validation ATR/volatilité
+        atr_14 = values.get("atr_14")
+        if atr_14 is not None and current_price is not None:
+            try:
+                atr_val = float(atr_14)
+                atr_relative = atr_val / current_price
+                if atr_relative > self.max_atr_spike:
+                    return False, f"Volatilité excessive (ATR: {atr_relative*100:.1f}% > {self.max_atr_spike*100:.1f}%)", {"atr_relative": atr_relative}
+            except (ValueError, TypeError):
+                pass
+
+        # Validation tendance baissière forte
+        directional_bias = values.get("directional_bias")
+        trend_strength = values.get("trend_strength")
+        if (directional_bias and str(directional_bias).upper() == "BEARISH" and
+            trend_strength and str(trend_strength).lower() in ["strong", "very_strong", "extreme"]):
+            return False, f"Tendance baissière forte ({trend_strength}) - éviter falling knife", {"directional_bias": directional_bias, "trend_strength": trend_strength}
+
+        # Validation momentum (logique inversée pour spike)
+        momentum_score = values.get("momentum_score")
+        if momentum_score is not None:
+            try:
+                momentum_val = float(momentum_score)
+                if momentum_val > 65:
+                    return False, f"Rejet BUY spike: momentum trop fort ({momentum_val:.1f}) - pas de crash", {"momentum_score": momentum_val}
+            except (ValueError, TypeError):
+                pass
+
+        return True, None, None
+
     def _get_current_price(self) -> float | None:
         """Récupère le prix actuel depuis les données OHLCV."""
         try:
@@ -472,89 +516,22 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
             }
 
         values = self._get_current_values()
-
-        # Filtre préliminaire : vérifier confluence minimum
+        current_price = self._get_current_price()
         confluence_score = values.get("confluence_score")
-        if confluence_score is not None:
-            try:
-                conf_val = float(confluence_score)
-                if conf_val < self.min_confluence_score:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Confluence insuffisante ({conf_val:.1f} < {self.min_confluence_score})",
-                        "metadata": {
-                            "strategy": self.name,
-                            "confluence_score": conf_val,
-                        },
-                    }
-            except (ValueError, TypeError):
-                pass
 
-        # Filtre préliminaire : éviter volatilité extrême
-        atr_14 = values.get("atr_14")
-        if atr_14 is not None:
-            try:
-                atr_val = float(atr_14)
-                # Récupérer prix actuel pour calculer ATR relatif
-                current_price = self._get_current_price()
-                if current_price is not None:
-                    atr_relative = atr_val / current_price
-                    if atr_relative > self.max_atr_spike:
-                        return {
-                            "side": None,
-                            "confidence": 0.0,
-                            "strength": "weak",
-                            "reason": f"Volatilité excessive (ATR: {atr_relative*100:.1f}% > {self.max_atr_spike*100:.1f}%)",
-                            "metadata": {
-                                "strategy": self.name,
-                                "atr_relative": atr_relative,
-                            },
-                        }
-            except (ValueError, TypeError):
-                pass
-
-        # Filtre préliminaire : éviter signaux en tendance baissière forte
-        directional_bias = values.get("directional_bias")
-        trend_strength = values.get("trend_strength")
-        if directional_bias and str(directional_bias).upper() == "BEARISH":
-            if trend_strength and str(trend_strength).lower() in [
-                "strong",
-                "very_strong",
-                "extreme",
-            ]:
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Tendance baissière forte ({trend_strength}) - éviter falling knife",
-                    "metadata": {
-                        "strategy": self.name,
-                        "directional_bias": directional_bias,
-                        "trend_strength": trend_strength,
-                    },
-                }
-
-        # Filtre momentum inversé : rejeter si trop haut (pas de crash récent)
-        momentum_score = values.get("momentum_score")
-        if momentum_score is not None:
-            try:
-                momentum_val = float(momentum_score)
-                # LOGIQUE INVERSÉE : momentum élevé = pas de crash = rejet
-                if momentum_val > 65:  # Momentum trop fort = pas de spike baissier
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet BUY spike: momentum trop fort ({momentum_val:.1f}) - pas de crash",
-                        "metadata": {
-                            "strategy": self.name,
-                            "momentum_score": momentum_val,
-                        },
-                    }
-            except (ValueError, TypeError):
-                pass
+        # VALIDATIONS PRÉLIMINAIRES GROUPÉES
+        is_valid, rejection_reason, rejection_metadata = self._validate_spike_requirements(values, current_price)
+        if not is_valid:
+            metadata = {"strategy": self.name}
+            if rejection_metadata:
+                metadata.update(rejection_metadata)
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": rejection_reason,
+                "metadata": metadata,
+            }
 
         # Étape 1: Détecter spike baissier de prix
         price_spike_analysis = self._detect_price_spike_down(values)
@@ -641,9 +618,8 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                         distance_to_support = (
                             abs(current_price - support_val) / support_val
                         )
-                        if distance_to_support <= self.support_proximity_threshold:
-                            if support_strength and str(support_strength).lower() in [
-                                    "strong", "very_strong", ]:
+                        if (distance_to_support <= self.support_proximity_threshold and
+                            support_strength and str(support_strength).lower() in ["strong", "very_strong"]):
                                 confidence_boost += (
                                     0.20  # Bonus fort support solide seulement
                                 )

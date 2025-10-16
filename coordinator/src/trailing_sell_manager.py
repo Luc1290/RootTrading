@@ -191,7 +191,7 @@ class TrailingSellManager:
             elif max_gain_percent >= breakeven_threshold_1:
                 # Max a dépassé +1.2% : protéger entry + frais (pas de perte)
                 breakeven_price = entry_price * \
-                    (1 + 2 * fee_percent)  # Entry + 2×frais
+                    (1 + 2 * fee_percent)  # Entry + 2xfrais
                 if current_price < breakeven_price:
                     logger.warning(
                         f"🛡️ BREAKEVEN NIVEAU 1 déclenché: prix {current_price:.{precision}f} < breakeven {breakeven_price:.{precision}f} (max atteint: +{max_gain_percent*100:.2f}%)"

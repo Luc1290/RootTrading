@@ -3,7 +3,7 @@ Schémas partagés pour la validation des données entre microservices.
 Utilise Pydantic pour définir et valider la structure des messages.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel, Field, validator

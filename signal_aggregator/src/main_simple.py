@@ -6,7 +6,7 @@ Utilise le nouveau système sans validators complexes.
 import asyncio
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 import psycopg2
 import psycopg2.extensions
@@ -30,7 +30,7 @@ class SimpleSignalAggregatorApp:
         # Configuration base de données
         self.db_config = {
             "host": os.getenv("DB_HOST", "db"),
-            "port": os.getenv("DB_PORT", 5432),
+            "port": os.getenv("DB_PORT", "5432"),
             "database": os.getenv("DB_NAME", "trading"),
             "user": os.getenv("DB_USER", "postgres"),
             "password": os.getenv("DB_PASSWORD", "postgres"),
@@ -113,8 +113,6 @@ class SimpleSignalAggregatorApp:
             # Tester avec une requête simple
             with self.db_connection.cursor() as cursor:
                 cursor.execute("SELECT 1")
-            return self.db_connection
-
         except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
             logger.warning(f"Connexion DB invalide: {e}, reconnexion...")
             try:
@@ -127,10 +125,13 @@ class SimpleSignalAggregatorApp:
                 )
                 self.db_connection.autocommit = True
                 logger.info("✅ Reconnexion DB réussie")
-                return self.db_connection
             except Exception:
                 logger.exception("❌ Échec reconnexion DB: ")
                 raise
+            else:
+                return self.db_connection
+        else:
+            return self.db_connection
 
     async def setup_web_server(self):
         """Configure le serveur web pour les health checks."""
@@ -149,7 +150,7 @@ class SimpleSignalAggregatorApp:
 
         logger.info("✅ Health check server: port 8080")
 
-    async def health_check(self, request):
+    async def health_check(self, _request):
         """Endpoint de health check simplifié."""
         try:
             uptime = (datetime.now(tz=timezone.utc) - self.start_time).total_seconds()
@@ -205,7 +206,7 @@ class SimpleSignalAggregatorApp:
                 status=500,
             )
 
-    async def get_stats(self, request):
+    async def get_stats(self, _request):
         """Endpoint pour les statistiques simplifiées."""
         try:
             if not self.aggregator_service:

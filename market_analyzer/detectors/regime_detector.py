@@ -550,45 +550,26 @@ class RegimeDetector:
             return RegimeType.TRANSITION
 
         # === PRIORITÉ 3: TENDANCES CLAIRES (ADX >= 25) ===
-
         # ADX >= 25 = Tendance confirmée
         # Utiliser +DI vs -DI pour déterminer direction
-        if adx >= 25:
-            # ADX >= 40 = Tendance très forte = TRENDING
-            if adx >= 40:
-                if plus_di > minus_di:
-                    return RegimeType.TRENDING_BULL
-                return RegimeType.TRENDING_BEAR
 
-            # ADX 25-40 = Tendance confirmée
-            # Vérifier alignement EMA + Momentum
-            if plus_di > minus_di:
-                # Direction bullish selon DI
-                if momentum["direction"] == "bullish" or trend["direction"] in [
-                        "bullish", "bullish_partial", ]:
-                    return RegimeType.TRENDING_BULL
-                # Divergence DI/momentum = possiblement début breakout ou
-                # transition
-                if momentum["strength"] > 50:
-                    return RegimeType.TRANSITION
-                return RegimeType.TRENDING_BULL  # Suivre ADX/DI
-            # Direction bearish selon DI
-            if momentum["direction"] == "bearish" or trend["direction"] in [
-                "bearish",
-                "bearish_partial",
-            ]:
-                return RegimeType.TRENDING_BEAR
-            # Divergence DI/momentum
-            if momentum["strength"] > 50:
-                return RegimeType.TRANSITION
-            return RegimeType.TRENDING_BEAR  # Suivre ADX/DI
+        # ADX >= 40 = Tendance très forte = TRENDING
+        if adx >= 40:
+            return RegimeType.TRENDING_BULL if plus_di > minus_di else RegimeType.TRENDING_BEAR
 
-        # === FALLBACK (ne devrait presque jamais arriver) ===
-        # Si ADX < 25 et pas de condition ci-dessus remplie
-        logger.debug(
-            f"Régime par défaut TRANSITION - ADX: {adx:.1f}, trend slope: {trend.get('slope'):.4f}, momentum: {momentum.get('strength')}"
-        )
-        return RegimeType.TRANSITION
+        # ADX 25-40 = Tendance confirmée
+        # Vérifier alignement EMA + Momentum
+        if plus_di > minus_di:
+            # Direction bullish selon DI
+            if momentum["direction"] == "bullish" or trend["direction"] in ["bullish", "bullish_partial"]:
+                return RegimeType.TRENDING_BULL
+            # Divergence DI/momentum = possiblement début breakout ou transition
+            return RegimeType.TRANSITION if momentum["strength"] > 50 else RegimeType.TRENDING_BULL
+        # Direction bearish selon DI
+        if momentum["direction"] == "bearish" or trend["direction"] in ["bearish", "bearish_partial"]:
+            return RegimeType.TRENDING_BEAR
+        # Divergence DI/momentum
+        return RegimeType.TRANSITION if momentum["strength"] > 50 else RegimeType.TRENDING_BEAR
 
     def _calculate_regime_strength(
         self, volatility: dict, trend: dict, momentum: dict

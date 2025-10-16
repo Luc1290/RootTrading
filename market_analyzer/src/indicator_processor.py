@@ -9,7 +9,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 import asyncpg  # type: ignore
 import numpy as np
@@ -63,11 +63,8 @@ from market_analyzer.indicators.volume.vwap import calculate_vwap_quote_series
 from shared.src.config import get_db_config
 
 # Ajouter les chemins pour les imports
-sys.path.append(
-    os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../../")))
+from pathlib import Path
+sys.path.append(str((Path(__file__).parent / "../../").resolve()))
 
 # Import des détecteurs
 # Import DIRECT de tous vos modules existants
@@ -1211,7 +1208,6 @@ class IndicatorProcessor:
             if result is not None and not isinstance(
                     result, list | dict | str):
                 return float(result)
-            return result
         except Exception as e:
             import traceback
 
@@ -1219,6 +1215,8 @@ class IndicatorProcessor:
             logger.debug(f"Type d'erreur: {type(e).__name__}")
             logger.debug(f"Traceback: {traceback.format_exc()}")
             return None
+        else:
+            return result
 
     def _strength_to_number(self, strength):
         """Convertit la force en nombre pour le tri."""
@@ -1246,11 +1244,10 @@ class IndicatorProcessor:
                     f"Valeur trop grande pour la DB: {value}, limitée à {max_abs_value}"
                 )
                 return max_abs_value if value > 0 else -max_abs_value
-
-            return value
-
         except (ValueError, TypeError, OverflowError):
             return None
+        else:
+            return value
 
     async def _save_indicators_to_db(self, indicators: dict):
         """Sauvegarde tous les indicateurs dans analyzer_data."""
@@ -1595,12 +1592,11 @@ class IndicatorProcessor:
                     and price_change > 0.02
                 ):
                     return False
-
-            return True
-
         except Exception:
             logger.exception("Erreur vérification fraîcheur pattern")
             return False
+        else:
+            return True
 
     async def close(self):
         """Ferme les connexions."""

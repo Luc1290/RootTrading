@@ -42,6 +42,100 @@ class CCI_Reversal_Strategy(BaseStrategy):
             "extreme": 1.5,  # Très strict en volatilité extrême
         }
 
+    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Helper to create rejection signals."""
+        base_metadata = {"strategy": self.name}
+        if metadata:
+            base_metadata.update(metadata)
+        return {
+            "side": None,
+            "confidence": 0.0,
+            "strength": "weak",
+            "reason": reason,
+            "metadata": base_metadata,
+        }
+
+    def _validate_cci_data(self, values: dict[str, Any]) -> tuple[float | None, dict[str, Any] | None]:
+        """Valide les données CCI. Retourne (cci_20, error_signal)."""
+        cci_20_raw = values["cci_20"]
+        if cci_20_raw is None:
+            return None, self._create_rejection_signal("CCI non disponible", {})
+
+        try:
+            cci_20 = float(cci_20_raw)
+            return cci_20, None
+        except (ValueError, TypeError):
+            return None, self._create_rejection_signal(f"CCI invalide: {cci_20_raw}", {})
+
+    def _validate_signal_requirements(
+        self, signal_side: str, values: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Valide les exigences du signal. Retourne un signal de rejet ou None si valide."""
+        # Validation momentum
+        momentum_score_raw = values.get("momentum_score")
+        momentum_score = 0.0
+        if momentum_score_raw is not None:
+            try:
+                momentum_score = float(momentum_score_raw)
+                if signal_side == "BUY" and momentum_score < 30:
+                    return self._create_rejection_signal(
+                        f"Rejet BUY: momentum encore trop faible ({momentum_score:.1f})",
+                        {"momentum_score": momentum_score}
+                    )
+                if signal_side == "SELL" and momentum_score > 70:
+                    return self._create_rejection_signal(
+                        f"Rejet SELL: momentum encore trop fort ({momentum_score:.1f})",
+                        {"momentum_score": momentum_score}
+                    )
+            except (ValueError, TypeError):
+                pass
+
+        # Validation confluence
+        confluence_score_raw = values.get("confluence_score")
+        if confluence_score_raw is not None:
+            try:
+                confluence_score = float(confluence_score_raw)
+                if confluence_score < 30:
+                    return self._create_rejection_signal(
+                        f"Rejet: confluence trop faible ({confluence_score:.0f} < 30)",
+                        {"confluence_score": confluence_score}
+                    )
+            except (ValueError, TypeError):
+                pass
+
+        # Validation RSI
+        rsi_raw = values.get("rsi_14")
+        if rsi_raw is not None:
+            try:
+                rsi = float(rsi_raw)
+                if signal_side == "BUY" and rsi > 65:
+                    return self._create_rejection_signal(
+                        f"Rejet BUY: RSI trop haut ({rsi:.1f}) pour reversal",
+                        {"rsi": rsi}
+                    )
+                if signal_side == "SELL" and rsi < 35:
+                    return self._create_rejection_signal(
+                        f"Rejet SELL: RSI trop bas ({rsi:.1f}) pour reversal",
+                        {"rsi": rsi}
+                    )
+            except (ValueError, TypeError):
+                pass
+
+        # Validation volume
+        volume_ratio_raw = values.get("volume_ratio")
+        if volume_ratio_raw is not None:
+            try:
+                volume_ratio = float(volume_ratio_raw)
+                if volume_ratio < 0.2:
+                    return self._create_rejection_signal(
+                        f"Rejet: volume trop faible ({volume_ratio:.2f}x < 0.2x)",
+                        {"volume_ratio": volume_ratio}
+                    )
+            except (ValueError, TypeError):
+                pass
+
+        return None
+
     def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
         return {
@@ -81,38 +175,14 @@ class CCI_Reversal_Strategy(BaseStrategy):
         Génère un signal basé sur le CCI et les indicateurs pré-calculés.
         """
         if not self.validate_data():
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Données insuffisantes",
-                "metadata": {},
-            }
+            return self._create_rejection_signal("Données insuffisantes", {})
 
         values = self._get_current_values()
 
-        # Vérification des données essentielles
-        cci_20_raw = values["cci_20"]
-        if cci_20_raw is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "CCI non disponible",
-                "metadata": {"strategy": self.name},
-            }
-
-        # Conversion robuste en float
-        try:
-            cci_20 = float(cci_20_raw)
-        except (ValueError, TypeError):
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"CCI invalide: {cci_20_raw}",
-                "metadata": {"strategy": self.name},
-            }
+        # Validation des données CCI
+        cci_20, error_signal = self._validate_cci_data(values)
+        if error_signal:
+            return error_signal
 
         signal_side = None
         reason = ""
@@ -146,9 +216,14 @@ class CCI_Reversal_Strategy(BaseStrategy):
             reason = f"CCI ({cci_20:.1f}) en zone de {zone}"
 
         if signal_side:
+            # Validation des exigences du signal
+            error_signal = self._validate_signal_requirements(signal_side, values)
+            if error_signal:
+                return error_signal
+
             base_confidence = 0.65  # Base harmonisée avec autres stratégies
 
-            # Momentum validation ULTRA STRICTE pour winrate - LOGIQUE CORRIGÉE
+            # Récupération momentum pour calcul de boost
             momentum_score_raw = values.get("momentum_score")
             momentum_score = 0.0
             if momentum_score_raw is not None:
@@ -158,30 +233,6 @@ class CCI_Reversal_Strategy(BaseStrategy):
                     momentum_score = 0.0
 
             if momentum_score != 0:
-                # Rejets momentum contradictoires STRICTS
-                if signal_side == "BUY" and momentum_score < 30:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet BUY: momentum encore trop faible ({momentum_score:.1f})",
-                        "metadata": {
-                            "strategy": self.name,
-                            "momentum_score": momentum_score,
-                        },
-                    }
-                if signal_side == "SELL" and momentum_score > 70:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet SELL: momentum encore trop fort ({momentum_score:.1f})",
-                        "metadata": {
-                            "strategy": self.name,
-                            "momentum_score": momentum_score,
-                        },
-                    }
-
                 # Confirmations momentum de retournement
                 if (signal_side == "BUY" and momentum_score > 45) or (
                     signal_side == "SELL" and momentum_score < 55
@@ -224,19 +275,6 @@ class CCI_Reversal_Strategy(BaseStrategy):
                 except (ValueError, TypeError):
                     confluence_score = 0.0
 
-            # Rejet confluence faible strict
-            if confluence_score < 30:
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Rejet: confluence trop faible ({confluence_score:.0f} < 30)",
-                    "metadata": {
-                        "strategy": self.name,
-                        "confluence_score": confluence_score,
-                    },
-                }
-
             # Confirmations confluence
             if confluence_score > 80:
                 confidence_boost += 0.15
@@ -278,33 +316,11 @@ class CCI_Reversal_Strategy(BaseStrategy):
                 confidence_boost += 0.1
                 reason += f" en régime {market_regime}"
 
-            # Validation RSI avec rejets contradictoires
+            # Validation RSI pour confirmation
             rsi_raw = values.get("rsi_14")
             if rsi_raw is not None:
                 try:
                     rsi = float(rsi_raw)
-                    # Rejets RSI contradictoires stricts
-                    if signal_side == "BUY" and rsi > 65:
-                        return {
-                            "side": None,
-                            "confidence": 0.0,
-                            "strength": "weak",
-                            "reason": f"Rejet BUY: RSI trop haut ({rsi:.1f}) pour reversal",
-                            "metadata": {
-                                "strategy": self.name,
-                                "rsi": rsi},
-                        }
-                    if signal_side == "SELL" and rsi < 35:
-                        return {
-                            "side": None,
-                            "confidence": 0.0,
-                            "strength": "weak",
-                            "reason": f"Rejet SELL: RSI trop bas ({rsi:.1f}) pour reversal",
-                            "metadata": {
-                                "strategy": self.name,
-                                "rsi": rsi},
-                        }
-
                     # Confirmations RSI
                     if (signal_side == "BUY" and rsi < 35) or (
                         signal_side == "SELL" and rsi > 65
@@ -314,22 +330,11 @@ class CCI_Reversal_Strategy(BaseStrategy):
                 except (ValueError, TypeError):
                     pass
 
-            # Validation volume avec rejet strict
+            # Validation volume pour confirmation
             volume_ratio_raw = values.get("volume_ratio")
             if volume_ratio_raw is not None:
                 try:
                     volume_ratio = float(volume_ratio_raw)
-                    if volume_ratio < 0.2:  # Rejet volume trop faible
-                        return {
-                            "side": None,
-                            "confidence": 0.0,
-                            "strength": "weak",
-                            "reason": f"Rejet: volume trop faible ({volume_ratio:.2f}x < 0.2x)",
-                            "metadata": {
-                                "strategy": self.name,
-                                "volume_ratio": volume_ratio,
-                            },
-                        }
                     if volume_ratio > 1.5:
                         confidence_boost += 0.08
                         reason += " avec volume élevé"

@@ -605,13 +605,12 @@ def calculate_ema_cached(
             # Store EMA state for future incremental updates
             ema_state = _create_ema_state(prices_array, period, ema_value)
             cache.set(cache_key, ema_state, symbol)
-
-        return ema_value
-
     except Exception:
         logger.exception("Erreur EMA cached pour {symbol}")
         # Fallback to non-cached version
         return calculate_ema(prices, period)
+    else:
+        return ema_value
 
 
 def calculate_ema_series_cached(
@@ -646,15 +645,14 @@ def calculate_ema_series_cached(
         # Check for cached series
         cached_series = cache.get(cache_key, symbol)
 
-        if cached_series is not None:
+        if cached_series is not None and len(cached_series) <= len(prices_array):
             # Check if we can extend existing series
-            if len(cached_series) <= len(prices_array):
-                # Calculate only new values
-                new_series = _extend_ema_series(
-                    prices_array, cached_series, period)
-                if new_series:
-                    cache.set(cache_key, new_series, symbol)
-                    return new_series
+            # Calculate only new values
+            new_series = _extend_ema_series(
+                prices_array, cached_series, period)
+            if new_series:
+                cache.set(cache_key, new_series, symbol)
+                return new_series
 
         # Full calculation
         ema_series = calculate_ema_series(prices_array, period)
@@ -662,12 +660,11 @@ def calculate_ema_series_cached(
         # Cache the series
         if ema_series:
             cache.set(cache_key, ema_series, symbol)
-
-        return ema_series
-
     except Exception:
         logger.exception("Erreur EMA series cached pour {symbol}")
         return calculate_ema_series(prices, period)
+    else:
+        return ema_series
 
 
 def calculate_sma_cached(
@@ -730,12 +727,11 @@ def calculate_sma_cached(
                 {"sma_value": sma_value, "data_hash": data_hash, "period": period},
                 symbol,
             )
-
-        return sma_value
-
     except Exception:
         logger.exception("Erreur SMA cached pour {symbol}")
         return calculate_sma(prices, period)
+    else:
+        return sma_value
 
 
 def _create_ema_state(
@@ -830,12 +826,11 @@ def _extend_ema_series(
             assert last_ema is not None
             last_ema = alpha * prices[i] + (1 - alpha) * last_ema
             new_series.append(last_ema)
-
-        return new_series
-
     except Exception as e:
         logger.warning(f"Erreur extension EMA series: {e}")
         return None
+    else:
+        return new_series
 
 
 def get_ma_cross_signal_cached(
@@ -889,7 +884,16 @@ def get_ma_cross_signal_cached(
             if fast_filtered and slow_filtered
             else False
         )
-
+    except Exception:
+        logger.exception("Erreur MA cross signal pour {symbol}")
+        return {
+            "fast_ma": None,
+            "slow_ma": None,
+            "bullish_cross": False,
+            "bearish_cross": False,
+            "trend": "unknown",
+        }
+    else:
         return {
             "fast_ma": fast_ma,
             "slow_ma": slow_ma,
@@ -903,16 +907,6 @@ def get_ma_cross_signal_cached(
             "ma_type": ma_type,
             "fast_period": fast_period,
             "slow_period": slow_period,
-        }
-
-    except Exception:
-        logger.exception("Erreur MA cross signal pour {symbol}")
-        return {
-            "fast_ma": None,
-            "slow_ma": None,
-            "bullish_cross": False,
-            "bearish_cross": False,
-            "trend": "unknown",
         }
 
 

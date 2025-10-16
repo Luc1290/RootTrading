@@ -553,12 +553,7 @@ class OpportunityCalculatorPro:
         if bb_lower > 0 and bb_lower < current_price:
             pullback_levels.append(bb_lower)
 
-        if pullback_levels:
-            # Prendre le plus haut (closest to current price)
-            entry_optimal = max(pullback_levels)
-        else:
-            # Pas de niveau identifié, prendre 0.3% sous le prix
-            entry_optimal = current_price * 0.997
+        entry_optimal = max(pullback_levels) if pullback_levels else current_price * 0.997
 
         return round(entry_optimal, 8), round(entry_aggressive, 8)
 

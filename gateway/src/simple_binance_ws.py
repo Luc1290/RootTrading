@@ -7,11 +7,9 @@ AUCUN calcul d'indicateur - transmission pure des données de marché.
 import asyncio
 import json
 import logging
-import os
-
-# Importer les clients partagés
 import sys
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import websockets
@@ -20,11 +18,7 @@ from gateway.src.kafka_producer import get_producer
 from shared.src.config import SYMBOLS
 from shared.src.kafka_client import KafkaClient
 
-sys.path.append(
-    os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../../")))
+sys.path.append(str(Path(__file__).parent.parent.parent.resolve()))
 
 
 if TYPE_CHECKING:
@@ -87,7 +81,7 @@ class SimpleBinanceWebSocket:
                 streams.append(stream_name)
 
         logger.info(
-            f"🔗 {len(streams)} streams générés: {len(self.symbols)} symboles × {len(self.intervals)} intervalles"
+            f"🔗 {len(streams)} streams générés: {len(self.symbols)} symboles x {len(self.intervals)} intervalles"
         )
         return streams
 

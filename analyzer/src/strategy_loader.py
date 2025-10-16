@@ -14,7 +14,7 @@ from typing import Any
 from strategies.base_strategy import BaseStrategy  # type: ignore[import-not-found]
 
 # Ajouter le répertoire parent au path pour les imports dynamiques
-analyzer_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
+analyzer_root = str((Path(__file__).parent / "..").resolve())
 if analyzer_root not in sys.path:
     sys.path.insert(0, analyzer_root)
 
@@ -183,8 +183,8 @@ class StrategyLoader:
                     f"{strategy_class.__name__} manque les paramètres: {missing}"
                 )
                 return False
-
-            return True
+            else:
+                return True
 
         except Exception:
             logger.exception(

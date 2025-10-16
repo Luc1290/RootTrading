@@ -10,7 +10,8 @@ import os
 # Importer les modules partagés
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import psycopg2
@@ -20,11 +21,7 @@ from psycopg2.extras import RealDictCursor, execute_values
 from shared.src.config import get_db_url
 from shared.src.schemas import AssetBalance, PortfolioSummary
 
-sys.path.append(
-    os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../../")))
+sys.path.append(str((Path(__file__).parent / "../../").resolve()))
 
 
 # Configuration du logging
@@ -116,7 +113,6 @@ class DBManager:
             if self.pool:
                 try:
                     self.conn = self.pool.getconn()
-                    return True
                 except Exception:
                     logger.exception(
                         "❌ Impossible d'obtenir une connexion du pool: "
@@ -124,6 +120,8 @@ class DBManager:
                     # Fallback: connexion directe
                     self._connect()
                     return self.conn is not None
+                else:
+                    return True
             else:
                 self._connect()
                 return self.conn is not None
@@ -152,13 +150,14 @@ class DBManager:
             if self.pool:
                 try:
                     self.conn = self.pool.getconn()
-                    return True
-                except Exception as e:
+                except Exception:
                     logger.exception(
                         "❌ Impossible d'obtenir une nouvelle connexion: "
                     )
                     # Fallback: connexion directe
                     self._connect()
+                else:
+                    return True
             else:
                 self._connect()
 
@@ -592,9 +591,6 @@ class PortfolioModel:
 
             # Mettre en cache
             SharedCache.set(cache_key, summary)
-
-            return summary
-
         except Exception:
             logger.exception(
                 "❌ Erreur lors de la récupération du résumé du portefeuille: "
@@ -609,6 +605,8 @@ class PortfolioModel:
                 total_value=0,
                 active_trades=0,
                 timestamp=datetime.now(tz=timezone.utc))
+        else:
+            return summary
 
     def update_balances(self, balances: list[AssetBalance | dict]) -> bool:
         """

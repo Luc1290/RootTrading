@@ -48,51 +48,41 @@ class PPO_Crossover_Strategy(BaseStrategy):
             "pattern_confidence": self.indicators.get("pattern_confidence"),
         }
 
-    def generate_signal(self) -> dict[str, Any]:
-        """
-        Génère un signal basé sur PPO et indicateurs pré-calculés.
-        """
+    def _validate_ppo_data(self) -> tuple[bool, dict[str, Any] | None, float | None]:
+        """Valide les données PPO. Returns (is_valid, error_response, ppo_value)."""
         if not self.validate_data():
-            return {
+            return False, {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": "Données insuffisantes",
                 "metadata": {},
-            }
+            }, None
 
         values = self._get_current_values()
-
-        # Vérification des données essentielles
         ppo = values["ppo"]
         if ppo is None:
-            return {
+            return False, {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": "PPO non disponible",
                 "metadata": {"strategy": self.name},
-            }
+            }, None
 
         try:
             ppo_val = float(ppo)
         except (ValueError, TypeError):
-            return {
+            return False, {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": "Erreur conversion PPO",
                 "metadata": {"strategy": self.name},
-            }
+            }, None
 
-        signal_side = None
-        reason = ""
-        confidence_boost = 0.0
-
-        # LOGIQUE STRICTE zone neutre - FILTRE ANTI-BRUIT
         if abs(ppo_val) < self.neutral_zone:
-            # Zone neutre - pas de signal
-            return {
+            return False, {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
@@ -103,7 +93,84 @@ class PPO_Crossover_Strategy(BaseStrategy):
                     "ppo": ppo_val,
                     "neutral_zone": self.neutral_zone,
                 },
-            }
+            }, None
+
+        return True, None, ppo_val
+
+    def _validate_ppo_signal_requirements(
+        self, signal_side: str, values: dict[str, Any]
+    ) -> tuple[bool, dict[str, Any] | None]:
+        """Valide les exigences pour un signal PPO. Returns (is_valid, rejection_response)."""
+        momentum_score = values.get("momentum_score")
+        if momentum_score is not None:
+            try:
+                momentum_val = float(momentum_score)
+                if (signal_side == "BUY" and momentum_val < 40) or (
+                    signal_side == "SELL" and momentum_val > 70
+                ):
+                    return False, {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet PPO {signal_side}: momentum contradictoire ({momentum_val})",
+                        "metadata": {
+                            "strategy": self.name,
+                            "momentum_score": momentum_val,
+                        },
+                    }
+            except (ValueError, TypeError):
+                pass
+
+        confluence_score = values.get("confluence_score")
+        if confluence_score is not None:
+            try:
+                confluence_val = float(confluence_score)
+                if (signal_side == "BUY" and confluence_val < 45) or (
+                    signal_side == "SELL" and confluence_val < 40
+                ):
+                    return False, {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet PPO {signal_side}: confluence insuffisante ({confluence_val:.0f} < {'45' if signal_side == 'BUY' else '40'})",
+                        "metadata": {
+                            "strategy": self.name,
+                            "confluence_score": confluence_val,
+                            "signal_side": signal_side,
+                        },
+                    }
+            except (ValueError, TypeError):
+                pass
+
+        if hasattr(values, "market_regime") and values.get("market_regime"):
+            regime = str(values["market_regime"]).upper()
+            if signal_side == "BUY" and regime == "TRENDING_BEAR":
+                return False, {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Rejet PPO {signal_side}: régime bear fort",
+                    "metadata": {
+                        "strategy": self.name,
+                        "market_regime": regime,
+                    },
+                }
+
+        return True, None
+
+    def generate_signal(self) -> dict[str, Any]:
+        """
+        Génère un signal basé sur PPO et indicateurs pré-calculés.
+        """
+        # VALIDATIONS PRÉLIMINAIRES GROUPÉES
+        is_valid, error_response, ppo_val = self._validate_ppo_data()
+        if not is_valid:
+            return error_response
+
+        values = self._get_current_values()
+        signal_side = None
+        reason = ""
+        confidence_boost = 0.0
 
         if ppo_val >= self.bullish_threshold:
             # PPO haussier significatif
@@ -136,6 +203,11 @@ class PPO_Crossover_Strategy(BaseStrategy):
                 confidence_boost += 0.10  # Réduit pour signaux faibles
 
         if signal_side:
+            # VALIDATIONS SIGNAL
+            is_valid_signal, rejection_response = self._validate_ppo_signal_requirements(signal_side, values)
+            if not is_valid_signal:
+                return rejection_response
+
             # Base confidence HARMONISÉE avec autres strats
             base_confidence = 0.65  # Alignée pour homogénéité
 
@@ -168,19 +240,6 @@ class PPO_Crossover_Strategy(BaseStrategy):
                     ):
                         confidence_boost += 0.08
                         reason += " avec momentum favorable"
-                    elif (signal_side == "BUY" and momentum_val < 40) or (
-                        signal_side == "SELL" and momentum_val > 70
-                    ):  # SELL assoupli 60→70
-                        return {
-                            "side": None,
-                            "confidence": 0.0,
-                            "strength": "weak",
-                            "reason": f"Rejet PPO {signal_side}: momentum contradictoire ({momentum_val})",
-                            "metadata": {
-                                "strategy": self.name,
-                                "momentum_score": momentum_val,
-                            },
-                        }
                     elif (signal_side == "BUY" and momentum_val < 45) or (
                         signal_side == "SELL" and momentum_val > 60
                     ):  # SELL assoupli 55→60
@@ -235,22 +294,6 @@ class PPO_Crossover_Strategy(BaseStrategy):
                     elif confluence_val > 60:
                         confidence_boost += 0.05  # Réduit
                         reason += f" avec confluence correcte ({confluence_val:.0f})"
-                    # Seuils de rejet différenciés BUY/SELL (basés sur P10
-                    # réel)
-                    elif (signal_side == "BUY" and confluence_val < 45) or (
-                        signal_side == "SELL" and confluence_val < 40
-                    ):
-                        return {
-                            "side": None,
-                            "confidence": 0.0,
-                            "strength": "weak",
-                            "reason": f"Rejet PPO {signal_side}: confluence insuffisante ({confluence_val:.0f} < {'45' if signal_side == 'BUY' else '40'})",
-                            "metadata": {
-                                "strategy": self.name,
-                                "confluence_score": confluence_val,
-                                "signal_side": signal_side,
-                            },
-                        }
                     elif confluence_val < 55:  # Pénalité réduite zone 40-55
                         confidence_boost -= 0.06  # Pénalité réduite encore
                         reason += f" avec confluence faible ({confluence_val:.0f})"
@@ -269,24 +312,11 @@ class PPO_Crossover_Strategy(BaseStrategy):
                     confidence_boost += 0.05
                     reason += " + signal modéré"
 
-            # Régime marché - PÉNALITÉ au lieu de rejet pour équilibrer SELL
-            if hasattr(values, "market_regime") and values.get(
-                    "market_regime"):
+            # Régime marché - PÉNALITÉ pour SELL en bull
+            if hasattr(values, "market_regime") and values.get("market_regime"):
                 regime = str(values["market_regime"]).upper()
-                if signal_side == "BUY" and regime == "TRENDING_BEAR":
-                    # BUY en bear = rejet (dangereux)
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet PPO {signal_side}: régime bear fort",
-                        "metadata": {
-                            "strategy": self.name,
-                            "market_regime": regime},
-                    }
                 if signal_side == "SELL" and regime == "TRENDING_BULL":
-                    # SELL en bull = pénalité légère (pas rejet total - take
-                    # profit valide)
+                    # SELL en bull = pénalité légère (pas rejet total - take profit valide)
                     confidence_boost -= 0.12
                     reason += f" mais régime bull ({regime})"
 

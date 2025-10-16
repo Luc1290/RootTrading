@@ -475,7 +475,7 @@ def _calculate_atr_series_manual(
         return [None] * len(highs)
 
     # Fill initial values with None
-    for i in range(period):
+    for _ in range(period):
         atr_series.append(None)
 
     # Calculate True Range values

@@ -62,7 +62,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         try:
             # Conversion en float
             highs = [float(h) for h in highs[-20:]]  # Dernières 20 périodes
-            lows = [float(l) for l in lows[-20:]]
+            lows = [float(low_val) for low_val in lows[-20:]]
             closes = [float(c) for c in closes[-20:]]
 
             n = len(highs)
@@ -183,6 +183,52 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
             "momentum_score": self.indicators.get("momentum_score"),
         }
 
+    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Helper to create rejection signals."""
+        base_metadata = {"strategy": self.name}
+        if metadata:
+            base_metadata.update(metadata)
+        return {
+            "side": None,
+            "confidence": 0.0,
+            "strength": "weak",
+            "reason": reason,
+            "metadata": base_metadata,
+        }
+
+    def _validate_signal_preconditions(self, values: dict[str, Any]) -> tuple[dict[str, Any] | None, float | None, dict[str, Any] | None]:
+        """Valide les préconditions du signal. Retourne (sar_data, current_price, error_signal) ou (None, None, error)."""
+        ohlc_data = self._get_ohlc_data()
+        if not ohlc_data:
+            return None, None, self._create_rejection_signal("Données OHLC insuffisantes pour calcul SAR", {})
+
+        sar_data = self._calculate_parabolic_sar(
+            ohlc_data["highs"], ohlc_data["lows"], ohlc_data["closes"]
+        )
+        if not sar_data:
+            return None, None, self._create_rejection_signal("Impossible de calculer le SAR", {})
+
+        current_price = float(ohlc_data["closes"][-1])
+        current_sar = sar_data["current_sar"]
+
+        # Validation confluence
+        confluence_score = values.get("confluence_score", 0)
+        if not confluence_score or float(confluence_score) < self.min_confluence_required:
+            return None, None, self._create_rejection_signal(
+                f"Confluence insuffisante ({confluence_score}) < {self.min_confluence_required}",
+                {}
+            )
+
+        # Validation distance SAR
+        distance_to_sar = abs(current_price - current_sar) / current_price
+        if distance_to_sar > self.max_sar_distance:
+            return None, None, self._create_rejection_signal(
+                f"Prix trop éloigné du SAR ({distance_to_sar:.1%} > {self.max_sar_distance:.1%})",
+                {"distance_to_sar": distance_to_sar}
+            )
+
+        return sar_data, current_price, None
+
     def _get_ohlc_data(self) -> dict[str, list] | None:
         """Récupère les données OHLC pour calcul SAR."""
         try:
@@ -211,91 +257,28 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         Génère un signal basé sur les rebonds sur le VRAI Parabolic SAR.
         """
         if not self.validate_data():
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Données insuffisantes",
-                "metadata": {"strategy": self.name},
-            }
+            return self._create_rejection_signal("Données insuffisantes", {})
 
         values = self._get_current_values()
-        ohlc_data = self._get_ohlc_data()
 
-        if not ohlc_data:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Données OHLC insuffisantes pour calcul SAR",
-                "metadata": {"strategy": self.name},
-            }
+        # Valider les préconditions
+        sar_data, current_price, error_signal = self._validate_signal_preconditions(values)
+        if error_signal:
+            return error_signal
 
-        # Calcul du vrai SAR
-        sar_data = self._calculate_parabolic_sar(
-            ohlc_data["highs"], ohlc_data["lows"], ohlc_data["closes"]
-        )
-
-        if not sar_data:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Impossible de calculer le SAR",
-                "metadata": {"strategy": self.name},
-            }
-
-        current_price = float(ohlc_data["closes"][-1])
         current_sar = sar_data["current_sar"]
         current_trend = sar_data["current_trend"]
 
-        # VALIDATION CONFLUENCE OBLIGATOIRE
-        confluence_score = values.get("confluence_score", 0)
-        if (
-            not confluence_score
-            or float(confluence_score) < self.min_confluence_required
-        ):
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Confluence insuffisante ({confluence_score}) < {self.min_confluence_required}",
-                "metadata": {
-                    "strategy": self.name},
-            }
-
-        # Distance au SAR
-        distance_to_sar = abs(current_price - current_sar) / current_price
-
-        if distance_to_sar > self.max_sar_distance:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Prix trop éloigné du SAR ({distance_to_sar:.1%} > {self.max_sar_distance:.1%})",
-                "metadata": {
-                    "strategy": self.name,
-                    "distance_to_sar": distance_to_sar},
-            }
-
         # Analyser le rebond selon la tendance SAR
         if current_trend == 1 and current_price > current_sar:
-            # Tendance haussière SAR - chercher rebond BUY
-            return self._analyze_sar_bounce(
-                values, current_price, sar_data, "BUY")
+            return self._analyze_sar_bounce(values, current_price, sar_data, "BUY")
         if current_trend == -1 and current_price < current_sar:
-            # Tendance baissière SAR - chercher rebond SELL
-            return self._analyze_sar_bounce(
-                values, current_price, sar_data, "SELL")
-        return {
-            "side": None,
-            "confidence": 0.0,
-            "strength": "weak",
-            "reason": f"Prix/SAR non alignés pour rebond (trend={current_trend}, prix={current_price:.4f}, SAR={current_sar:.4f})",
-            "metadata": {
-                "strategy": self.name,
-                "sar_data": sar_data},
-        }
+            return self._analyze_sar_bounce(values, current_price, sar_data, "SELL")
+
+        return self._create_rejection_signal(
+            f"Prix/SAR non alignés pour rebond (trend={current_trend}, prix={current_price:.4f}, SAR={current_sar:.4f})",
+            {"sar_data": sar_data}
+        )
 
     def _analyze_sar_bounce(
         self,
@@ -306,10 +289,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
     ) -> dict[str, Any]:
         """Analyse un rebond sur le SAR."""
 
-        # Base confidence différenciée selon risque
-        base_confidence = (
-            0.65 if signal_side == "SELL" else 0.65
-        )  # SELL plus risqué en spot
+        # Base confidence standardisée
+        base_confidence = 0.65
         confidence_boost = 0.0
 
         current_sar = sar_data["current_sar"]
@@ -504,16 +485,19 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                     if signal_side == "BUY":
                         # Chandelier haussier pour rebond BUY
                         return current_close > current_open
-                    # Chandelier baissier pour rebond SELL
-                    return current_close < current_open
                 except (ValueError, TypeError, IndexError):
                     pass
+                else:
+                    # Chandelier baissier pour rebond SELL
+                    return current_close < current_open
 
             # Fallback : proximité seule si pas de données open/close
+        except (ValueError, TypeError, ZeroDivisionError):
+            pass
+        else:
             return proximity_ok
 
-        except (ValueError, TypeError, ZeroDivisionError):
-            return False
+        return False
 
     def _add_sar_confirmations(
         self, values: dict[str, Any], signal_side: str, _current_price: float

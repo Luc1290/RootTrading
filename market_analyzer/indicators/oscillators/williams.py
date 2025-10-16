@@ -364,18 +364,20 @@ def williams_r_trend_strength(
     len(recent_values) - overbought_count - oversold_count
 
     total = len(recent_values)
+    result = "sideways"
 
     # Strong trends: > 70% in one zone
     if overbought_count / total > 0.7:
-        return "strong_uptrend"
-    if oversold_count / total > 0.7:
-        return "strong_downtrend"
+        result = "strong_uptrend"
+    elif oversold_count / total > 0.7:
+        result = "strong_downtrend"
     # Moderate trends: > 50% in one zone
-    if overbought_count / total > 0.5:
-        return "moderate_uptrend"
-    if oversold_count / total > 0.5:
-        return "moderate_downtrend"
-    return "sideways"
+    elif overbought_count / total > 0.5:
+        result = "moderate_uptrend"
+    elif oversold_count / total > 0.5:
+        result = "moderate_downtrend"
+
+    return result
 
 
 # ============ Helper Functions ============

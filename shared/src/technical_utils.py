@@ -44,7 +44,7 @@ def to_numpy_array(
             data, pd.Series) else np.asarray(
             data, dtype=float)
     except (TypeError, ValueError) as e:
-        raise ValueError(f"Cannot convert data to numpy array: {e}")
+        raise ValueError(f"Cannot convert data to numpy array: {e}") from e
 
     # Validate array
     if array.size == 0:
@@ -101,7 +101,7 @@ def validate_and_align_arrays(
             original_lengths.append(len(np_array))
 
         except Exception as e:
-            raise ValueError(f"Error processing array {i}: {e}")
+            raise ValueError(f"Error processing array {i}: {e}") from e
 
     # Find target length
     if alignment == "right":

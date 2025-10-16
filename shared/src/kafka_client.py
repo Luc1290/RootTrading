@@ -6,6 +6,7 @@ import json
 import logging
 import queue
 import random
+import re
 import threading
 import time
 from collections.abc import Callable
@@ -230,13 +231,13 @@ class KafkaClientPool:
         try:
             producer = Producer(conf)
             logger.info(f"✅ Producteur Kafka créé pour {self.broker}")
-            return producer
-        except KafkaException as e:
-            error_msg = str(e).replace("{", "{{").replace("}", "}}")
+        except KafkaException:
             logger.exception(
                 "❌ Erreur lors de la création du producteur Kafka: "
             )
             raise
+        else:
+            return producer
 
     def _create_consumer(
         self, topics: list[str], group_id: str | None = None
@@ -276,12 +277,13 @@ class KafkaClientPool:
             logger.info(
                 f"✅ Consommateur Kafka créé pour {self.broker}, topics: {', '.join(topics)}"
             )
-            return consumer
         except KafkaException:
             logger.exception(
                 "❌ Erreur lors de la création du consommateur Kafka: "
             )
             raise
+        else:
+            return consumer
 
     def get_existing_topics(self, force_refresh: bool = False) -> set[str]:
         """
@@ -309,7 +311,6 @@ class KafkaClientPool:
                     timeout=10).topics.keys()
                 self._existing_topics_cache = set(topics)
                 self._topics_cache_time = int(current_time)
-                return self._existing_topics_cache
             except Exception:
                 logger.exception("❌ Erreur lors de la récupération des topics")
                 # Retourner le cache même s'il est périmé en cas d'erreur
@@ -318,6 +319,8 @@ class KafkaClientPool:
                     if self._existing_topics_cache
                     else set()
                 )
+            else:
+                return self._existing_topics_cache
 
     def _resolve_wildcards(self, patterns: list[str]) -> list[str]:
         """
@@ -348,8 +351,6 @@ class KafkaClientPool:
         # Résoudre chaque pattern
         for pattern in wildcard_patterns:
             # Convertir le pattern en regex
-            import re
-
             regex_pattern = pattern.replace(".", r"\.").replace("*", ".*")
             regex = re.compile(f"^{regex_pattern}$")
 
@@ -513,8 +514,6 @@ class KafkaClientPool:
             )
 
         except KafkaException as e:
-            error_msg = str(e).replace("{", "{{").replace("}", "}}")
-
             # CORRECTION: Si erreur FATAL, recréer le producteur
             if "_FATAL" in str(e) or "Fatal error" in str(e):
                 logger.exception(
@@ -556,8 +555,7 @@ class KafkaClientPool:
                 self.metrics.record_delivery_failure()
                 raise
 
-        except Exception as e:
-            error_msg = str(e).replace("{", "{{").replace("}", "}}")
+        except Exception:
             logger.exception(
                 "❌ Erreur lors de la production du message: ")
             self.metrics.record_delivery_failure()

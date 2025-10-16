@@ -33,6 +33,76 @@ class EMA_Cross_Strategy(BaseStrategy):
         self.min_separation_pct = 0.25
         self.strong_separation_pct = 1.0  # Séparation forte 1.0%
 
+    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Helper to create rejection signals."""
+        base_metadata = {"strategy": self.name}
+        if metadata:
+            base_metadata.update(metadata)
+        return {
+            "side": None,
+            "confidence": 0.0,
+            "strength": "weak",
+            "reason": reason,
+            "metadata": base_metadata,
+        }
+
+    def _validate_ema_data(self, values: dict[str, Any], current_price: float | None) -> tuple[float | None, float | None, float | None, dict[str, Any] | None]:
+        """Valide les données EMA et prix. Retourne (ema_12, ema_26, ema_50, error_signal)."""
+        if current_price is None:
+            return None, None, None, self._create_rejection_signal("Prix non disponible", {})
+
+        try:
+            ema_12 = float(values["ema_12"]) if values["ema_12"] is not None else None
+            ema_26 = float(values["ema_26"]) if values["ema_26"] is not None else None
+            ema_50 = float(values["ema_50"]) if values["ema_50"] is not None else None
+        except (ValueError, TypeError) as e:
+            return None, None, None, self._create_rejection_signal(f"Erreur conversion EMA: {e}", {})
+
+        if ema_12 is None or ema_26 is None:
+            return None, None, None, self._create_rejection_signal("EMA 12/26 non disponibles", {})
+
+        return ema_12, ema_26, ema_50, None
+
+    def _validate_trend_alignment(
+        self, signal_side: str, current_price: float, values: dict[str, Any], macd_line: Any, macd_signal: Any
+    ) -> dict[str, Any] | None:
+        """Valide l'alignement des tendances. Retourne un signal de rejet ou None si valide."""
+        # Validation EMA99
+        ema_99 = values.get("ema_99")
+        if ema_99 is not None:
+            try:
+                ema99_val = float(ema_99)
+                if signal_side == "BUY" and current_price < ema99_val * 0.98:
+                    return self._create_rejection_signal(
+                        f"Rejet BUY: prix {self._format_price(current_price)} trop sous EMA99 {self._format_price(ema99_val)} (contra-trend LT)",
+                        {"symbol": self.symbol, "current_price": current_price, "ema_99": ema99_val, "rejected": "contra_trend_lt"}
+                    )
+                if signal_side == "SELL" and current_price > ema99_val * 1.02:
+                    return self._create_rejection_signal(
+                        f"Rejet SELL: prix {self._format_price(current_price)} trop au-dessus EMA99 {self._format_price(ema99_val)} (contra-trend LT)",
+                        {"symbol": self.symbol, "current_price": current_price, "ema_99": ema99_val, "rejected": "contra_trend_lt"}
+                    )
+            except (ValueError, TypeError):
+                pass
+
+        # Validation MACD
+        if macd_line is not None and macd_signal is not None:
+            try:
+                macd = float(macd_line)
+                macd_sig = float(macd_signal)
+                macd_cross = macd > macd_sig
+
+                if (signal_side == "BUY" and macd < 0 and not macd_cross) or (
+                    signal_side == "SELL" and macd > 0 and macd_cross):
+                    return self._create_rejection_signal(
+                        f"Rejet croisement EMA: MACD diverge franchement ({macd:.4f})",
+                        {"symbol": self.symbol, "macd_line": macd, "macd_signal": macd_sig, "rejected": "macd_divergence"}
+                    )
+            except (ValueError, TypeError):
+                pass
+
+        return None
+
     def _format_percentage(self, value: float) -> str:
         """
         Formate un pourcentage de manière intelligente pour les micro-caps.
@@ -102,64 +172,32 @@ class EMA_Cross_Strategy(BaseStrategy):
         Génère un signal basé sur les croisements d'EMA.
         """
         if not self.validate_data():
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Données insuffisantes",
-                "metadata": {"strategy": self.name},
-            }
+            return self._create_rejection_signal("Données insuffisantes", {})
 
         values = self._get_current_values()
         current_price = self._get_current_price()
 
-        # Vérification des EMA essentielles (12 et 26 pour logique classique)
-        try:
-            ema_12 = float(
-                values["ema_12"]) if values["ema_12"] is not None else None
-            ema_26 = float(
-                values["ema_26"]) if values["ema_26"] is not None else None
-            ema_50 = float(
-                values["ema_50"]) if values["ema_50"] is not None else None
-        except (ValueError, TypeError) as e:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Erreur conversion EMA: {e}",
-                "metadata": {"strategy": self.name},
-            }
-
-        if ema_12 is None or ema_26 is None or current_price is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "EMA 12/26 ou prix non disponibles",
-                "metadata": {"strategy": self.name},
-            }
+        # Valider les données EMA et prix
+        ema_12, ema_26, ema_50, error_signal = self._validate_ema_data(values, current_price)
+        if error_signal:
+            return error_signal
 
         # Analyse du croisement EMA 12/26
         ema_fast_above_slow = ema_12 > ema_26
         ema_distance_pct = abs(ema_12 - ema_26) / ema_26 * 100
 
-        # Vérification que les EMA ne sont pas trop proches (éviter faux
-        # signaux)
+        # Vérification que les EMA ne sont pas trop proches
         if ema_distance_pct < self.min_separation_pct:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"EMA trop proches ({self._format_percentage(ema_distance_pct)}) - pas de signal clair",
-                "metadata": {
-                    "strategy": self.name,
+            return self._create_rejection_signal(
+                f"EMA trop proches ({self._format_percentage(ema_distance_pct)}) - pas de signal clair",
+                {
                     "symbol": self.symbol,
                     "ema_12": ema_12,
                     "ema_26": ema_26,
                     "separation_pct": ema_distance_pct,
                     "min_required": self.min_separation_pct,
-                },
-            }
+                }
+            )
 
         signal_side = None
         reason = ""
@@ -224,47 +262,20 @@ class EMA_Cross_Strategy(BaseStrategy):
             )
             cross_quality = "weak"
 
-        # Confirmation stricte avec EMA99 (rejet si forte divergence LT)
+        # Validation des alignements EMA99 et MACD
+        macd_line = values.get("macd_line")
+        macd_signal = values.get("macd_signal")
+        macd_histogram = values.get("macd_histogram")
+
+        rejection = self._validate_trend_alignment(signal_side, current_price, values, macd_line, macd_signal)
+        if rejection:
+            return rejection
+
+        # Confirmation stricte avec EMA99 (bonus/malus uniquement, pas de rejet ici)
         ema_99 = values.get("ema_99")
         if ema_99 is not None:
             try:
                 ema99_val = float(ema_99)
-
-                # Rejet si contre-tendance LT franche
-                if (
-                    signal_side == "BUY" and current_price < ema99_val * 0.98
-                ):  # 2% sous EMA99
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet BUY: prix {self._format_price(current_price)} trop sous EMA99 {self._format_price(ema99_val)} (contra-trend LT)",
-                        "metadata": {
-                            "strategy": self.name,
-                            "symbol": self.symbol,
-                            "current_price": current_price,
-                            "ema_99": ema99_val,
-                            "rejected": "contra_trend_lt",
-                        },
-                    }
-                if (
-                    signal_side == "SELL" and current_price > ema99_val * 1.02
-                ):  # 2% au-dessus EMA99
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet SELL: prix {self._format_price(current_price)} trop au-dessus EMA99 {self._format_price(ema99_val)} (contra-trend LT)",
-                        "metadata": {
-                            "strategy": self.name,
-                            "symbol": self.symbol,
-                            "current_price": current_price,
-                            "ema_99": ema99_val,
-                            "rejected": "contra_trend_lt",
-                        },
-                    }
-
-                # Confirmations EMA99
                 if signal_side == "BUY" and current_price > ema99_val:
                     confidence_boost += 0.08
                     reason += " + tendance LT haussière"
@@ -272,56 +283,27 @@ class EMA_Cross_Strategy(BaseStrategy):
                     confidence_boost += 0.08
                     reason += " + tendance LT baissière"
                 else:
-                    # Léger malus mais pas rejet (cas limites)
                     confidence_boost -= 0.05
                     reason += " mais neutre LT"
             except (ValueError, TypeError):
                 pass
 
-        # Confirmation avec MACD (basé sur EMA 12/26)
-        macd_line = values.get("macd_line")
-        macd_signal = values.get("macd_signal")
-        macd_histogram = values.get("macd_histogram")
-
+        # Confirmations MACD (bonus/malus uniquement, pas de rejet ici)
         if macd_line is not None and macd_signal is not None:
             try:
                 macd = float(macd_line)
                 macd_sig = float(macd_signal)
                 macd_cross = macd > macd_sig
 
-                # Rejet STRICT si MACD diverge franchement
-                if (signal_side == "BUY" and macd < 0 and not macd_cross) or (
-                    signal_side == "SELL" and macd > 0 and macd_cross
-                ):
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet croisement EMA: MACD diverge franchement ({macd:.4f})",
-                        "metadata": {
-                            "strategy": self.name,
-                            "symbol": self.symbol,
-                            "macd_line": macd,
-                            "macd_signal": macd_sig,
-                            "rejected": "macd_divergence",
-                        },
-                    }
-
-                # Confirmations MACD
                 if (signal_side == "BUY" and macd_cross and macd > 0) or (
-                    signal_side == "SELL" and not macd_cross and macd < 0
-                ):
+                    signal_side == "SELL" and not macd_cross and macd < 0):
                     confidence_boost += 0.18
                     reason += " + MACD PARFAITEMENT aligné"
-                elif (signal_side == "BUY" and macd_cross) or (
-                    signal_side == "SELL" and not macd_cross
-                ):
+                elif (signal_side == "BUY" and macd_cross) or (signal_side == "SELL" and not macd_cross):
                     confidence_boost += 0.10
                     reason += " + MACD confirme"
                 else:
-                    confidence_boost -= (
-                        0.10  # Pénalité réduite car les cas graves sont rejetés
-                    )
+                    confidence_boost -= 0.10
                     reason += " MAIS MACD mitigé"
             except (ValueError, TypeError):
                 pass
@@ -361,19 +343,16 @@ class EMA_Cross_Strategy(BaseStrategy):
 
         # Filtre final - rejeter si confidence trop faible
         if confidence < 0.35:  # Seuil minimum abaissé
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Signal EMA rejeté - confiance insuffisante ({confidence:.3f} < 0.35)",
-                "metadata": {
-                    "strategy": self.name,
+            return self._create_rejection_signal(
+                f"Signal EMA rejeté - confiance insuffisante ({confidence:.3f} < 0.35)",
+                {
                     "symbol": self.symbol,
                     "rejected_signal": signal_side,
                     "rejected_confidence": confidence,
                     "ema_separation": ema_distance_pct,
-                },
-            }
+                }
+            )
+
         strength = self.get_strength_from_confidence(confidence)
 
         return {

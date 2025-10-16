@@ -6,7 +6,7 @@ It's often called "volume-weighted RSI" and ranges from 0 to 100.
 
 Calculation:
 1. Typical Price = (High + Low + Close) / 3
-2. Raw Money Flow = Typical Price × Volume
+2. Raw Money Flow = Typical Price * Volume
 3. Positive/Negative Money Flow based on typical price direction
 4. Money Flow Ratio = Positive Money Flow / Negative Money Flow
 5. MFI = 100 - (100 / (1 + Money Flow Ratio))

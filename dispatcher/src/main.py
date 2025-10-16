@@ -4,12 +4,12 @@ Reçoit les messages Kafka et les route vers les bons destinataires.
 """
 
 import json
-import os
 import signal
 import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from typing import Any
 
 from dispatcher.src.message_router import MessageRouter
@@ -18,11 +18,7 @@ from shared.src.kafka_client import KafkaClient
 from shared.src.redis_client import RedisClient
 
 # Ajouter le répertoire parent au path pour les imports
-sys.path.append(
-    os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../../")))
+sys.path.append(str(Path(__file__).parent.parent.parent.resolve()))
 
 
 # Configuration du logging centralisée
@@ -40,7 +36,7 @@ class HealthHandler(BaseHTTPRequestHandler):
     """Gestionnaire des requêtes HTTP pour les endpoints de santé."""
     server: DispatcherHTTPServer  # Type hint pour self.server
 
-    def do_GET(self):
+    def do_GET(self):  # noqa: N802
         """Gère les requêtes GET pour les endpoints de santé et diagnostic."""
         if self.path == "/health":
             self.send_response(200)
@@ -185,7 +181,7 @@ class DispatcherService:
     def setup_signal_handlers(self):
         """Configure les gestionnaires de signaux pour l'arrêt propre."""
 
-        def signal_handler(sig, frame):
+        def signal_handler(sig, _frame):
             logger.info(f"Signal {sig} reçu, arrêt en cours...")
             self.stop()
 

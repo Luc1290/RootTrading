@@ -4,7 +4,7 @@ Configuration du logging pour le service Portfolio.
 
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def setup_logging(log_level="INFO"):

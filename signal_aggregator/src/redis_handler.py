@@ -241,12 +241,11 @@ class RedisHandler:
                 await self.redis_client.ping()
             if self.subscriber_client is not None:
                 await self.subscriber_client.ping()
-
-            return True
-
         except Exception as e:
             logger.warning(f"Health check Redis échoué: {e}")
             return False
+        else:
+            return True
 
     def get_stats(self) -> dict[str, Any]:
         """
@@ -311,8 +310,8 @@ class RedisHandler:
 
             # Test avec un ping simple
             result = await self.redis_client.ping()
-            return result is True
-
         except Exception:
             logger.exception("Test connexion Redis échoué")
             return False
+        else:
+            return result is True

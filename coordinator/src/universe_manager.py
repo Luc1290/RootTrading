@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
@@ -360,9 +360,8 @@ class UniverseManager:
             # Redis scan pattern pour trouver les clés - utiliser redis
             # directement
             for key in self.redis.redis.scan_iter(match="forced_pair:*"):
-                if isinstance(key, bytes):
-                    key = key.decode("utf-8")
-                forced_keys.append(key)
+                decoded_key = key.decode("utf-8") if isinstance(key, bytes) else key
+                forced_keys.append(decoded_key)
 
             for key in forced_keys:
                 try:
@@ -679,11 +678,11 @@ class UniverseManager:
                 f"📊 Univers complet: {len(selected)} symboles actifs en permanence"
             )
 
-            return selected, scores
-
         except Exception:
             logger.exception("Erreur update_universe")
             return set(), {}
+        else:
+            return selected, scores
 
     def is_pair_tradable(self, symbol: str) -> bool:
         """Vérifie si une paire peut ouvrir de nouvelles positions"""
@@ -719,11 +718,13 @@ class UniverseManager:
             )
 
             # Toutes les conditions doivent être vraies
-            return atr_spike and spread_high and slippage_high
+            result = atr_spike and spread_high and slippage_high
 
         except Exception:
             logger.exception("Erreur check_hard_risk {symbol}")
             return False
+        else:
+            return result
 
     def get_universe_stats(self) -> dict:
         """Retourne les statistiques de l'univers"""

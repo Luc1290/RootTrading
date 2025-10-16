@@ -95,6 +95,7 @@ select = [
 # ⚠️ Règles à ignorer (trop strictes pour trading bot)
 ignore = [
     "E501",   # line too long (géré par line-length)
+    "E402",   # module level import not at top of file (sys.path.append)
     "B008",   # function calls in argument defaults (FastAPI Depends)
     "B905",   # zip strict (Python 3.10+)
     "TRY003", # long messages in exceptions (ok pour le trading)
@@ -104,6 +105,8 @@ ignore = [
     "PLR2004", # magic values (seuils de trading)
     "EM101",  # raw string in exception (lisibilité)
     "EM102",  # f-string in exception (lisibilité)
+    "N999",   # invalid module name (stratégies avec underscores)
+    "N801",   # class name should use CapWords (stratégies existantes)
 ]
 
 # Task tags (TODO/FIXME autorisés)

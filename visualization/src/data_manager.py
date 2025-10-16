@@ -614,8 +614,6 @@ class DataManager:
             symbol: str,
             interval_minutes: int):
         """Construit la bougie courante en temps réel pour les intervalles > 1m"""
-        from datetime import datetime, timezone
-
         try:
             now = datetime.now(timezone.utc)
 
@@ -886,11 +884,11 @@ class DataManager:
             logger.info(
                 f"🕯️ Bougie courante {interval_minutes}m construite pour {symbol}: {period_start_naive} -> close={current_candle['close']}"
             )
-            return current_candle
-
         except Exception:
             logger.exception("❌ Erreur construction bougie courante")
             return None
+        else:
+            return current_candle
 
     async def get_portfolio_performance(
             self, period: str = "24h") -> dict[str, Any]:
@@ -979,7 +977,7 @@ class DataManager:
                     "channel": ch[0], "callbacks": []}
 
                 # Start listening to the channel
-                asyncio.create_task(self._listen_to_channel(channel))
+                _task = asyncio.create_task(self._listen_to_channel(channel))
 
             self.subscriptions[channel]["callbacks"].append(callback)
 

@@ -52,6 +52,74 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         self.momentum_alignment_required = True  # Momentum OBLIGATOIREMENT aligné
         self.min_momentum_threshold = 0.10  # 10% au lieu de 20% (réaliste)
 
+    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Helper to create rejection signals."""
+        base_metadata = {"strategy": self.name}
+        if metadata:
+            base_metadata.update(metadata)
+        return {
+            "side": None,
+            "confidence": 0.0,
+            "strength": "weak",
+            "reason": reason,
+            "metadata": base_metadata,
+        }
+
+    def _validate_signal_conditions(
+        self, signal_side: str, values: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Valide les conditions critiques. Retourne un signal de rejet ou None si valide."""
+        momentum_val = values.get("momentum_score")
+        directional_bias = values.get("directional_bias")
+        market_regime = values.get("market_regime")
+        regime_strength = values.get("regime_strength")
+
+        try:
+            momentum_score = float(momentum_val) if momentum_val is not None else 50.0
+        except (ValueError, TypeError):
+            momentum_score = 50.0
+
+        # Momentum contradictoire
+        if (signal_side == "BUY" and momentum_score < 40) or (
+            signal_side == "SELL" and momentum_score > 60):
+            return self._create_rejection_signal(
+                f"Rejet VWAP {signal_side}: momentum {'trop faible' if signal_side == 'BUY' else 'trop fort'} ({momentum_score:.0f})",
+                {"momentum_score": float(momentum_score)}
+            )
+
+        # Bias contradictoire
+        if (signal_side == "BUY" and str(directional_bias).upper() == "BEARISH") or (
+            signal_side == "SELL" and str(directional_bias).upper() == "BULLISH"):
+            return self._create_rejection_signal(
+                f"Rejet VWAP {signal_side}: bias contradictoire ({directional_bias})",
+                {"directional_bias": directional_bias}
+            )
+
+        # Regime contradictoire fort
+        regime_str = str(regime_strength).upper() if regime_strength else "WEAK"
+        if regime_str in ["STRONG", "EXTREME"]:
+            if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or (
+                signal_side == "SELL" and market_regime == "TRENDING_BULL"):
+                return self._create_rejection_signal(
+                    f"Rejet VWAP {signal_side}: régime contradictoire fort ({market_regime})",
+                    {"market_regime": market_regime, "regime_strength": regime_strength}
+                )
+
+        # Confluence insuffisante
+        confluence_score = values.get("confluence_score")
+        if confluence_score is not None:
+            try:
+                conf_val = float(confluence_score)
+                if conf_val < 40:
+                    return self._create_rejection_signal(
+                        f"Rejet VWAP: confluence insuffisante ({conf_val:.0f})",
+                        {"confluence_score": float(conf_val)}
+                    )
+            except (ValueError, TypeError):
+                pass
+
+        return None
+
     def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
         return {
@@ -507,13 +575,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         Génère un signal basé sur VWAP Support/Resistance.
         """
         if not self.validate_data():
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Données insuffisantes",
-                "metadata": {"strategy": self.name},
-            }
+            return self._create_rejection_signal("Données insuffisantes", {})
 
         values = self._get_current_values()
 
@@ -524,13 +586,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 current_price = float(self.data["close"][-1])
 
         if current_price is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Prix actuel non disponible",
-                "metadata": {"strategy": self.name},
-            }
+            return self._create_rejection_signal("Prix actuel non disponible", {})
 
         # Analyse VWAP support (signal BUY)
         support_analysis = self._detect_vwap_support_bounce(
@@ -561,30 +617,22 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
             primary_analysis = resistance_analysis
 
         if signal_side is None:
-            # Diagnostic des conditions manquées - seuils stricts
+            # Diagnostic des conditions manquées
             missing_conditions = []
             if support_analysis["score"] < 0.6:
-                missing_conditions.append(
-                    f"Support VWAP insuffisant (score: {support_analysis['score']:.2f} < 0.6)"
-                )
+                missing_conditions.append(f"Support VWAP insuffisant (score: {support_analysis['score']:.2f} < 0.6)")
             if resistance_analysis["score"] < 0.6:
-                missing_conditions.append(
-                    f"Résistance VWAP insuffisante (score: {resistance_analysis['score']:.2f} < 0.6)"
-                )
+                missing_conditions.append(f"Résistance VWAP insuffisante (score: {resistance_analysis['score']:.2f} < 0.6)")
 
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Conditions VWAP insuffisantes: {'; '.join(missing_conditions[:2])}",
-                "metadata": {
-                    "strategy": self.name,
+            return self._create_rejection_signal(
+                f"Conditions VWAP insuffisantes: {'; '.join(missing_conditions[:2])}",
+                {
                     "symbol": self.symbol,
                     "current_price": current_price,
                     "support_score": support_analysis["score"],
                     "resistance_score": resistance_analysis["score"],
-                },
-            }
+                }
+            )
 
         # Vérifier alignement momentum si requis
         momentum_analysis = self._detect_momentum_alignment(
@@ -595,108 +643,19 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
             and momentum_analysis is not None
             and not momentum_analysis["is_aligned"]
         ):
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"VWAP {signal_side} détecté mais momentum pas aligné (score: {momentum_analysis['score']:.2f})",
-                "metadata": {
-                    "strategy": self.name,
+            return self._create_rejection_signal(
+                f"VWAP {signal_side} détecté mais momentum pas aligné (score: {momentum_analysis['score']:.2f})",
+                {
                     "symbol": self.symbol,
-                    "vwap_score": (
-                        primary_analysis["score"] if primary_analysis else 0.0),
-                    "momentum_score": (
-                        momentum_analysis["score"] if momentum_analysis else 0.0),
-                },
-            }
-
-        # REJETS CRITIQUES AJOUTÉS - contradictions momentum/bias/regime
-        momentum_val = values.get("momentum_score")
-        directional_bias = values.get("directional_bias")
-        market_regime = values.get("market_regime")
-        regime_strength = values.get("regime_strength")
-
-        try:
-            momentum_score = float(
-                momentum_val) if momentum_val is not None else 50.0
-        except (ValueError, TypeError):
-            momentum_score = 50.0
-
-        # Rejet momentum contradictoire
-        if signal_side == "BUY" and momentum_score < 40:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Rejet VWAP BUY: momentum trop faible ({momentum_score:.0f})",
-                "metadata": {
-                    "strategy": self.name,
-                    "momentum_score": float(momentum_score),
-                },
-            }
-        if signal_side == "SELL" and momentum_score > 60:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Rejet VWAP SELL: momentum trop fort ({momentum_score:.0f})",
-                "metadata": {
-                    "strategy": self.name,
-                    "momentum_score": float(momentum_score),
-                },
-            }
-
-        # Rejet bias contradictoire
-        if (signal_side == "BUY" and str(directional_bias).upper() == "BEARISH") or (
-                signal_side == "SELL" and str(directional_bias).upper() == "BULLISH"):
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Rejet VWAP {signal_side}: bias contradictoire ({directional_bias})",
-                "metadata": {
-                    "strategy": self.name,
-                    "directional_bias": directional_bias,
-                },
-            }
-
-        # Rejet régime contradictoire fort
-        regime_str = str(regime_strength).upper(
-        ) if regime_strength else "WEAK"
-        if regime_str in ["STRONG", "EXTREME"]:
-            if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or (
-                signal_side == "SELL" and market_regime == "TRENDING_BULL"
-            ):
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Rejet VWAP {signal_side}: régime contradictoire fort ({market_regime})",
-                    "metadata": {
-                        "strategy": self.name,
-                        "market_regime": market_regime,
-                        "regime_strength": regime_strength,
-                    },
+                    "vwap_score": primary_analysis["score"] if primary_analysis else 0.0,
+                    "momentum_score": momentum_analysis["score"] if momentum_analysis else 0.0,
                 }
+            )
 
-        # Rejet confluence insuffisante
-        confluence_score = values.get("confluence_score")
-        if confluence_score is not None:
-            try:
-                conf_val = float(confluence_score)
-                if conf_val < 40:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet VWAP: confluence insuffisante ({conf_val:.0f})",
-                        "metadata": {
-                            "strategy": self.name,
-                            "confluence_score": float(conf_val),
-                        },
-                    }
-            except (ValueError, TypeError):
-                pass
+        # Valider les conditions critiques
+        rejection = self._validate_signal_conditions(signal_side, values)
+        if rejection:
+            return rejection
 
         # BASE CONFIDENCE CORRIGÉE pour aggregator
         base_confidence = 0.65  # Au lieu de 0.45 (passe aggregator)

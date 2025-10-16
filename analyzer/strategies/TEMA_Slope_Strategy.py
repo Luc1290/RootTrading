@@ -336,6 +336,37 @@ class TEMA_Slope_Strategy(BaseStrategy):
             "alignment": alignment,
         }
 
+    def _validate_tema_signal_requirements(
+        self, values: dict[str, Any], signal_side: str
+    ) -> tuple[bool, str | None]:
+        """Valide les exigences obligatoires pour un signal TEMA. Returns (is_valid, rejection_reason)."""
+        # VALIDATION CONFLUENCE
+        confluence_score = values.get("confluence_score", 0)
+        if not confluence_score or float(confluence_score) < self.min_confluence_required:
+            return False, f"Confluence insuffisante ({confluence_score}) < {self.min_confluence_required} - signal TEMA rejeté"
+
+        # VALIDATION VOLUME
+        volume_ratio = values.get("volume_ratio", 0)
+        if not volume_ratio or float(volume_ratio) < self.min_volume_required:
+            return False, f"Volume insuffisant ({volume_ratio}) < {self.min_volume_required} - signal TEMA rejeté"
+
+        # VALIDATION REGIME/BIAS
+        market_regime = values.get("market_regime")
+        directional_bias = values.get("directional_bias")
+
+        if signal_side == "BUY":
+            if market_regime == "TRENDING_BEAR":
+                return False, "Rejet TEMA: BUY interdit en TRENDING_BEAR"
+            if str(directional_bias).upper() == "BEARISH":
+                return False, "Rejet TEMA: bias contradictoire (BEARISH)"
+        elif signal_side == "SELL":
+            if market_regime == "TRENDING_BULL":
+                return False, "Rejet TEMA: SELL interdit en TRENDING_BULL"
+            if str(directional_bias).upper() == "BULLISH":
+                return False, "Rejet TEMA: bias contradictoire (BULLISH)"
+
+        return True, None
+
     def _create_tema_slope_signal(
         self,
         values: dict[str, Any],
@@ -349,94 +380,29 @@ class TEMA_Slope_Strategy(BaseStrategy):
         slope_direction = signal_condition["slope_direction"]
         alignment = signal_condition["alignment"]
 
-        base_confidence = 0.65  # Standardisé à 0.65 pour équité avec autres stratégies
+        base_confidence = 0.65
         confidence_boost = 0.0
 
         tema_val = tema_analysis["tema_value"]
         tema_slope = tema_analysis["tema_slope"]
         price_tema_distance = tema_analysis["price_tema_distance"]
 
-        # Construction de la raison
         reason = f"TEMA pente {slope_direction}: {tema_slope:.6f} ({slope_strength})"
 
-        # VALIDATION OBLIGATOIRE CONFLUENCE ANTI-SPAM
+        # VALIDATIONS OBLIGATOIRES GROUPÉES
+        is_valid, rejection_reason = self._validate_tema_signal_requirements(values, signal_side)
+        if not is_valid:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": rejection_reason,
+                "metadata": {"strategy": self.name, "rejected_reason": "validation_failed"},
+            }
+
         confluence_score = values.get("confluence_score", 0)
-        if (
-            not confluence_score
-            or float(confluence_score) < self.min_confluence_required
-        ):
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Confluence insuffisante ({confluence_score}) < {self.min_confluence_required} - signal TEMA rejeté",
-                "metadata": {
-                    "strategy": self.name,
-                    "rejected_reason": "low_confluence",
-                },
-            }
-
-        # REJETS CRITIQUES - régime/bias contradictoires
-        market_regime = values.get("market_regime")
-        directional_bias = values.get("directional_bias")
-
-        if signal_side == "BUY":
-            if market_regime == "TRENDING_BEAR":
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": "Rejet TEMA: BUY interdit en TRENDING_BEAR",
-                    "metadata": {
-                        "strategy": self.name,
-                        "market_regime": market_regime},
-                }
-            if str(directional_bias).upper() == "BEARISH":
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": "Rejet TEMA: bias contradictoire (BEARISH)",
-                    "metadata": {
-                        "strategy": self.name,
-                        "directional_bias": directional_bias,
-                    },
-                }
-        elif signal_side == "SELL":
-            if market_regime == "TRENDING_BULL":
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": "Rejet TEMA: SELL interdit en TRENDING_BULL",
-                    "metadata": {
-                        "strategy": self.name,
-                        "market_regime": market_regime},
-                }
-            if str(directional_bias).upper() == "BULLISH":
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": "Rejet TEMA: bias contradictoire (BULLISH)",
-                    "metadata": {
-                        "strategy": self.name,
-                        "directional_bias": directional_bias,
-                    },
-                }
-
-        # VALIDATION OBLIGATOIRE VOLUME ANTI-SPAM
         volume_ratio = values.get("volume_ratio", 0)
-        if not volume_ratio or float(volume_ratio) < self.min_volume_required:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Volume insuffisant ({volume_ratio}) < {self.min_volume_required} - signal TEMA rejeté",
-                "metadata": {
-                    "strategy": self.name,
-                    "rejected_reason": "low_volume"},
-            }
+        market_regime = values.get("market_regime")
 
         # Bonus selon la force de la pente (RÉDUITS pour éviter sur-confiance)
         if slope_strength == "very_strong":

@@ -535,7 +535,7 @@ class RangeAnalyzer:
 
             # 2. Tests des limites sans cassure
             high_tests = sum(1 for h in highs if h >= range_high * 0.99)
-            low_tests = sum(1 for l in lows if l <= range_low * 1.01)
+            low_tests = sum(1 for low in lows if low <= range_low * 1.01)
 
             if high_tests >= 3 and low_tests >= 3:
                 score += 2
@@ -544,9 +544,9 @@ class RangeAnalyzer:
 
             # 3. Stabilité du range (pas de fausses cassures)
             false_breakouts = 0
-            for _i, (h, l, c) in enumerate(zip(highs, lows, closes)):
+            for _i, (h, low, c) in enumerate(zip(highs, lows, closes)):
                 if (h > range_high and c < range_high) or (
-                        l < range_low and c > range_low):  # Fausse cassure haute
+                        low < range_low and c > range_low):  # Fausse cassure haute
                     false_breakouts += 1
 
             if false_breakouts == 0:
@@ -568,7 +568,8 @@ class RangeAnalyzer:
                 return RangeQuality.GOOD
             if score >= 2:
                 return RangeQuality.AVERAGE
-            return RangeQuality.POOR
+            else:
+                return RangeQuality.POOR
 
         except Exception as e:
             logger.warning(f"Erreur évaluation qualité range: {e}")
@@ -627,10 +628,10 @@ class RangeAnalyzer:
         boundary_volumes = []
         tolerance = 0.01
 
-        for h, l, v in zip(highs, lows, volumes):
+        for h, low, v in zip(highs, lows, volumes):
             # Test de la résistance
             if h >= range_high * \
-                    (1 - tolerance) or l <= range_low * (1 + tolerance):
+                    (1 - tolerance) or low <= range_low * (1 + tolerance):
                 boundary_volumes.append(v)
 
         if not boundary_volumes:

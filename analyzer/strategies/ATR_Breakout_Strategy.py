@@ -89,24 +89,23 @@ class ATR_Breakout_Strategy(BaseStrategy):
             pass
         return None
 
-    def generate_signal(self) -> dict[str, Any]:
-        """
-        Génère un signal basé sur ATR et les breakouts de volatilité.
-        """
-        if not self.validate_data():
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Données insuffisantes",
-                "metadata": {"strategy": self.name},
-            }
+    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Helper to create rejection signals."""
+        base_metadata = {"strategy": self.name}
+        if metadata:
+            base_metadata.update(metadata)
+        return {
+            "side": None,
+            "confidence": 0.0,
+            "strength": "weak",
+            "reason": reason,
+            "metadata": base_metadata,
+        }
 
-        values = self._get_current_values()
-        current_price = self._get_current_price()
-        prev_price = self._get_previous_price()
-
-        # Helper pour valider les nombres (anti-NaN)
+    def _validate_atr_and_price(
+        self, values: dict[str, Any], current_price: float | None
+    ) -> tuple[float | None, float | None, str | None, dict[str, Any] | None]:
+        """Valide ATR et prix. Retourne (atr, atr_percentile, volatility_regime, error_signal)."""
         def _is_valid(x):
             try:
                 x = float(x) if x is not None else None
@@ -114,93 +113,64 @@ class ATR_Breakout_Strategy(BaseStrategy):
             except (TypeError, ValueError):
                 return False
 
-        # Vérification des indicateurs essentiels avec protection NaN
         try:
             atr_val = values.get("atr_14")
             atr_perc_val = values.get("atr_percentile")
 
-            atr = float(atr_val) if atr_val is not None and _is_valid(
-                atr_val) else None
-            atr_percentile = (float(atr_perc_val) if atr_perc_val is not None and _is_valid(
-                atr_perc_val) else None)
+            atr = float(atr_val) if atr_val is not None and _is_valid(atr_val) else None
+            atr_percentile = (float(atr_perc_val) if atr_perc_val is not None and _is_valid(atr_perc_val) else None)
             volatility_regime = values.get("volatility_regime")
         except (ValueError, TypeError) as e:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Erreur conversion ATR: {e}",
-                "metadata": {"strategy": self.name},
-            }
+            return None, None, None, self._create_rejection_signal(f"Erreur conversion ATR: {e}", {})
 
         if not (_is_valid(atr) and _is_valid(current_price)):
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Valeurs ATR ou prix invalides/NaN",
-                "metadata": {"strategy": self.name},
-            }
+            return None, None, None, self._create_rejection_signal("Valeurs ATR ou prix invalides/NaN", {})
 
-        # Normaliser atr_percentile si nécessaire (gestion échelle 0-1 vs
-        # 0-100)
+        # Normaliser atr_percentile
         if atr_percentile is not None:
             ap = float(atr_percentile)
-            if ap <= 1.0:  # reçu en 0..1, convertir en 0..100
-                atr_percentile = ap * 100.0
-            else:
-                atr_percentile = ap
+            atr_percentile = ap * 100.0 if ap <= 1.0 else ap
 
-        # Vérification de la volatilité - SEUIL DURCI pour vrais breakouts
+        # Vérification de la volatilité
         if atr_percentile is not None and atr_percentile < self.volatility_threshold:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Volatilité insuffisante ({atr_percentile:.2f}) < {self.volatility_threshold} - ATR trop faible pour breakout",
-                "metadata": {
-                    "strategy": self.name,
+            return None, None, None, self._create_rejection_signal(
+                f"Volatilité insuffisante ({atr_percentile:.2f}) < {self.volatility_threshold} - ATR trop faible pour breakout",
+                {
                     "symbol": self.symbol,
                     "atr": atr,
                     "atr_percentile": atr_percentile,
                     "current_price": current_price,
-                },
-            }
+                }
+            )
 
-        # Récupération des niveaux de support/résistance
-        nearest_resistance = values.get("nearest_resistance")
-        nearest_support = values.get("nearest_support")
-        resistance_strength = values.get("resistance_strength")
-        support_strength = values.get("support_strength")
+        return atr, atr_percentile, volatility_regime, None
 
-        signal_side = None
-        reason = ""
-        base_confidence = 0.65  # Standardisé à 0.65 pour équité avec autres stratégies
-        confidence_boost = 0.0
-        proximity_type = None
+    def _validate_trend_requirements(
+        self, values: dict[str, Any]
+    ) -> tuple[bool, bool, bool, dict[str, Any] | None]:
+        """Valide les exigences de tendance. Retourne (is_uptrend, is_downtrend, trend_confirmed, error_signal)."""
+        def _is_valid(x):
+            try:
+                x = float(x) if x is not None else None
+                return x is not None and not math.isnan(x)
+            except (TypeError, ValueError):
+                return False
 
-        # Filtre de tendance OBLIGATOIRE pour breakouts cohérents
         market_regime = values.get("market_regime")
         trend_alignment = values.get("trend_alignment")
         adx_value = values.get("adx_14")
 
-        # Déterminer la tendance principale - OBLIGATOIRE pour breakouts
         is_uptrend = False
         is_downtrend = False
         trend_confirmed = False
 
-        # Validation ADX pour confirmer force de tendance
+        # Validation ADX
         if adx_value is not None and _is_valid(adx_value):
             adx_val = float(adx_value)
             if adx_val < self.min_adx_breakout:
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"ADX trop faible ({adx_val:.1f}) - pas de force pour breakout",
-                    "metadata": {
-                        "strategy": self.name},
-                }
+                return False, False, False, self._create_rejection_signal(
+                    f"ADX trop faible ({adx_val:.1f}) - pas de force pour breakout", {}
+                )
 
         if market_regime:
             if market_regime == "TRENDING_BULL":
@@ -210,58 +180,111 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 is_downtrend = True
                 trend_confirmed = True
             elif market_regime == "RANGING":
-                # En ranging strict, pas de breakout
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Marché en range ({market_regime}) - pas de breakout",
-                    "metadata": {
-                        "strategy": self.name},
-                }
+                return False, False, False, self._create_rejection_signal(
+                    f"Marché en range ({market_regime}) - pas de breakout", {}
+                )
             elif market_regime == "TRANSITION":
-                # Autoriser TRANSITION si ADX≥18 ou BB expansion
                 transition_ok = False
-                if adx_value is not None and _is_valid(
-                        adx_value) and float(adx_value) >= 18:
+                if adx_value is not None and _is_valid(adx_value) and float(adx_value) >= 18:
                     transition_ok = True
                 if values.get("bb_expansion") is True:
                     transition_ok = True
                 if not transition_ok:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": "Transition sans signes de poussée (ADX/BB) - on attend",
-                        "metadata": {
-                            "strategy": self.name},
-                    }
+                    return False, False, False, self._create_rejection_signal(
+                        "Transition sans signes de poussée (ADX/BB) - on attend", {}
+                    )
 
-        # Vérification trend_alignment pour renforcer la détection
+        # Vérification trend_alignment
         if trend_alignment is not None and _is_valid(trend_alignment):
             try:
                 align_val = float(trend_alignment)
-                if align_val > 0.2:  # Tendance haussière confirmée
-                    if not is_uptrend:  # Si pas déjà détecté par regime
-                        is_uptrend = True
-                        trend_confirmed = True
-                elif align_val < -0.2:  # Tendance baissière confirmée
-                    if not is_downtrend:
-                        is_downtrend = True
-                        trend_confirmed = True
+                if align_val > 0.2 and not is_uptrend:
+                    is_uptrend = True
+                    trend_confirmed = True
+                elif align_val < -0.2 and not is_downtrend:
+                    is_downtrend = True
+                    trend_confirmed = True
             except (ValueError, TypeError):
                 pass
 
-        # Pas de tendance détectée = pas de breakout
+        # Pas de tendance détectée
         if not trend_confirmed:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Aucune tendance claire détectée - breakout impossible",
-                "metadata": {
-                    "strategy": self.name},
-            }
+            return False, False, False, self._create_rejection_signal(
+                "Aucune tendance claire détectée - breakout impossible", {}
+            )
+
+        return is_uptrend, is_downtrend, trend_confirmed, None
+
+    def _validate_momentum_alignment(
+        self, signal_side: str, momentum_score: Any
+    ) -> dict[str, Any] | None:
+        """Valide l'alignement du momentum. Retourne un signal de rejet ou None si valide."""
+        def _is_valid(x):
+            try:
+                x = float(x) if x is not None else None
+                return x is not None and not math.isnan(x)
+            except (TypeError, ValueError):
+                return False
+
+        if momentum_score is not None and _is_valid(momentum_score):
+            try:
+                momentum = float(momentum_score)
+                if signal_side == "BUY" and momentum < 48:
+                    return self._create_rejection_signal(
+                        f"Rejet breakout haussier : momentum trop faible ({momentum:.0f})",
+                        {"momentum_score": momentum}
+                    )
+                if signal_side == "SELL" and momentum > 52:
+                    return self._create_rejection_signal(
+                        f"Rejet breakout baissier : momentum trop fort ({momentum:.0f})",
+                        {"momentum_score": momentum}
+                    )
+            except (ValueError, TypeError):
+                pass
+        return None
+
+    def generate_signal(self) -> dict[str, Any]:
+        """
+        Génère un signal basé sur ATR et les breakouts de volatilité.
+        """
+        if not self.validate_data():
+            return self._create_rejection_signal("Données insuffisantes", {})
+
+        values = self._get_current_values()
+        current_price = self._get_current_price()
+        prev_price = self._get_previous_price()
+
+        # Validation ATR et prix
+        atr, atr_percentile, volatility_regime, error_signal = self._validate_atr_and_price(values, current_price)
+        if error_signal:
+            return error_signal
+
+        # Validation des exigences de tendance
+        is_uptrend, is_downtrend, trend_confirmed, error_signal = self._validate_trend_requirements(values)
+        if error_signal:
+            return error_signal
+
+        # Helper pour valider les nombres (anti-NaN)
+        def _is_valid(x):
+            try:
+                x = float(x) if x is not None else None
+                return x is not None and not math.isnan(x)
+            except (TypeError, ValueError):
+                return False
+
+        # Récupération des niveaux de support/résistance
+        nearest_resistance = values.get("nearest_resistance")
+        nearest_support = values.get("nearest_support")
+        resistance_strength = values.get("resistance_strength")
+        support_strength = values.get("support_strength")
+
+        signal_side = None
+        reason = ""
+        base_confidence = 0.65
+        confidence_boost = 0.0
+        proximity_type = None
+        market_regime = values.get("market_regime")
+        trend_alignment = values.get("trend_alignment")
 
         # PURE BREAKOUT - Zone élargie (ATR + ratio max)
         breakout_zone_atr = atr * self.atr_multiplier if atr is not None else 0.0  # Zone ATR
@@ -401,20 +424,16 @@ class ATR_Breakout_Strategy(BaseStrategy):
 
         # Pas de breakout détecté
         if signal_side is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Pas de breakout actif - prix hors zones de cassure",
-                "metadata": {
-                    "strategy": self.name,
+            return self._create_rejection_signal(
+                "Pas de breakout actif - prix hors zones de cassure",
+                {
                     "symbol": self.symbol,
                     "current_price": current_price,
                     "resistance": nearest_resistance,
                     "support": nearest_support,
                     "atr": atr,
-                },
-            }
+                }
+            )
 
         # Ajustements de confiance selon l'ATR - SEUILS DURCIS
         if atr_percentile is not None:
@@ -562,34 +581,16 @@ class ATR_Breakout_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
 
-        # Momentum OBLIGATOIRE pour confirmer breakout - REJET si contraire
+        # Validation momentum
         momentum_score = values.get("momentum_score")
+        error_signal = self._validate_momentum_alignment(signal_side, momentum_score)
+        if error_signal:
+            return error_signal
+
+        # Bonus si momentum aligné
         if momentum_score is not None and _is_valid(momentum_score):
             try:
                 momentum = float(momentum_score)
-                # Rejet si momentum trop contraire au breakout (assoupli)
-                if signal_side == "BUY" and momentum < 48:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet breakout haussier : momentum trop faible ({momentum:.0f})",
-                        "metadata": {
-                            "strategy": self.name,
-                            "momentum_score": momentum},
-                    }
-                if signal_side == "SELL" and momentum > 52:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet breakout baissier : momentum trop fort ({momentum:.0f})",
-                        "metadata": {
-                            "strategy": self.name,
-                            "momentum_score": momentum},
-                    }
-
-                # Bonus si momentum aligné
                 if signal_side == "BUY" and momentum > 60:
                     confidence_boost += 0.15
                     reason += f" + momentum FORT haussier ({momentum:.0f})"

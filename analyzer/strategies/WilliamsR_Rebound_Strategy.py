@@ -2,7 +2,7 @@
 WilliamsR_Rebound_Strategy - Stratégie de rebound basée sur Williams %R.
 Williams %R est un oscillateur de momentum qui mesure les niveaux de surachat/survente
 et génère des signaux de rebound depuis les extrêmes.
-"""
+"""  # noqa: N999
 
 import contextlib
 import logging
@@ -13,7 +13,7 @@ from .base_strategy import BaseStrategy
 logger = logging.getLogger(__name__)
 
 
-class WilliamsR_Rebound_Strategy(BaseStrategy):
+class WilliamsR_Rebound_Strategy(BaseStrategy):  # noqa: N801
     """
     Stratégie utilisant Williams %R pour détecter les opportunités de rebound.
 
@@ -127,7 +127,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             "pattern_confidence": self.indicators.get("pattern_confidence"),
         }
 
-    def _detect_williamsR_rebound_buy(
+    def _detect_williamsR_rebound_buy(  # noqa: N802
             self, values: dict[str, Any]) -> dict[str, Any]:
         """Détecte un rebound haussier depuis zone survente Williams %R."""
         rebound_score = 0.0
@@ -198,7 +198,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             "rebound_type": "bullish_from_oversold",
         }
 
-    def _detect_williamsR_rebound_sell(
+    def _detect_williamsR_rebound_sell(  # noqa: N802
             self, values: dict[str, Any]) -> dict[str, Any]:
         """Détecte un rebound baissier depuis zone surachat Williams %R."""
         rebound_score = 0.0
@@ -496,7 +496,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             "indicators": sr_indicators,
         }
 
-    def generate_signal(self) -> dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:  # noqa: PLR0911
         """
         Génère un signal basé sur Williams %R rebound.
         """

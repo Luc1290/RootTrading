@@ -221,18 +221,101 @@ class HullMA_Slope_Strategy(BaseStrategy):
                         (price_hull_ratio - 1.0) * 10, -0.1
                     ),  # Approximation
                 }
-            return {
-                "direction": "sideways",
-                "strength": "weak",
-                "reliable": False,
-                "slope_proxy": 0.0,
-            }
+            else:
+                return {
+                    "direction": "sideways",
+                    "strength": "weak",
+                    "reliable": False,
+                    "slope_proxy": 0.0,
+                }
 
         except (ValueError, TypeError):
             return {
                 "direction": None,
                 "strength": "unknown",
                 "reliable": False}
+
+    def _validate_hull_data(self, values: dict[str, Any], price_data: dict[str, float | None]) -> tuple[bool, dict[str, Any] | None, float | None, float | None, float | None, float | None]:
+        """Valide les données Hull et filtres préliminaires. Returns (is_valid, error_response, hull_val, price_val, volume_penalty, confluence_penalty)."""
+        if not self.validate_data():
+            return False, {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "Données insuffisantes",
+                "metadata": {"strategy": self.name},
+            }, None, None, None, None
+
+        hull_20 = values.get("hull_20")
+        current_price = price_data["current_price"]
+
+        if not (self._is_valid(hull_20) and self._is_valid(current_price)):
+            return False, {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "Hull MA ou prix invalides/NaN",
+                "metadata": {"strategy": self.name},
+            }, None, None, None, None
+
+        try:
+            hull_val = float(hull_20) if hull_20 is not None else 0.0
+            price_val = float(current_price) if current_price is not None else 0.0
+        except (ValueError, TypeError) as e:
+            return False, {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Erreur conversion Hull MA/prix: {e}",
+                "metadata": {"strategy": self.name},
+            }, None, None, None, None
+
+        # Volume penalty
+        volume_ratio = values.get("volume_ratio")
+        volume_penalty = 0.0
+        if not self._is_valid(volume_ratio):
+            volume_penalty = -0.05
+        else:
+            try:
+                vol_val = float(volume_ratio) if volume_ratio is not None else 0.0
+                if vol_val < 0.8:
+                    volume_penalty = -0.10
+            except (ValueError, TypeError):
+                volume_penalty = -0.05
+
+        # Confluence validation
+        confluence_score = values.get("confluence_score")
+        confluence_penalty = 0.0
+        if not self._is_valid(confluence_score):
+            confluence_penalty = -0.08
+        else:
+            try:
+                conf_val = float(confluence_score) if confluence_score is not None else 0.0
+                if conf_val < 15:
+                    return False, {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet contrarian: confluence trop faible ({conf_val:.0f}) - signal bruité",
+                        "metadata": {"strategy": self.name},
+                    }, None, None, None, None
+                if conf_val < self.min_confluence_score:
+                    confluence_penalty = 0.0
+            except (ValueError, TypeError):
+                confluence_penalty = -0.08
+
+        # Volatilité extrême
+        volatility_regime = values.get("volatility_regime")
+        if volatility_regime == "extreme":
+            return False, {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "Rejet contrarian: volatilité extrême - pullbacks trop violents",
+                "metadata": {"strategy": self.name},
+            }, None, None, None, None
+
+        return True, None, hull_val, price_val, volume_penalty, confluence_penalty
 
     def _detect_pullback_opportunity(
         self,
@@ -449,101 +532,18 @@ class HullMA_Slope_Strategy(BaseStrategy):
         """
         Génère un signal CONTRARIAN basé sur Hull MA comme filtre de tendance.
         """
-        if not self.validate_data():
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Données insuffisantes",
-                "metadata": {"strategy": self.name},
-            }
-
         values = self._get_current_values()
         price_data = self._get_price_data()
 
-        # _is_valid est maintenant une méthode de classe
+        # VALIDATIONS PRÉLIMINAIRES GROUPÉES
+        is_valid, error_response, hull_val, price_val, volume_penalty, confluence_penalty = self._validate_hull_data(values, price_data)
+        if not is_valid:
+            return error_response
 
-        # === FILTRES PRÉLIMINAIRES ===
-
-        # Vérification Hull MA et prix avec protection NaN
-        hull_20 = values.get("hull_20")
-        current_price = price_data["current_price"]
-
-        if not (self._is_valid(hull_20) and self._is_valid(current_price)):
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Hull MA ou prix invalides/NaN",
-                "metadata": {"strategy": self.name},
-            }
-
-        try:
-            hull_val = float(hull_20) if hull_20 is not None else 0.0
-            price_val = float(
-                current_price) if current_price is not None else 0.0
-        except (ValueError, TypeError) as e:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Erreur conversion Hull MA/prix: {e}",
-                "metadata": {"strategy": self.name},
-            }
-
-        # Volume comme bonus avec validation NaN
         volume_ratio = values.get("volume_ratio")
-        volume_penalty = 0.0
-        if not self._is_valid(volume_ratio):
-            volume_penalty = -0.05  # Légère pénalité si pas de données volume valides
-        else:
-            try:
-                vol_val = float(
-                    volume_ratio) if volume_ratio is not None else 0.0
-                # Volume sous la normale = problématique (assoupli)
-                if vol_val < 0.8:
-                    volume_penalty = -0.10  # Pénalité réduite (assoupli)
-            except (ValueError, TypeError):
-                volume_penalty = -0.05
-
-        # Confluence comme bonus avec validation NaN
         confluence_score = values.get("confluence_score")
-        confluence_penalty = 0.0
-        if not self._is_valid(confluence_score):
-            confluence_penalty = -0.08  # Pénalité si pas de données confluence valides
-        else:
-            try:
-                conf_val = float(
-                    confluence_score) if confluence_score is not None else 0.0
-                # Confluence trop faible = rejet net (assoupli)
-                if conf_val < 15:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet contrarian: confluence trop faible ({conf_val:.0f}) - signal bruité",
-                        "metadata": {
-                            "strategy": self.name},
-                    }
-                # 15-15 (plus de pénalité)
-                if conf_val < self.min_confluence_score:
-                    confluence_penalty = 0.0  # Plus de pénalité pour confluence faible
-            except (ValueError, TypeError):
-                confluence_penalty = -0.08
-
-        # Volatilité extrême = REJET (pullbacks explosent les stops)
         volatility_regime = values.get("volatility_regime")
-        if volatility_regime == "extreme":
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Rejet contrarian: volatilité extrême - pullbacks trop violents",
-                "metadata": {
-                    "strategy": self.name},
-            }
-
-        volatility_penalty = 0.0  # Pas de pénalité si pas extrême
+        volatility_penalty = 0.0
 
         # === ANALYSE TENDANCE HULL MA ===
 

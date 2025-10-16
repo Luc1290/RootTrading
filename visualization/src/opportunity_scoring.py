@@ -1089,16 +1089,15 @@ class OpportunityScoring:
         volume_score = category_scores[ScoreCategory.VOLUME].score
 
         # BUY_NOW: Score >80, confiance >70, trend+momentum+volume >70
-        if score >= 80 and confidence >= 70:
-            if trend_score >= 70 and momentum_score >= 70 and volume_score >= 70:
-                reasons.append(
-                    f"Score excellent: {score:.0f}/100 (Grade {self._calculate_grade(score)})"
-                )
-                reasons.append(f"Confiance élevée: {confidence:.0f}%")
-                reasons.append(
-                    f"Trend/Momentum/Volume alignés: {trend_score:.0f}/{momentum_score:.0f}/{volume_score:.0f}"
-                )
-                return "BUY_NOW", reasons, warnings
+        if score >= 80 and confidence >= 70 and trend_score >= 70 and momentum_score >= 70 and volume_score >= 70:
+            reasons.append(
+                f"Score excellent: {score:.0f}/100 (Grade {self._calculate_grade(score)})"
+            )
+            reasons.append(f"Confiance élevée: {confidence:.0f}%")
+            reasons.append(
+                f"Trend/Momentum/Volume alignés: {trend_score:.0f}/{momentum_score:.0f}/{volume_score:.0f}"
+            )
+            return "BUY_NOW", reasons, warnings
 
         # BUY_DCA: Score 70-80, bon mais pas parfait
         if 70 <= score < 80 and confidence >= 60:

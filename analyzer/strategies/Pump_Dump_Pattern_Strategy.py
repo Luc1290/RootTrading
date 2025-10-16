@@ -62,6 +62,19 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
         self.min_volatility_regime = 0.7  # Volatilité suffisante pour momentum
         self.min_trade_intensity = 1.3  # Activité trading confirmée
 
+    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Helper to create rejection signals."""
+        base_metadata = {"strategy": self.name}
+        if metadata:
+            base_metadata.update(metadata)
+        return {
+            "side": None,
+            "confidence": 0.0,
+            "strength": "weak",
+            "reason": reason,
+            "metadata": base_metadata,
+        }
+
     def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
         return {
@@ -317,27 +330,21 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
         if signal_side:
             # VALIDATION DIRECTIONAL BIAS - REJET si contradictoire
             directional_bias = values.get("directional_bias")
-            if directional_bias:
-                if (signal_side == "BUY" and directional_bias == "BEARISH") or (
-                        signal_side == "SELL" and directional_bias == "BULLISH"):
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet {signal_side}: bias contradictoire ({directional_bias})",
-                        "metadata": {
-                            "strategy": self.name,
-                            "directional_bias": directional_bias,
-                        },
-                    }
+            if directional_bias and (
+                (signal_side == "BUY" and directional_bias == "BEARISH") or
+                (signal_side == "SELL" and directional_bias == "BULLISH")):
+                return self._create_rejection_signal(
+                    f"Rejet {signal_side}: bias contradictoire ({directional_bias})",
+                    {"directional_bias": directional_bias}
+                )
 
             # VALIDATION MARKET REGIME - MALUS si défavorable
             market_regime = values.get("market_regime")
-            if market_regime:
-                if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or (
-                        signal_side == "SELL" and market_regime == "TRENDING_BULL"):
-                    confidence_boost -= 0.20  # Malus fort pour régime contradictoire
-                    reason += f" MAIS régime contradictoire ({market_regime})"
+            if market_regime and (
+                (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or
+                (signal_side == "SELL" and market_regime == "TRENDING_BULL")):
+                confidence_boost -= 0.20  # Malus fort pour régime contradictoire
+                reason += f" MAIS régime contradictoire ({market_regime})"
 
             # Confirmations supplémentaires
             base_confidence = (
@@ -469,18 +476,22 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
 
     def _convert_volatility_to_score(self, volatility_regime: str) -> float:
         """Convertit un régime de volatilité en score numérique."""
-        try:
-            if not volatility_regime:
-                return 2.0
+        if not volatility_regime:
+            return 2.0
 
+        try:
             vol_lower = volatility_regime.lower()
 
-            if vol_lower in ["high", "very_high", "extreme"]:
-                return 3.0  # Haute volatilité
-            if vol_lower in ["normal", "moderate", "average"]:
-                return 2.0  # Volatilité normale
-            if vol_lower in ["low", "very_low", "minimal"]:
-                return 1.0  # Faible volatilité
+            # Mapping des régimes vers les scores
+            volatility_map = {
+                "high": 3.0, "very_high": 3.0, "extreme": 3.0,
+                "normal": 2.0, "moderate": 2.0, "average": 2.0,
+                "low": 1.0, "very_low": 1.0, "minimal": 1.0,
+            }
+
+            if vol_lower in volatility_map:
+                return volatility_map[vol_lower]
+
             # Essayer de convertir directement en float
             try:
                 return float(volatility_regime)

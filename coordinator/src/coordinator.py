@@ -91,7 +91,7 @@ class Coordinator:
             "consensus_sell": {
                 "min_strategies": 4,  # Au lieu de 5
                 "min_strength": 1.8,  # Au lieu de 2.0
-                "loss_multiplier": 0.6,  # Perte = -0.6×ATR% pour forcer
+                "loss_multiplier": 0.6,  # Perte = -0.6xATR% pour forcer
             },
         }
 
@@ -226,12 +226,12 @@ class Coordinator:
 
                 if consensus_strength > 0 and strategies_count > 1:
                     # Formule améliorée : donner plus de poids aux stratégies multiples
-                    # Force = consensus × √(strategies) × confidence
-                    # √(strategies) pour éviter explosion linéaire, mais récompenser diversité
+                    # Force = consensus x sqrt(strategies) x confidence
+                    # sqrt(strategies) pour éviter explosion linéaire, mais récompenser diversité
                     force = (consensus_strength *
                              (strategies_count**0.5) * avg_confidence)
                     logger.debug(
-                        f"Force consensus: {consensus_strength} × √{strategies_count} × {avg_confidence:.2f} = {force:.2f}"
+                        f"Force consensus: {consensus_strength} x sqrt{strategies_count} x {avg_confidence:.2f} = {force:.2f}"
                     )
                     return force, strategies_count, avg_confidence
 
@@ -257,8 +257,9 @@ class Coordinator:
                 force = strength_map.get(signal.strength, 1.0)
                 return force, 1, 0.7  # Confiance par défaut pour enum
 
-            # Fallback : signal basique
-            return 1.0, 1, 0.5
+            else:
+                # Fallback : signal basique
+                return 1.0, 1, 0.5
 
         except Exception:
             logger.exception("Erreur calcul force signal")
@@ -322,7 +323,7 @@ class Coordinator:
             if not atr_pct:
                 atr_pct = 1.5  # Valeur par défaut si ATR indisponible
 
-            loss_threshold = -loss_multiplier * atr_pct  # Seuil = -0.6×ATR%
+            loss_threshold = -loss_multiplier * atr_pct  # Seuil = -0.6xATR%
 
             # Conditions pour forcer la vente
             is_consensus = signal_type == "CONSENSUS"
@@ -347,7 +348,8 @@ class Coordinator:
                     f"📊 Consensus fort mais perte insuffisante {signal.symbol}: "
                     f"{current_loss_pct:.2f}% > {loss_threshold:.2f}% - trailing continue")
 
-            return False, "Conditions consensus sell non remplies"
+            else:
+                return False, "Conditions consensus sell non remplies"
 
         except Exception as e:
             logger.exception("Erreur vérification consensus sell")
@@ -682,7 +684,8 @@ class Coordinator:
                         f"Valeur position trop faible: {value_usdc:.2f} USDC < {self.min_absolute_trade_usdc} USDC (minimum augmenté)",
                     )
 
-            return True, "OK"
+            else:
+                return True, "OK"
 
         except Exception as e:
             logger.exception("Erreur vérification faisabilité")
@@ -723,10 +726,11 @@ class Coordinator:
                     f"Frais trop élevés: {fee_percentage:.2f}% de la valeur du trade",
                 )
 
-            logger.info(
-                f"✅ Trade valide: {trade_value:.2f} USDC, frais {fee_percentage:.2f}%"
-            )
-            return True, "Trade valide"
+            else:
+                logger.info(
+                    f"✅ Trade valide: {trade_value:.2f} USDC, frais {fee_percentage:.2f}%"
+                )
+                return True, "Trade valide"
 
         except Exception:
             logger.exception("❌ Erreur vérification trade")
@@ -858,7 +862,7 @@ class Coordinator:
                 logger.info(
                     f"💰 {signal.symbol} - USDC dispo: {usdc_balance:.0f}€, "
                     f"allocation: {allocation_percent:.0f}% = {trade_amount:.0f}€ "
-                    f"(force: {strength_category}) [POSITIONS ×1.8 AUGMENTÉES]")
+                    f"(force: {strength_category}) [POSITIONS x1.8 AUGMENTÉES]")
 
                 # Vérifier que le prix est valide avant division
                 if not signal.price or signal.price <= 0:
@@ -882,7 +886,8 @@ class Coordinator:
                     0,
                 )
 
-            return quantity
+            else:
+                return quantity
 
         except Exception:
             logger.exception("Erreur calcul quantité")
@@ -927,7 +932,8 @@ class Coordinator:
                 position = active_positions[0]
                 return position.get("id", f"position_{symbol}")
 
-            return None
+            else:
+                return None
 
         except Exception as e:
             logger.warning(
@@ -1408,7 +1414,7 @@ class Coordinator:
             else:
                 logger.warning(
                     "Aucune position éligible pour liquidation trouvée")
-            return 0.0
+                return 0.0
 
         except Exception:
             logger.exception("Erreur libération USDC")

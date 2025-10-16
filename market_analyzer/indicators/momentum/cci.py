@@ -325,17 +325,19 @@ def cci_trend_direction(values: list[float | None], period: int = 10) -> str:
     strong_bearish = sum(1 for x in recent_values if x < -100)
 
     total = len(recent_values)
+    result = "sideways"
 
     # Determine trend strength
     if strong_bullish / total > 0.6:
-        return "strong_uptrend"
-    if (strong_bullish + moderate_bullish) / total > 0.7:
-        return "moderate_uptrend"
-    if strong_bearish / total > 0.6:
-        return "strong_downtrend"
-    if (strong_bearish + moderate_bearish) / total > 0.7:
-        return "moderate_downtrend"
-    return "sideways"
+        result = "strong_uptrend"
+    elif (strong_bullish + moderate_bullish) / total > 0.7:
+        result = "moderate_uptrend"
+    elif strong_bearish / total > 0.6:
+        result = "strong_downtrend"
+    elif (strong_bearish + moderate_bearish) / total > 0.7:
+        result = "moderate_downtrend"
+
+    return result
 
 
 def calculate_cci_volatility(

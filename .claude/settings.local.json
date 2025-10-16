@@ -13,7 +13,8 @@
       "Bash(pip uninstall:*)",
       "Bash(pip index:*)",
       "Bash(test:*)",
-      "Bash(ruff check:*)"
+      "Bash(ruff check:*)",
+      "Bash(awk:*)"
     ],
     "deny": [],
     "ask": []

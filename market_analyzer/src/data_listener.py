@@ -11,7 +11,7 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import asyncpg  # type: ignore
@@ -21,11 +21,8 @@ from shared.src.config import get_db_config
 from .indicator_processor import IndicatorProcessor
 
 # Ajouter les chemins pour les imports
-sys.path.append(
-    os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../../")))
+from pathlib import Path
+sys.path.append(str((Path(__file__).parent / "../../").resolve()))
 
 
 logger = logging.getLogger(__name__)

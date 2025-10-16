@@ -113,7 +113,7 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                     self.data["high"]) >= 10 and len(
                     self.data["low"]) >= 10:
                 recent_highs = [float(h) for h in self.data["high"][-10:]]
-                recent_lows = [float(l) for l in self.data["low"][-10:]]
+                recent_lows = [float(low) for low in self.data["low"][-10:]]
                 recent_closes = [float(c) for c in self.data["close"][-5:]]
 
                 return {
@@ -413,19 +413,18 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                 plus_val = float(plus_di) if plus_di is not None else 0.0
                 minus_val = float(minus_di) if minus_di is not None else 0.0
 
-                if adx > 20:  # Tendance confirmée (46% des cas au lieu de 22%)
-                    if (breakout_type == "BULLISH" and plus_val > minus_val) or (
-                            breakout_type == "BEARISH" and minus_val > plus_val):
-                        confirmations["trend_confirmed"] = True
+                if adx > 20 and ((breakout_type == "BULLISH" and plus_val > minus_val) or (
+                        breakout_type == "BEARISH" and minus_val > plus_val)):
+                    confirmations["trend_confirmed"] = True
             except (ValueError, TypeError):
                 pass
 
         # Pattern confirmation
         bb_breakout_direction = values.get("bb_breakout_direction")
-        if bb_breakout_direction is not None:
-            if (breakout_type == "BULLISH" and bb_breakout_direction == "UP") or (
-                    breakout_type == "BEARISH" and bb_breakout_direction == "DOWN"):
-                confirmations["pattern_confirmed"] = True
+        if bb_breakout_direction is not None and (
+            (breakout_type == "BULLISH" and bb_breakout_direction == "UP") or
+            (breakout_type == "BEARISH" and bb_breakout_direction == "DOWN")):
+            confirmations["pattern_confirmed"] = True
 
         return confirmations
 
@@ -564,10 +563,9 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         bb_squeeze = values.get("bb_squeeze")
 
         # REJET regime contradictoire fort
-        if market_regime is not None:
-            if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or (
-                signal_side == "SELL" and market_regime == "TRENDING_BULL"
-            ):
+        if market_regime is not None and (
+            (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or
+            (signal_side == "SELL" and market_regime == "TRENDING_BULL")):
                 return {
                     "side": None,
                     "confidence": 0.0,
@@ -715,9 +713,9 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                 return True
 
         # Si on a les données OHLC, on peut construire le range
-        if self.data and all(k in self.data for k in ["high", "low", "close"]):
-            if all(len(self.data[k]) >= 10 for k in ["high", "low", "close"]):
-                return True
+        if (self.data and all(k in self.data for k in ["high", "low", "close"]) and
+            all(len(self.data[k]) >= 10 for k in ["high", "low", "close"])):
+            return True
 
         logger.warning(f"{self.name}: Aucun indicateur de range disponible")
         return False

@@ -368,10 +368,7 @@ def calculate_volume_accumulation_distribution(
         close = closes_array[i]
         volume = volumes_array[i]
 
-        if high == low:
-            clv = 0  # Close Location Value
-        else:
-            clv = ((close - low) - (high - close)) / (high - low)
+        clv = 0 if high == low else ((close - low) - (high - close)) / (high - low)
 
         ad_line += clv * volume
 
@@ -414,18 +411,19 @@ def obv_trend_strength(
     consistency = 1 - (direction_changes / (len(recent_obv) - 1))
 
     # Determine strength
+    result = "neutral"
     if obv_change > 0:
         if consistency > 0.7:
-            return "strong_accumulation"
-        if consistency > 0.5:
-            return "moderate_accumulation"
+            result = "strong_accumulation"
+        elif consistency > 0.5:
+            result = "moderate_accumulation"
     elif obv_change < 0:
         if consistency > 0.7:
-            return "strong_distribution"
-        if consistency > 0.5:
-            return "moderate_distribution"
+            result = "strong_distribution"
+        elif consistency > 0.5:
+            result = "moderate_distribution"
 
-    return "neutral"
+    return result
 
 
 # ============ Helper Functions ============

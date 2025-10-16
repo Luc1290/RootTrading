@@ -94,23 +94,26 @@ class Bollinger_Touch_Strategy(BaseStrategy):
             pass
         return None
 
-    def generate_signal(self) -> dict[str, Any]:
-        """
-        Génère un signal basé sur les touches des bandes de Bollinger.
-        """
-        if not self.validate_data():
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Données insuffisantes",
-                "metadata": {"strategy": self.name},
-            }
+    def _create_no_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Crée un dictionnaire de signal négatif standardisé."""
+        base_metadata = {"strategy": self.name}
+        if metadata:
+            base_metadata.update(metadata)
+        return {
+            "side": None,
+            "confidence": 0.0,
+            "strength": "weak",
+            "reason": reason,
+            "metadata": base_metadata,
+        }
 
-        values = self._get_current_values()
-        current_price = self._get_current_price()
-
-        # Vérification des indicateurs essentiels
+    def _validate_bollinger_data(
+        self, values: dict[str, float | None], current_price: float | None
+    ) -> tuple[float | None, float | None, float | None, float | None, float | None, str | None]:
+        """
+        Valide et retourne les données Bollinger nécessaires.
+        Returns: (bb_upper, bb_lower, bb_middle, bb_position, bb_width, error_msg)
+        """
         try:
             bb_upper = (float(values["bb_upper"])
                         if values["bb_upper"] is not None else None)
@@ -127,57 +130,96 @@ class Bollinger_Touch_Strategy(BaseStrategy):
             bb_width = (float(values["bb_width"])
                         if values["bb_width"] is not None else None)
         except (ValueError, TypeError) as e:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Erreur conversion Bollinger: {e}",
-                "metadata": {"strategy": self.name},
-            }
+            return None, None, None, None, None, f"Erreur conversion Bollinger: {e}"
 
         if bb_upper is None or bb_lower is None or current_price is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Bollinger Bands ou prix non disponibles",
-                "metadata": {"strategy": self.name},
-            }
+            return None, None, None, None, None, "Bollinger Bands ou prix non disponibles"
 
+        return bb_upper, bb_lower, bb_middle, bb_position, bb_width, None
+
+    def _check_volume_and_width(
+        self, values: dict[str, float | None], bb_width: float | None, current_price: float | None
+    ) -> tuple[float | None, str | None]:
+        """
+        Vérifie le volume et la largeur des bandes.
+        Returns: (bb_width_pct, error_msg)
+        """
         # Vérification du volume minimum
         volume_ratio = values.get("volume_ratio")
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
                 if vol_ratio < self.min_volume_ratio:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Volume insuffisant ({vol_ratio:.2f}x < {self.min_volume_ratio}x)",
-                        "metadata": {
-                            "strategy": self.name,
-                            "volume_ratio": vol_ratio},
-                    }
+                    return None, f"Volume insuffisant ({vol_ratio:.2f}x < {self.min_volume_ratio}x)"
             except (ValueError, TypeError):
                 pass
 
-        # Vérification bb_width corrigée avec current_price
+        # Vérification bb_width
         if bb_width is not None and current_price is not None:
-            bb_width_pct = (bb_width / current_price) * \
-                100  # Plus robuste pour crypto
+            bb_width_pct = (bb_width / current_price) * 100
             if bb_width_pct < self.bb_width_min_pct:
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"BB squeeze trop serré ({bb_width_pct:.2f}% < {self.bb_width_min_pct}%)",
-                    "metadata": {
-                        "strategy": self.name,
-                        "bb_width_pct": bb_width_pct},
-                }
+                return None, f"BB squeeze trop serré ({bb_width_pct:.2f}% < {self.bb_width_min_pct}%)"
+            return bb_width_pct, None
+
+        return None, None
+
+    def _check_oscillator_rejections(
+        self, signal_side: str, values: dict[str, float | None]
+    ) -> str | None:
+        """
+        Vérifie les rejets basés sur les oscillateurs.
+        Returns: error_msg si rejeté, None sinon
+        """
+        # RSI rejections
+        rsi_14 = values.get("rsi_14")
+        if rsi_14 is not None:
+            try:
+                rsi = float(rsi_14)
+                if signal_side == "BUY" and rsi > 55:
+                    return f"Rejet BUY: RSI trop haut ({rsi:.1f}) pour retournement"
+                if signal_side == "SELL" and rsi < 45:
+                    return f"Rejet SELL: RSI trop bas ({rsi:.1f}) pour retournement"
+            except (ValueError, TypeError):
+                pass
+
+        # Stochastic rejections
+        stoch_k = values.get("stoch_k")
+        stoch_d = values.get("stoch_d")
+        if stoch_k is not None and stoch_d is not None:
+            try:
+                k = float(stoch_k)
+                d = float(stoch_d)
+                if signal_side == "BUY" and k > 50 and d > 50:
+                    return f"Rejet BUY: Stoch trop haut ({k:.1f}/{d:.1f}) pour retournement"
+                if signal_side == "SELL" and k < 50 and d < 50:
+                    return f"Rejet SELL: Stoch trop bas ({k:.1f}/{d:.1f}) pour retournement"
+            except (ValueError, TypeError):
+                pass
+
+        return None
+
+    def generate_signal(self) -> dict[str, Any]:
+        """
+        Génère un signal basé sur les touches des bandes de Bollinger.
+        """
+        # Validation initiale des données
+        if not self.validate_data():
+            return self._create_no_signal("Données insuffisantes")
+
+        values = self._get_current_values()
+        current_price = self._get_current_price()
+
+        # Validation des données Bollinger et volume/largeur
+        bb_upper, bb_lower, bb_middle, bb_position, bb_width, error_msg = self._validate_bollinger_data(
+            values, current_price
+        )
+        if not error_msg:
+            bb_width_pct, error_msg = self._check_volume_and_width(values, bb_width, current_price)
         else:
             bb_width_pct = None
+
+        if error_msg:
+            return self._create_no_signal(error_msg)
 
         # CORRECTION MAJEURE: Calcul des distances aux bandes (méthode
         # cohérente)
@@ -252,60 +294,37 @@ class Bollinger_Touch_Strategy(BaseStrategy):
 
         # Pas de touche détectée - DIAGNOSTIC AMÉLIORÉ
         if signal_side is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": (
-                    f"Pas de setup BB (pos: {bb_position:.3f}, dist_up: {distance_to_upper:.4f}, dist_low: {distance_to_lower:.4f}, width: {bb_width_pct:.2f}%)"
-                    if bb_width_pct
-                    else f"Pas de setup BB (pos: {bb_position:.3f}, distances: {distance_to_upper:.4f}/{distance_to_lower:.4f})"
-                ),
-                "metadata": {
-                    "strategy": self.name,
-                    "bb_position": bb_position,
-                    "distance_to_upper": distance_to_upper,
-                    "distance_to_lower": distance_to_lower,
-                    "bb_width_pct": bb_width_pct,
-                    "is_touching_upper": is_touching_upper,
-                    "is_touching_lower": is_touching_lower,
-                    "is_extreme_high": is_extreme_high,
-                    "is_extreme_low": is_extreme_low,
-                    "is_very_high": is_very_high,
-                    "is_very_low": is_very_low,
-                },
-            }
+            reason_msg = (
+                f"Pas de setup BB (pos: {bb_position:.3f}, dist_up: {distance_to_upper:.4f}, dist_low: {distance_to_lower:.4f}, width: {bb_width_pct:.2f}%)"
+                if bb_width_pct
+                else f"Pas de setup BB (pos: {bb_position:.3f}, distances: {distance_to_upper:.4f}/{distance_to_lower:.4f})"
+            )
+            return self._create_no_signal(reason_msg, {
+                "bb_position": bb_position,
+                "distance_to_upper": distance_to_upper,
+                "distance_to_lower": distance_to_lower,
+                "bb_width_pct": bb_width_pct,
+                "is_touching_upper": is_touching_upper,
+                "is_touching_lower": is_touching_lower,
+                "is_extreme_high": is_extreme_high,
+                "is_extreme_low": is_extreme_low,
+                "is_very_high": is_very_high,
+                "is_very_low": is_very_low,
+            })
 
         # === CONFIRMATIONS AVEC OSCILLATEURS ===
 
-        # RSI - Seuils adaptés crypto avec rejets contradictoires
+        # Vérifier les rejets d'oscillateurs
+        rejection_msg = self._check_oscillator_rejections(signal_side, values)
+        if rejection_msg:
+            return self._create_no_signal(rejection_msg)
+
+        # RSI - Seuils adaptés crypto avec confirmations
         rsi_14 = values.get("rsi_14")
         rsi = None
         if rsi_14 is not None:
             try:
                 rsi = float(rsi_14)
-
-                # Rejets RSI contradictoires
-                if signal_side == "BUY" and rsi > 55:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet BUY: RSI trop haut ({rsi:.1f}) pour retournement",
-                        "metadata": {
-                            "strategy": self.name,
-                            "rsi": rsi},
-                    }
-                if signal_side == "SELL" and rsi < 45:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet SELL: RSI trop bas ({rsi:.1f}) pour retournement",
-                        "metadata": {
-                            "strategy": self.name,
-                            "rsi": rsi},
-                    }
 
                 # Confirmations RSI
                 if signal_side == "BUY":
@@ -326,7 +345,7 @@ class Bollinger_Touch_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
 
-        # Stochastic - Seuils adaptés crypto avec rejets contradictoires
+        # Stochastic - Seuils adaptés crypto avec confirmations
         stoch_k = values.get("stoch_k")
         stoch_d = values.get("stoch_d")
         k = None
@@ -335,30 +354,6 @@ class Bollinger_Touch_Strategy(BaseStrategy):
             try:
                 k = float(stoch_k)
                 d = float(stoch_d)
-
-                # Rejets Stochastic contradictoires
-                if signal_side == "BUY" and k > 50 and d > 50:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet BUY: Stoch trop haut ({k:.1f}/{d:.1f}) pour retournement",
-                        "metadata": {
-                            "strategy": self.name,
-                            "stoch_k": k,
-                            "stoch_d": d},
-                    }
-                if signal_side == "SELL" and k < 50 and d < 50:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet SELL: Stoch trop bas ({k:.1f}/{d:.1f}) pour retournement",
-                        "metadata": {
-                            "strategy": self.name,
-                            "stoch_k": k,
-                            "stoch_d": d},
-                    }
 
                 # Confirmations Stochastic
                 if signal_side == "BUY":
@@ -386,6 +381,7 @@ class Bollinger_Touch_Strategy(BaseStrategy):
                 pass
 
         # Volume confirmation
+        volume_ratio = values.get("volume_ratio")
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
@@ -404,45 +400,41 @@ class Bollinger_Touch_Strategy(BaseStrategy):
                 base_confidence, 1 + confidence_boost))
 
         # Filtre final - SEUIL ÉQUILIBRÉ
-        if confidence < 0.45:  # Seuil minimum équilibré
+        if confidence >= 0.45:  # Seuil minimum équilibré
+            strength = self.get_strength_from_confidence(confidence)
             return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Signal rejeté - confiance insuffisante ({confidence:.2f} < 0.45)",
+                "side": signal_side,
+                "confidence": confidence,
+                "strength": strength,
+                "reason": reason,
                 "metadata": {
                     "strategy": self.name,
-                    "rejected_signal": signal_side,
-                    "final_confidence": confidence,
+                    "symbol": self.symbol,
+                    "current_price": current_price,
+                    "bb_upper": bb_upper,
+                    "bb_middle": bb_middle,
+                    "bb_lower": bb_lower,
+                    "bb_position": bb_position,
+                    "bb_width": bb_width,
+                    "bb_width_pct": bb_width_pct,
+                    "touch_type": touch_type,
+                    "distance_to_upper": distance_to_upper,
+                    "distance_to_lower": distance_to_lower,
+                    "rsi_14": rsi,
+                    "stoch_k": k,
+                    "stoch_d": d,
+                    "volume_ratio": volume_ratio,
                 },
             }
 
-        strength = self.get_strength_from_confidence(confidence)
-
-        return {
-            "side": signal_side,
-            "confidence": confidence,
-            "strength": strength,
-            "reason": reason,
-            "metadata": {
-                "strategy": self.name,
-                "symbol": self.symbol,
-                "current_price": current_price,
-                "bb_upper": bb_upper,
-                "bb_middle": bb_middle,
-                "bb_lower": bb_lower,
-                "bb_position": bb_position,
-                "bb_width": bb_width,
-                "bb_width_pct": bb_width_pct,
-                "touch_type": touch_type,
-                "distance_to_upper": distance_to_upper,
-                "distance_to_lower": distance_to_lower,
-                "rsi_14": rsi,
-                "stoch_k": k,
-                "stoch_d": d,
-                "volume_ratio": volume_ratio,
-            },
-        }
+        # Confiance insuffisante
+        return self._create_no_signal(
+            f"Signal rejeté - confiance insuffisante ({confidence:.2f} < 0.45)",
+            {
+                "rejected_signal": signal_side,
+                "final_confidence": confidence,
+            }
+        )
 
     def validate_data(self) -> bool:
         """Valide que tous les indicateurs Bollinger requis sont présents."""

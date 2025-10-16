@@ -142,7 +142,7 @@ routes = web.RouteTableDef()
 
 
 @routes.get("/health")
-async def health_check(request):
+async def health_check(_request):
     """Point de terminaison pour vérifier l'état du service."""
     uptime = time.time() - start_time
     return web.json_response(
@@ -159,10 +159,8 @@ async def health_check(request):
 
 
 @routes.get("/diagnostic")
-async def diagnostic(request):
+async def diagnostic(_request):
     """Point de terminaison pour le diagnostic du service."""
-    global data_fetcher
-
     # État du fetcher
     fetcher_status = {
         "running": data_fetcher.running if data_fetcher else False,
@@ -202,11 +200,11 @@ async def start_http_server():
     return runner
 
 
-async def shutdown(signal_type, loop):
+async def shutdown(signal_type, _loop):
     """
     Gère l'arrêt propre du service en cas de signal (SIGINT, SIGTERM).
     """
-    global running, data_fetcher, ws_client
+    global running
 
     logger.info(f"Signal {signal_type.name} reçu, arrêt en cours...")
     running = False
@@ -311,7 +309,7 @@ if __name__ == "__main__":
         def make_signal_handler(
                 signal_type: signal.Signals) -> Callable[[], None]:
             def handler() -> None:
-                asyncio.create_task(shutdown(signal_type, loop))
+                _task = asyncio.create_task(shutdown(signal_type, loop))
 
             return handler
 

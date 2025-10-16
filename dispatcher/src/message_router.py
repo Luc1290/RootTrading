@@ -7,7 +7,7 @@ import logging
 import threading
 import time
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from dispatcher.src.database_persister import DatabasePersister
@@ -470,7 +470,6 @@ class MessageRouter:
                 logger.debug(
                     f"Message routé ({priority}): {topic} -> {channel}")
 
-                return True
             except Exception as e:
                 # En cas d'échec, mettre le message en file d'attente
                 with self.queue_lock:
@@ -483,6 +482,8 @@ class MessageRouter:
                     f"❗ Publication Redis échouée, message mis en file d'attente: {e!s}"
                 )
                 return False
+            else:
+                return True
 
         except Exception:
             logger.exception("❌ Erreur lors du routage du message")

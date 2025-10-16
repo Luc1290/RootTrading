@@ -432,16 +432,14 @@ def momentum_strength(values: list[float | None], period: int = 10) -> str:
     negative_count = sum(1 for x in recent_values if x < 0)
     consistency = max(positive_count, negative_count) / len(recent_values)
 
-    # Determine strength
+    # Determine strength based on combined thresholds
     if avg_momentum > 2 and consistency > 0.8:
         return "very_strong"
     if avg_momentum > 1 and consistency > 0.7:
         return "strong"
     if avg_momentum > 0.5 and consistency > 0.6:
         return "moderate"
-    if avg_momentum > 0.1:
-        return "weak"
-    return "neutral"
+    return "weak" if avg_momentum > 0.1 else "neutral"
 
 
 # ============ Helper Functions ============

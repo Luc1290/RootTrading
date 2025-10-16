@@ -5,10 +5,10 @@ Architecture propre : Gateway → market_data → Market Analyzer → analyzer_d
 """
 
 import asyncio
-import os
 import signal
 import sys
 import time
+from pathlib import Path
 
 from aiohttp import web
 
@@ -16,11 +16,7 @@ from market_analyzer.src.data_listener import DataListener
 from shared.src.config import SYMBOLS
 
 # Ajouter les chemins pour les imports
-sys.path.append(
-    os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../../")))
+sys.path.append(str(Path(__file__).parent / "../../"))
 
 
 # Configuration du logging centralisée
@@ -38,7 +34,7 @@ routes = web.RouteTableDef()
 
 
 @routes.get("/health")
-async def health_check(request):
+async def health_check(_request):
     """Point de terminaison santé du service."""
     uptime = time.time() - start_time
     return web.json_response(
@@ -55,10 +51,8 @@ async def health_check(request):
 
 
 @routes.get("/stats")
-async def get_stats(request):
+async def get_stats(_request):
     """Statistiques du Market Analyzer."""
-    global data_listener
-
     if data_listener:
         stats = await data_listener.get_stats()
         return web.json_response(stats)
@@ -72,8 +66,6 @@ async def get_stats(request):
 @routes.post("/process-historical")
 async def process_historical(request):
     """API pour traiter les données historiques."""
-    global data_listener
-
     if not data_listener:
         return web.json_response(
             {"error": "DataListener not initialized"}, status=503)
@@ -88,7 +80,7 @@ async def process_historical(request):
         limit = data.get("limit", 1000)
 
         # Lancer le traitement optimisé en arrière-plan
-        asyncio.create_task(
+        _task = asyncio.create_task(
             data_listener.process_historical_optimized(
                 symbol, timeframe, limit))
 
@@ -109,10 +101,8 @@ async def process_historical(request):
 
 
 @routes.get("/coverage")
-async def get_coverage(request):
+async def get_coverage(_request):
     """Analyse de couverture des données."""
-    global data_listener
-
     if not data_listener:
         return web.json_response(
             {"error": "DataListener not initialized"}, status=503)
@@ -186,7 +176,7 @@ async def start_http_server():
 
 async def shutdown(signal_type, loop):
     """Gère l'arrêt propre du service."""
-    global running, data_listener
+    global running
 
     logger.info(f"Signal {signal_type.name} reçu, arrêt en cours...")
     running = False
@@ -245,7 +235,7 @@ async def main():
 
         # Démarrer l'écoute temps réel IMMÉDIATEMENT (non-bloquant)
         logger.info("🎧 Démarrage de l'écoute temps réel...")
-        asyncio.create_task(data_listener.start_listening())
+        _listening_task = asyncio.create_task(data_listener.start_listening())
 
         # Proposer de traiter l'historique en parallèle
         logger.info("🔍 Vérification de la couverture des données...")

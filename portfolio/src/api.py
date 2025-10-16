@@ -10,7 +10,7 @@ import os
 import threading
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import psutil  # type: ignore[import-untyped]
@@ -543,7 +543,7 @@ def _register_portfolio_routes(app: FastAPI):
             except ValueError:
                 raise HTTPException(
                     status_code=400, detail="Format de date de début invalide"
-                )
+                ) from None
 
         if end_date:
             try:
@@ -551,7 +551,7 @@ def _register_portfolio_routes(app: FastAPI):
             except ValueError:
                 raise HTTPException(
                     status_code=400, detail="Format de date de fin invalide"
-                )
+                ) from None
 
         # Calculer l'offset pour la pagination
         offset = (page - 1) * page_size
@@ -943,10 +943,11 @@ def _register_diagnostic_routes(app: FastAPI):
                     "query_time_ms": round(query_time * 1000, 2),
                     "connections": conn_result,
                 }
-            return {
-                "status": "error",
-                "message": "Problème de connexion à la base de données",
-            }
+            else:
+                return {
+                    "status": "error",
+                    "message": "Problème de connexion à la base de données",
+                }
         except Exception as e:
             import traceback
 

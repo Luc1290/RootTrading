@@ -196,10 +196,10 @@ class ConnectionWrapper:
                 cursor = self.connection.cursor()
                 cursor.execute("SELECT 1")
                 cursor.close()
-
-            return True
         except Exception:
             return False
+        else:
+            return True
 
     def use(self):
         """Marque la connexion comme utilisée."""
@@ -361,9 +361,6 @@ class AdvancedConnectionPool:
             # Enregistrer la connexion comme en cours d'utilisation
             with self.lock:
                 self.in_use_connections[id(conn)] = conn
-
-            return conn
-
         except queue.Empty:
             # Aucune connexion disponible, en créer une nouvelle si possible
             with self.lock:
@@ -373,18 +370,21 @@ class AdvancedConnectionPool:
                         conn.use()
                         self.connection_count += 1
                         self.in_use_connections[id(conn)] = conn
-                        return conn
                     except Exception:
                         logger.exception(
                             "Impossible de créer une nouvelle connexion: "
                         )
                         raise
+                    else:
+                        return conn
 
             # Toutes les connexions sont utilisées et le maximum est atteint
             logger.exception(
                 f"Pool de connexions épuisé ({self.connection_count}/{self.max_connections})"
             )
-            raise queue.Empty("Connection pool exhausted")
+            raise queue.Empty("Connection pool exhausted") from None
+        else:
+            return conn
 
     def putconn(self, conn: ConnectionWrapper):
         """
@@ -596,8 +596,6 @@ class DBConnectionPool:
             try:
                 # Obtenir une connexion
                 conn_wrapper = self.connection_pool.getconn()
-                return conn_wrapper.connection
-
             except Exception as e:
                 attempt += 1
                 last_error = e
@@ -635,6 +633,8 @@ class DBConnectionPool:
                 # Délai exponentiel
                 wait_time = retry_delay * (2**attempt) + random.uniform(0, 0.1)
                 time.sleep(wait_time)
+            else:
+                return conn_wrapper.connection
 
         logger.error(f"❌ Échec après {max_retries} tentatives: {last_error!s}")
         raise last_error

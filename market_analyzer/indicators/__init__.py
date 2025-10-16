@@ -96,7 +96,7 @@ def get_momentum_indicators(prices, symbol=None):
     }
 
 
-def get_volatility_indicators(highs, lows, closes, symbol=None):
+def get_volatility_indicators(highs, lows, closes, _symbol=None):
     """Get all volatility indicators."""
     return {
         "atr14": calculate_atr(highs, lows, closes, 14),

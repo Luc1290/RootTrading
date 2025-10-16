@@ -219,6 +219,34 @@ class Resistance_Rejection_Strategy(BaseStrategy):
             "distance_pct": distance_to_resistance * 100,
         }
 
+    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Helper to create rejection signals."""
+        base_metadata = {"strategy": self.name}
+        if metadata:
+            base_metadata.update(metadata)
+        return {
+            "side": None,
+            "confidence": 0.0,
+            "strength": "weak",
+            "reason": reason,
+            "metadata": base_metadata,
+        }
+
+    def _validate_initial_conditions(self) -> tuple[float | None, dict[str, Any] | None]:
+        """Valide les conditions initiales. Retourne (current_price, error_signal) ou (None, error_signal)."""
+        if not self.validate_data():
+            return None, self._create_rejection_signal("Données insuffisantes", {})
+
+        current_price = None
+        if self.data.get("close"):
+            with contextlib.suppress(IndexError, ValueError, TypeError):
+                current_price = float(self.data["close"][-1])
+
+        if current_price is None:
+            return None, self._create_rejection_signal("Prix actuel non disponible", {"symbol": self.symbol})
+
+        return current_price, None
+
     def _detect_momentum_exhaustion(
             self, values: dict[str, Any]) -> dict[str, Any]:
         """Détecte l'essoufflement du momentum haussier."""
@@ -310,198 +338,135 @@ class Resistance_Rejection_Strategy(BaseStrategy):
         """
         Génère un signal basé sur le rejet de résistance.
         """
-        if not self.validate_data():
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Données insuffisantes",
-                "metadata": {},
-            }
+        # Valider conditions initiales
+        current_price, error_signal = self._validate_initial_conditions()
+        if error_signal:
+            return error_signal
 
         values = self._get_current_values()
 
-        # Récupérer le prix actuel depuis les données OHLCV
-        current_price = None
-        if self.data.get("close"):
-            with contextlib.suppress(IndexError, ValueError, TypeError):
-                current_price = float(self.data["close"][-1])
-
-        if current_price is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Prix actuel non disponible",
-                "metadata": {"strategy": self.name},
-            }
-
         # Détection du rejet de résistance
-        rejection_analysis = self._detect_resistance_rejection(
-            values, current_price)
+        rejection_analysis = self._detect_resistance_rejection(values, current_price)
 
         if not rejection_analysis["is_rejection"]:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Pas de rejet de résistance détecté: {', '.join(rejection_analysis['indicators'][:2]) if rejection_analysis['indicators'] else 'Aucune résistance proche'}",
-                "metadata": {
-                    "strategy": self.name,
+            return self._create_rejection_signal(
+                f"Pas de rejet de résistance détecté: {', '.join(rejection_analysis['indicators'][:2]) if rejection_analysis['indicators'] else 'Aucune résistance proche'}",
+                {
                     "symbol": self.symbol,
                     "current_price": current_price,
                     "rejection_score": rejection_analysis["score"],
-                },
-            }
+                }
+            )
 
         # Détection de l'essoufflement du momentum
         exhaustion_analysis = self._detect_momentum_exhaustion(values)
 
-        # Vérification market regime - REJET SELL si marché fortement haussier
+        # Essayer d'abord un signal BUY de continuation
+        continuation_analysis = self._detect_continuation_buy(values, current_price)
+        if continuation_analysis["is_continuation"]:
+            return self._create_continuation_buy_signal(values, current_price, continuation_analysis)
+
+        # Si marché haussier sans continuation valide, rejeter
         market_regime = values.get("market_regime")
         if market_regime == "TRENDING_BULL":
-            # Au lieu de rejeter, essayer un signal BUY de continuation
-            buy_signal = self._detect_continuation_buy(values, current_price)
-            if buy_signal["is_continuation"]:
-                return self._create_continuation_buy_signal(
-                    values, current_price, buy_signal
-                )
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Marché haussier - pas de rejet SELL ni continuation BUY",
-                "metadata": {
-                    "strategy": self.name,
-                    "symbol": self.symbol,
-                    "market_regime": market_regime,
-                },
-            }
-
-        # Essayer d'abord un signal BUY de continuation
-        continuation_analysis = self._detect_continuation_buy(
-            values, current_price)
-        if continuation_analysis["is_continuation"]:
-            return self._create_continuation_buy_signal(
-                values, current_price, continuation_analysis
+            return self._create_rejection_signal(
+                "Marché haussier - pas de rejet SELL ni continuation BUY",
+                {"symbol": self.symbol, "market_regime": market_regime}
             )
 
         # Signal SELL si rejet (essoufflement optionnel)
-        if rejection_analysis["is_rejection"]:
-            base_confidence = 0.65  # Base plus accessible
-            confidence_boost = (
-                rejection_analysis["score"] * 1.0
-            )  # Multiplicateur généreux
+        base_confidence = 0.65
+        confidence_boost = rejection_analysis["score"] * 1.0
 
-            reason = f"Rejet résistance {rejection_analysis['resistance_level']:.2f} ({rejection_analysis['distance_pct']:.2f}%)"
+        reason = f"Rejet résistance {rejection_analysis['resistance_level']:.2f} ({rejection_analysis['distance_pct']:.2f}%)"
 
-            # Bonus pour essoufflement momentum (pas obligatoire)
-            if exhaustion_analysis["is_exhausted"]:
-                confidence_boost += exhaustion_analysis["score"] * 0.6
-                reason += " + momentum épuisé"
-            elif exhaustion_analysis["score"] >= 0.15:  # Essoufflement partiel
-                confidence_boost += exhaustion_analysis["score"] * 0.4
-                reason += " + signes essoufflement"
+        # Bonus pour essoufflement momentum
+        if exhaustion_analysis["is_exhausted"]:
+            confidence_boost += exhaustion_analysis["score"] * 0.6
+            reason += " + momentum épuisé"
+        elif exhaustion_analysis["score"] >= 0.15:
+            confidence_boost += exhaustion_analysis["score"] * 0.4
+            reason += " + signes essoufflement"
 
-            # Volume de confirmation - ASSOUPLI
-            volume_ratio = values.get("volume_ratio")
-            if volume_ratio is not None:
-                try:
-                    vol_ratio = float(volume_ratio)
-                    if vol_ratio >= self.strong_rejection_volume:
-                        confidence_boost += 0.25
-                        reason += f" + volume fort ({vol_ratio:.1f}x)"
-                    elif vol_ratio >= self.min_rejection_volume:
-                        confidence_boost += 0.15
-                        reason += f" + volume confirmé ({vol_ratio:.1f}x)"
-                    else:  # Volume faible = pénalité
-                        confidence_boost -= 0.1
-                        reason += f" - volume faible ({vol_ratio:.1f}x)"
-                except (ValueError, TypeError):
-                    pass
+        # Volume de confirmation
+        volume_ratio = values.get("volume_ratio")
+        if volume_ratio is not None:
+            try:
+                vol_ratio = float(volume_ratio)
+                if vol_ratio >= self.strong_rejection_volume:
+                    confidence_boost += 0.25
+                    reason += f" + volume fort ({vol_ratio:.1f}x)"
+                elif vol_ratio >= self.min_rejection_volume:
+                    confidence_boost += 0.15
+                    reason += f" + volume confirmé ({vol_ratio:.1f}x)"
+                else:
+                    confidence_boost -= 0.1
+                    reason += f" - volume faible ({vol_ratio:.1f}x)"
+            except (ValueError, TypeError):
+                pass
 
-            # Confluence score
-            confluence_score = values.get("confluence_score")
-            if confluence_score is not None:
-                try:
-                    conf_val = float(confluence_score)
-                    if conf_val > 60:  # Seuil assoupli
-                        confidence_boost += 0.12
-                        reason += " + haute confluence"
-                    elif conf_val > 50:
-                        confidence_boost += 0.08
-                        reason += " + confluence modérée"
-                except (ValueError, TypeError):
-                    pass
+        # Confluence score
+        confluence_score = values.get("confluence_score")
+        if confluence_score is not None:
+            try:
+                conf_val = float(confluence_score)
+                if conf_val > 60:
+                    confidence_boost += 0.12
+                    reason += " + haute confluence"
+                elif conf_val > 50:
+                    confidence_boost += 0.08
+                    reason += " + confluence modérée"
+            except (ValueError, TypeError):
+                pass
 
-            # Pattern confidence
-            pattern_confidence = values.get("pattern_confidence")
-            if pattern_confidence is not None:
-                try:
-                    pat_conf = float(pattern_confidence)
-                    if pat_conf > 0.8:
-                        confidence_boost += 0.1
-                except (ValueError, TypeError):
-                    pass
+        # Pattern confidence
+        pattern_confidence = values.get("pattern_confidence")
+        if pattern_confidence is not None:
+            try:
+                pat_conf = float(pattern_confidence)
+                if pat_conf > 0.8:
+                    confidence_boost += 0.1
+            except (ValueError, TypeError):
+                pass
 
-            # Calcul confidence avec clamp explicite
-            raw_confidence = self.calculate_confidence(
-                base_confidence, 1.0 + confidence_boost
-            )
-            raw_confidence = min(1.0, raw_confidence)  # Clamp à 100%
+        # Calcul confidence
+        confidence = min(1.0, self.calculate_confidence(base_confidence, 1.0 + confidence_boost))
 
-            # Vérification seuil minimum
-            if raw_confidence < 0.48:  # Seuil minimum durci à 48% pour SELL
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Signal rejet résistance trop faible (conf: {raw_confidence:.2f} < 0.48)",
-                    "metadata": {
-                        "strategy": self.name,
-                        "symbol": self.symbol,
-                        "rejected_confidence": raw_confidence,
-                        "rejection_score": rejection_analysis["score"],
-                        "exhaustion_score": exhaustion_analysis["score"],
-                    },
-                }
-
-            confidence = raw_confidence
-            strength = self.get_strength_from_confidence(confidence)
-
-            return {
-                "side": "SELL",
-                "confidence": confidence,
-                "strength": strength,
-                "reason": reason,
-                "metadata": {
-                    "strategy": self.name,
+        # Vérification seuil minimum
+        if confidence < 0.48:
+            return self._create_rejection_signal(
+                f"Signal rejet résistance trop faible (conf: {confidence:.2f} < 0.48)",
+                {
                     "symbol": self.symbol,
-                    "current_price": current_price,
-                    "resistance_level": rejection_analysis["resistance_level"],
-                    "resistance_distance_pct": rejection_analysis["distance_pct"],
+                    "rejected_confidence": confidence,
                     "rejection_score": rejection_analysis["score"],
                     "exhaustion_score": exhaustion_analysis["score"],
-                    "rejection_indicators": rejection_analysis["indicators"],
-                    "exhaustion_indicators": exhaustion_analysis["indicators"],
-                    "volume_ratio": volume_ratio,
-                    "rsi_14": values.get("rsi_14"),
-                    "williams_r": values.get("williams_r"),
-                    "momentum_score": values.get("momentum_score"),
-                    "confluence_score": confluence_score,
-                    "pattern_confidence": pattern_confidence,
-                },
-            }
+                }
+            )
+
+        strength = self.get_strength_from_confidence(confidence)
 
         return {
-            "side": None,
-            "confidence": 0.0,
-            "strength": "weak",
-            "reason": "Conditions de rejet non remplies",
+            "side": "SELL",
+            "confidence": confidence,
+            "strength": strength,
+            "reason": reason,
             "metadata": {
                 "strategy": self.name,
                 "symbol": self.symbol,
                 "current_price": current_price,
+                "resistance_level": rejection_analysis["resistance_level"],
+                "resistance_distance_pct": rejection_analysis["distance_pct"],
+                "rejection_score": rejection_analysis["score"],
+                "exhaustion_score": exhaustion_analysis["score"],
+                "rejection_indicators": rejection_analysis["indicators"],
+                "exhaustion_indicators": exhaustion_analysis["indicators"],
+                "volume_ratio": volume_ratio,
+                "rsi_14": values.get("rsi_14"),
+                "williams_r": values.get("williams_r"),
+                "momentum_score": values.get("momentum_score"),
+                "confluence_score": confluence_score,
+                "pattern_confidence": pattern_confidence,
             },
         }
 

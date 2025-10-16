@@ -4,6 +4,7 @@ Remplace le système complexe de 23+ validators par 3-4 filtres vraiment utiles.
 """
 
 import logging
+import os
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -59,8 +60,6 @@ class CriticalFilters:
         self.min_risk_reward = 2.0  # R/R minimum exigé
 
         # Tolérance pullback configurable (en basis points)
-        import os
-
         self.pullback_tolerance_bp = int(
             os.environ.get("STRICT_PULLBACK_BP", "25")
         )  # 25 bp par défaut (0.25%)
@@ -540,7 +539,7 @@ class CriticalFilters:
                         else median_natr * 5
                     )
 
-                    # Seuil = médiane × multiplicateur, avec plancher
+                    # Seuil = médiane x multiplicateur, avec plancher
                     # raisonnable
                     dynamic_threshold = max(
                         median_natr * self.atr_universe_multiplier,
@@ -644,11 +643,11 @@ class CriticalFilters:
             logger.info(
                 f"✅ Direction HTF validée: {signal_side} aligné avec 15m {htf_direction}"
             )
-            return True, "Direction HTF valide"
-
         except Exception:
             logger.exception("Erreur check HTF direction")
-            return True, "Erreur validation HTF"  # On laisse passer en cas d'erreur
+            return True, "Erreur validation HTF"
+        else:
+            return True, "Direction HTF valide"
 
     def _check_mtf_volatility(
             self, context: dict[str, Any]) -> tuple[bool, str]:
@@ -677,11 +676,11 @@ class CriticalFilters:
                 )
 
             logger.info(f"✅ Volatilité 15m OK: ATR ratio {atr_ratio:.2f}x")
-            return True, "Volatilité 15m suffisante"
-
         except Exception:
             logger.exception("Erreur check volatilité MTF")
             return True, "Erreur validation volatilité"
+        else:
+            return True, "Volatilité 15m suffisante"
 
     def _check_ltf_pullback_timing(
         self, signals: list[dict[str, Any]], context: dict[str, Any]
@@ -857,12 +856,11 @@ class CriticalFilters:
                 f"✅ Timing pullback 3m validé: {signal_side} à {current_price:.4f} "
                 f"(tolerance={tolerance_bp}bp, atr15m_ratio={atr15m_ratio:.2f}, "
                 f"entry_style={entry_style}, bars_since_touch={bars_since_touch}, vol={vol_level})")
-
-            return True, f"Timing pullback valide ({tolerance_bp}bp, {entry_style})"
-
         except Exception:
             logger.exception("Erreur check pullback timing")
             return True, "Erreur validation timing"
+        else:
+            return True, f"Timing pullback valide ({tolerance_bp}bp, {entry_style})"
 
     def _check_min_risk_reward(
             self, context: dict[str, Any]) -> tuple[bool, str]:
@@ -920,10 +918,7 @@ class CriticalFilters:
             volatility_level = context.get("volatility_level", "normal")
 
             if market_regime == "TRENDING_BULL":
-                if volatility_level in ["low", "normal"]:
-                    min_rr = 1.8  # Plus souple en bull calme
-                else:  # high/extreme
-                    min_rr = 2.0  # Standard en bull volatil
+                min_rr = 1.8 if volatility_level in ["low", "normal"] else 2.0
             elif volatility_level in ["extreme"]:
                 min_rr = 2.2  # Plus strict en volatilité extrême
             else:
@@ -958,11 +953,11 @@ class CriticalFilters:
             logger.info(
                 f"✅ Risk/Reward OK: {risk_reward:.2f} (SL:{sl_fmt}, TP:{tp_fmt})"
             )
-            return True, f"R/R valide: {risk_reward:.2f}"
-
         except Exception:
             logger.exception("Erreur check R/R")
             return True, "Erreur validation R/R"
+        else:
+            return True, f"R/R valide: {risk_reward:.2f}"
 
     def get_filter_stats(self) -> dict[str, Any]:
         """Retourne les statistiques de configuration des filtres."""
@@ -1011,10 +1006,7 @@ class CriticalFilters:
 
             # Seuil adaptatif selon volatilité
             volatility_level = context.get("volatility_level", "normal")
-            if volatility_level in ["low", "normal"]:
-                min_consensus = 0.70  # Plus souple en vol faible/normale
-            else:  # high/extreme
-                min_consensus = 0.75  # Plus strict en vol élevée
+            min_consensus = 0.70 if volatility_level in ["low", "normal"] else 0.75
 
             logger.info(
                 f"📊 Seuil consensus fail-safe calculé: {min_consensus:.2f} (volatilité: {volatility_level})"
@@ -1163,11 +1155,11 @@ class CriticalFilters:
             )
             success_msg = f"🚀 FAIL-SAFE V2{rebound_flag}: consensus={consensus_strength:.2f}, strats={strategies_count}, regime={consensus_regime or market_regime}"
             logger.info(f"✅ {success_msg} pour {signal_side}")
-            return True, success_msg
-
         except Exception as e:
             logger.exception("Erreur fail-safe LTF")
             return False, f"Erreur fail-safe: {e}"
+        else:
+            return True, success_msg
 
     def _check_htf_reversal_window(
         self,
@@ -1227,11 +1219,10 @@ class CriticalFilters:
                     # Marquer le trade comme reversal pour tracking
                     context["htf_reversal_window"] = True
                     return True
-
-            return False
-
         except Exception:
             logger.exception("Erreur HTF reversal window")
+            return False
+        else:
             return False
 
     def _check_momentum_bypass(
@@ -1307,12 +1298,11 @@ class CriticalFilters:
             # Marquer pour audit
             context["entry_style"] = "momentum"
             context["momentum_bypass"] = True
-
+        except Exception as e:
+            logger.exception("Erreur momentum bypass")
+            return False, f"Momentum bypass error: {e}"
+        else:
             return (
                 True,
                 f"EntryStyle=momentum (skip pullback, distance={distance_pct:.4f})",
             )
-
-        except Exception as e:
-            logger.exception("Erreur momentum bypass")
-            return False, f"Momentum bypass error: {e}"

@@ -232,6 +232,51 @@ class ROC_Threshold_Strategy(BaseStrategy):
             "roc_strength": abs(primary_roc),
         }
 
+    def _validate_roc_signal_requirements(
+        self, signal_side: str, values: dict[str, Any]
+    ) -> tuple[bool, str | None, dict[str, Any] | None]:
+        """Valide les exigences pour un signal ROC. Returns (is_valid, rejection_reason, rejection_metadata)."""
+        # Validation momentum
+        momentum_score = values.get("momentum_score")
+        if momentum_score is not None:
+            try:
+                momentum = float(momentum_score)
+                if signal_side == "BUY" and momentum < 40:
+                    return False, f"Rejet ROC BUY: momentum trop faible ({momentum:.1f})", {"momentum_score": momentum}
+                if signal_side == "SELL" and momentum > 60:
+                    return False, f"Rejet ROC SELL: momentum trop fort ({momentum:.1f})", {"momentum_score": momentum}
+            except (ValueError, TypeError):
+                pass
+
+        # Validation volume
+        volume_ratio = values.get("volume_ratio")
+        if volume_ratio is not None:
+            try:
+                vol_ratio = float(volume_ratio)
+                if vol_ratio < 1.0:
+                    return False, f"Rejet ROC: volume insuffisant ({vol_ratio:.1f}x)", {"volume_ratio": vol_ratio}
+            except (ValueError, TypeError):
+                pass
+
+        # Validation market regime
+        market_regime = values.get("market_regime")
+        if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or (
+            signal_side == "SELL" and market_regime == "TRENDING_BULL"
+        ):
+            return False, f"Rejet ROC {signal_side}: régime contradictoire ({market_regime})", {"market_regime": market_regime}
+
+        # Validation confluence
+        confluence_score = values.get("confluence_score")
+        if confluence_score is not None:
+            try:
+                confluence = float(confluence_score)
+                if confluence < 40:
+                    return False, f"Rejet ROC: confluence insuffisante ({confluence})", {"confluence_score": confluence}
+            except (ValueError, TypeError):
+                pass
+
+        return True, None, None
+
     def _check_thresholds(
         self, roc_analysis: dict[str, Any]
     ) -> dict[str, Any] | None:
@@ -301,7 +346,22 @@ class ROC_Threshold_Strategy(BaseStrategy):
             was_capped = False
 
         signal_side = "BUY" if signal_type == "bullish" else "SELL"
-        base_confidence = 0.65  # Réduit pour être plus sélectif
+
+        # VALIDATIONS PRÉLIMINAIRES GROUPÉES
+        is_valid, rejection_reason, rejection_metadata = self._validate_roc_signal_requirements(signal_side, values)
+        if not is_valid:
+            metadata = {"strategy": self.name}
+            if rejection_metadata:
+                metadata.update(rejection_metadata)
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": rejection_reason,
+                "metadata": metadata,
+            }
+
+        base_confidence = 0.65
         confidence_boost = 0.0
 
         # Construction de la raison
@@ -359,45 +419,7 @@ class ROC_Threshold_Strategy(BaseStrategy):
                     elif momentum > 65:  # Momentum minimum acceptable
                         confidence_boost += 0.03  # Bonus minimal
                         reason += f" + momentum correct ({momentum:.1f})"
-                    elif momentum < 40:  # Momentum contradictoire = rejet
-                        return {
-                            "side": None,
-                            "confidence": 0.0,
-                            "strength": "weak",
-                            "reason": f"Rejet ROC BUY: momentum trop faible ({momentum:.1f})",
-                            "metadata": {
-                                "strategy": self.name,
-                                "momentum_score": momentum,
-                            },
-                        }
-                    elif momentum < 50:  # Momentum défavorable
-                        confidence_boost -= 0.15
-                        reason += f" avec momentum défavorable ({momentum:.1f})"
-
-                # SELL : validation momentum plus stricte
-                elif signal_side == "SELL":
-                    # Pour SELL, on veut un momentum < 50 (baissier)
-                    if momentum < 20:  # Momentum EXCEPTIONNEL requis
-                        confidence_boost += 0.10  # Bonus réduit
-                        reason += f" + momentum exceptionnel ({momentum:.1f})"
-                    elif momentum < 30:  # Momentum très négatif requis
-                        confidence_boost += 0.06  # Bonus réduit
-                        reason += f" + momentum fort ({momentum:.1f})"
-                    elif momentum < 35:  # Momentum minimum acceptable
-                        confidence_boost += 0.03  # Bonus minimal
-                        reason += f" + momentum correct ({momentum:.1f})"
-                    elif momentum > 60:  # Momentum contradictoire = rejet
-                        return {
-                            "side": None,
-                            "confidence": 0.0,
-                            "strength": "weak",
-                            "reason": f"Rejet ROC SELL: momentum trop fort ({momentum:.1f})",
-                            "metadata": {
-                                "strategy": self.name,
-                                "momentum_score": momentum,
-                            },
-                        }
-                    elif momentum > 50:  # Momentum défavorable
+                    elif momentum < 50:  # Momentum défavorable (rejets <40 faits dans validation)
                         confidence_boost -= 0.15
                         reason += f" avec momentum défavorable ({momentum:.1f})"
             except (ValueError, TypeError):
@@ -537,18 +559,6 @@ class ROC_Threshold_Strategy(BaseStrategy):
             try:
                 vol_ratio = float(volume_ratio)
 
-                # Volume DURCI avec rejet volume insuffisant
-                if vol_ratio < 1.0:  # Volume insuffisant = rejet direct
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet ROC: volume insuffisant ({vol_ratio:.1f}x)",
-                        "metadata": {
-                            "strategy": self.name,
-                            "volume_ratio": vol_ratio},
-                    }
-
                 # BUY : momentum haussier EXIGE volume fort
                 if signal_side == "BUY":
                     if vol_ratio >= 2.5:  # Volume EXCEPTIONNEL
@@ -608,20 +618,8 @@ class ROC_Threshold_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
 
-        # Market regime avec REJET contradictions
+        # Market regime avec bonus
         market_regime = values.get("market_regime")
-        if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or (
-            signal_side == "SELL" and market_regime == "TRENDING_BULL"
-        ):
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Rejet ROC {signal_side}: régime contradictoire ({market_regime})",
-                "metadata": {
-                    "strategy": self.name,
-                    "market_regime": market_regime},
-            }
         if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
             confidence_boost += 0.10
             reason += " (marché trending)"
@@ -646,22 +644,11 @@ class ROC_Threshold_Strategy(BaseStrategy):
             confidence_boost += 0.05
             reason += " + volatilité normale"
 
-        # Confluence score DURCIE avec rejet
+        # Confluence score avec bonus
         confluence_score = values.get("confluence_score")
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence < 40:  # Confluence insuffisante = rejet
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet ROC: confluence insuffisante ({confluence})",
-                        "metadata": {
-                            "strategy": self.name,
-                            "confluence_score": confluence,
-                        },
-                    }
                 if confluence > 70:
                     confidence_boost += 0.12
                     reason += " + confluence élevée"

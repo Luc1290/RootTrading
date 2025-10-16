@@ -70,9 +70,7 @@ def calculate_signal_strength(indicators: dict) -> str:
             return "STRONG"
         if final_score >= 0.45:
             return "MODERATE"
-        if final_score >= 0.25:
-            return "WEAK"
-        return "VERY_WEAK"
+        return "WEAK" if final_score >= 0.25 else "VERY_WEAK"
 
     except Exception as e:
         logger.warning(f"❌ Erreur calcul signal_strength: {e}")

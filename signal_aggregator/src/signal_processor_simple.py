@@ -6,7 +6,7 @@ Remplace l'ancien système complexe par juste consensus adaptatif + filtres crit
 import hashlib
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from .adaptive_consensus import AdaptiveConsensusAnalyzer
@@ -113,14 +113,8 @@ class SimpleSignalProcessor:
 
             # Ajouter timestamp de réception
             signal["received_at"] = datetime.now(tz=timezone.utc).isoformat()
-
-            return signal
-
         except json.JSONDecodeError:
             # Logger un extrait du message brut pour debug
-            signal_excerpt = (
-                signal_data[:200] if len(signal_data) > 200 else signal_data
-            )
             logger.exception(
                 "Erreur parsing JSON signal: . Message brut (200 chars): "
             )
@@ -130,6 +124,8 @@ class SimpleSignalProcessor:
             logger.exception("Erreur traitement signal")
             self.stats["errors"] += 1
             return None
+        else:
+            return signal
 
     def _get_dynamic_cache_ttl(self, timeframe: str) -> int:
         """Calcule TTL dynamique basé sur le timeframe."""
@@ -167,10 +163,7 @@ class SimpleSignalProcessor:
     ) -> float:
         """Normalise le consensus_strength en confidence 0-1 basé sur les seuils réels."""
         # Seuils typiques selon adaptive_consensus.py
-        if market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]:
-            max_expected = 3.5  # Plus strict en bear
-        else:
-            max_expected = 2.5  # Normal
+        max_expected = 3.5 if market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"] else 2.5
 
         # Normalisation avec saturation à 1.0
         normalized = min(1.0, strength / max_expected)
@@ -418,13 +411,12 @@ class SimpleSignalProcessor:
                 f"({len(signals)} stratégies, ID: {consensus_id[:8]}, "
                 f"score brut: {consensus_analysis.get('consensus_strength', 0):.2f}, "
                 f"normalisé: {normalized_confidence:.2f})")
-
-            return consensus_signal
-
         except Exception:
             logger.exception("Erreur validation groupe signaux")
             self.stats["errors"] += 1
             return None
+        else:
+            return consensus_signal
 
     def _validate_signal_structure(self, signal: dict[str, Any]) -> bool:
         """Valide la structure de base d'un signal."""

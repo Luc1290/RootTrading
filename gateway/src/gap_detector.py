@@ -4,7 +4,7 @@ Optimise le rechargement après coupure en ne chargeant que les données manquan
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import asyncpg  # type: ignore[import-untyped]
 
@@ -285,7 +285,7 @@ class GapDetector:
         total_gaps = 0
 
         logger.info(
-            f"🔍 Détection intelligente des gaps pour {len(symbols)} symboles × {len(timeframes)} timeframes..."
+            f"🔍 Détection intelligente des gaps pour {len(symbols)} symboles x {len(timeframes)} timeframes..."
         )
 
         for symbol in symbols:
@@ -352,65 +352,65 @@ class GapDetector:
 
         # Nettoyer et valider tous les gaps avant traitement
         clean_gaps = []
-        for gap_start, gap_end in gaps:
+        for start_dt, end_dt in gaps:
             try:
-                # Convertir gap_start en datetime SANS TIMEZONE
-                if not isinstance(gap_start, datetime):
-                    if hasattr(gap_start,
+                # Convertir start_dt en datetime SANS TIMEZONE
+                if not isinstance(start_dt, datetime):
+                    if hasattr(start_dt,
                                "hour"):  # datetime complet avec timezone
-                        if hasattr(gap_start, "replace"):
-                            gap_start = gap_start.replace(tzinfo=None)
+                        if hasattr(start_dt, "replace"):
+                            start_dt = start_dt.replace(tzinfo=None)
                         else:
                             logger.warning(
-                                f"Impossible de convertir gap_start {type(gap_start)}: {gap_start}"
+                                f"Impossible de convertir gap_start {type(start_dt)}: {start_dt}"
                             )
                             continue
-                    elif hasattr(gap_start, "replace"):  # date only
-                        gap_start = datetime.combine(
-                            gap_start, datetime.min.time())
-                    elif isinstance(gap_start, str):
-                        gap_start = datetime.fromisoformat(
-                            gap_start.replace("Z", ""))
+                    elif hasattr(start_dt, "replace"):  # date only
+                        start_dt = datetime.combine(
+                            start_dt, datetime.min.time())
+                    elif isinstance(start_dt, str):
+                        start_dt = datetime.fromisoformat(
+                            start_dt.replace("Z", ""))
                     else:
                         logger.warning(
-                            f"Impossible de convertir gap_start {type(gap_start)}: {gap_start}"
+                            f"Impossible de convertir gap_start {type(start_dt)}: {start_dt}"
                         )
                         continue
                 else:
                     # S'assurer qu'il n'y a pas de timezone
-                    gap_start = gap_start.replace(tzinfo=None)
+                    start_dt = start_dt.replace(tzinfo=None)
 
-                # Convertir gap_end en datetime SANS TIMEZONE
-                if not isinstance(gap_end, datetime):
+                # Convertir end_dt en datetime SANS TIMEZONE
+                if not isinstance(end_dt, datetime):
                     if hasattr(
-                            gap_end, "hour"):  # datetime complet avec timezone
-                        if hasattr(gap_end, "replace"):
-                            gap_end = gap_end.replace(tzinfo=None)
+                            end_dt, "hour"):  # datetime complet avec timezone
+                        if hasattr(end_dt, "replace"):
+                            end_dt = end_dt.replace(tzinfo=None)
                         else:
                             logger.warning(
-                                f"Impossible de convertir gap_end {type(gap_end)}: {gap_end}"
+                                f"Impossible de convertir gap_end {type(end_dt)}: {end_dt}"
                             )
                             continue
-                    elif hasattr(gap_end, "replace"):  # date only
-                        gap_end = datetime.combine(
-                            gap_end, datetime.min.time())
-                    elif isinstance(gap_end, str):
-                        gap_end = datetime.fromisoformat(
-                            gap_end.replace("Z", ""))
+                    elif hasattr(end_dt, "replace"):  # date only
+                        end_dt = datetime.combine(
+                            end_dt, datetime.min.time())
+                    elif isinstance(end_dt, str):
+                        end_dt = datetime.fromisoformat(
+                            end_dt.replace("Z", ""))
                     else:
                         logger.warning(
-                            f"Impossible de convertir gap_end {type(gap_end)}: {gap_end}"
+                            f"Impossible de convertir gap_end {type(end_dt)}: {end_dt}"
                         )
                         continue
                 else:
                     # S'assurer qu'il n'y a pas de timezone
-                    gap_end = gap_end.replace(tzinfo=None)
+                    end_dt = end_dt.replace(tzinfo=None)
 
-                clean_gaps.append((gap_start, gap_end))
+                clean_gaps.append((start_dt, end_dt))
 
             except Exception as e:
                 logger.warning(
-                    f"Erreur nettoyage gap {gap_start} -> {gap_end}: {e}")
+                    f"Erreur nettoyage gap {start_dt} -> {end_dt}: {e}")
                 continue
 
         if not clean_gaps:

@@ -491,15 +491,17 @@ def calculate_stochastic_signal(
     Returns:
         'BULLISH' for buy signal, 'BEARISH' for sell signal, 'NEUTRAL' for no signal
     """
+    result = "NEUTRAL"
+
     if len(closes) < max(k_period, d_period) + 5:
-        return "NEUTRAL"
+        return result
 
     # Calculate stochastic values
     stoch_data = calculate_stochastic(
         highs, lows, closes, k_period, 1, d_period)
 
     if not stoch_data or stoch_data["k"] is None or stoch_data["d"] is None:
-        return "NEUTRAL"
+        return result
 
     current_k = float(stoch_data["k"])
     current_d = float(stoch_data["d"])
@@ -531,22 +533,22 @@ def calculate_stochastic_signal(
         and prev_k <= prev_d
     ):
         # Bullish crossover in oversold territory
-        return "BULLISH"
-    if current_k > current_d and prev_k <= prev_d and current_k < 50:
+        result = "BULLISH"
+    elif current_k > current_d and prev_k <= prev_d and current_k < 50:
         # Bullish crossover below midline
-        return "BULLISH"
+        result = "BULLISH"
 
     # Bearish signals
-    if (
+    elif (
         current_k > overbought_level
         and current_d > overbought_level
         and current_k < current_d
         and prev_k >= prev_d
     ):
         # Bearish crossover in overbought territory
-        return "BEARISH"
-    if current_k < current_d and prev_k >= prev_d and current_k > 50:
+        result = "BEARISH"
+    elif current_k < current_d and prev_k >= prev_d and current_k > 50:
         # Bearish crossover above midline
-        return "BEARISH"
+        result = "BEARISH"
 
-    return "NEUTRAL"
+    return result

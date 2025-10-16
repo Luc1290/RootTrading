@@ -36,6 +36,75 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         self.min_volume_spike = 1.5  # Volume 50% au-dessus moyenne
         self.support_strength_min = 0.5  # Force minimum du support (MODERATE+)
 
+    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Helper to create rejection signals."""
+        base_metadata = {"strategy": self.name}
+        if metadata:
+            base_metadata.update(metadata)
+        return {
+            "side": None,
+            "confidence": 0.0,
+            "strength": "weak",
+            "reason": reason,
+            "metadata": base_metadata,
+        }
+
+    def _validate_support_and_price(
+        self, values: dict[str, Any]
+    ) -> tuple[float | None, float | None, dict[str, Any] | None]:
+        """Valide support et prix. Retourne (nearest_support, support_strength_score, error_signal)."""
+        try:
+            nearest_support = (
+                float(values["nearest_support"])
+                if values["nearest_support"] is not None
+                else None
+            )
+            support_strength_raw: str | int | float | None = values["support_strength"]
+
+            # Fallback support si nearest_support manque
+            if nearest_support is None or nearest_support == 0:
+                lows = self.data.get("low", [])
+                if lows and len(lows) >= 8:
+                    try:
+                        lookback = min(15, len(lows))
+                        recent_lows = [float(low) for low in lows[-lookback:]]
+                        nearest_support = float(np.percentile(recent_lows, 10))
+                        support_strength_raw = "WEAK"
+                    except (ValueError, TypeError):
+                        return None, None, self._create_rejection_signal(
+                            "Erreur calcul fallback support depuis lows", {}
+                        )
+                else:
+                    return None, None, self._create_rejection_signal(
+                        "Pas de support disponible (ni fixe ni fallback) - données insuffisantes", {}
+                    )
+
+            support_strength_score = (
+                self._convert_support_strength_to_score(support_strength_raw)
+                if support_strength_raw is not None
+                else 0.3
+            )
+
+            # Vérification force du support
+            if support_strength_score is not None and support_strength_score < self.support_strength_min:
+                logger.info(
+                    f"[{self.symbol}] Liquidity_Sweep rejet: support trop faible - strength={support_strength_raw} ({support_strength_score:.2f} < {self.support_strength_min})"
+                )
+                return None, None, self._create_rejection_signal(
+                    f"Support trop faible ({support_strength_raw}) pour liquidity sweep",
+                    {
+                        "symbol": self.symbol,
+                        "support_strength": support_strength_raw,
+                        "support_strength_score": support_strength_score,
+                        "nearest_support": nearest_support,
+                    }
+                )
+
+            return nearest_support, support_strength_score, None
+
+        except (ValueError, TypeError) as e:
+            return None, None, self._create_rejection_signal(f"Erreur conversion support: {e}", {})
+
     def _convert_support_strength_to_score(
             self, strength_str: str | int | float) -> float:
         """Convertit support_strength string en score numérique."""
@@ -257,133 +326,35 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         Génère un signal basé sur les liquidity sweeps haussiers.
         """
         if not self.validate_data():
-            logger.debug(
-                f"[{self.symbol}] Liquidity_Sweep rejet: validate_data() failed"
-            )
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Données insuffisantes",
-                "metadata": {"strategy": self.name},
-            }
+            logger.debug(f"[{self.symbol}] Liquidity_Sweep rejet: validate_data() failed")
+            return self._create_rejection_signal("Données insuffisantes", {})
 
         values = self._get_current_values()
         price_data = self._get_price_volume_data()
 
-        # Vérification support level - AVEC FALLBACK
-        try:
-            nearest_support = (
-                float(values["nearest_support"])
-                if values["nearest_support"] is not None
-                else None
-            )
-            support_strength_raw: str | int | float | None = values["support_strength"]
-
-            # Fallback support si nearest_support manque
-            if (
-                nearest_support is None or nearest_support == 0
-            ):  # Traiter 0 comme invalide
-                # Utiliser le plus bas récent comme support dynamique (8 barres
-                # minimum)
-                lows = self.data.get("low", [])
-                if lows and len(lows) >= 8:  # Cohérent avec validation
-                    try:
-                        # Fallback support amélioré : utiliser percentile 10%
-                        # au lieu du minimum
-                        lookback = min(15, len(lows))
-                        recent_lows = [float(low) for low in lows[-lookback:]]
-                        # Percentile 10% pour éviter les mèches extrêmes
-                        nearest_support = float(np.percentile(recent_lows, 10))
-                        support_strength_raw = "WEAK"  # Plus réaliste pour fallback
-                    except (ValueError, TypeError):
-                        return {
-                            "side": None,
-                            "confidence": 0.0,
-                            "strength": "weak",
-                            "reason": "Erreur calcul fallback support depuis lows",
-                            "metadata": {
-                                "strategy": self.name},
-                        }
-                else:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": "Pas de support disponible (ni fixe ni fallback) - données insuffisantes",
-                        "metadata": {
-                            "strategy": self.name},
-                    }
-
-            # support_strength est en format string :
-            # WEAK/MODERATE/STRONG/MAJOR
-            support_strength_score = (
-                self._convert_support_strength_to_score(support_strength_raw)
-                if support_strength_raw is not None
-                else 0.3
-            )
-        except (ValueError, TypeError) as e:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Erreur conversion support: {e}",
-                "metadata": {"strategy": self.name},
-            }
+        # Valider support et prix
+        nearest_support, support_strength_score, error_signal = self._validate_support_and_price(values)
+        if error_signal:
+            return error_signal
 
         current_price = price_data["current_price"]
-
         if nearest_support is None or current_price is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Niveau support ou prix non disponibles",
-                "metadata": {"strategy": self.name},
-            }
-
-        # Vérification force du support
-        if (
-            support_strength_score is not None
-            and support_strength_score < self.support_strength_min
-        ):
-            logger.info(
-                f"[{self.symbol}] Liquidity_Sweep rejet: support trop faible - strength={support_strength_raw} ({support_strength_score:.2f} < {self.support_strength_min})"
-            )
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Support trop faible ({support_strength_raw}) pour liquidity sweep",
-                "metadata": {
-                    "strategy": self.name,
-                    "symbol": self.symbol,
-                    "support_strength": support_strength_raw,
-                    "support_strength_score": support_strength_score,
-                    "nearest_support": nearest_support,
-                },
-            }
+            return self._create_rejection_signal("Niveau support ou prix non disponibles", {})
 
         # Détection du liquidity sweep setup
-        sweep_analysis = self._detect_liquidity_sweep_setup(
-            price_data, nearest_support)
-
+        sweep_analysis = self._detect_liquidity_sweep_setup(price_data, nearest_support)
         if not sweep_analysis["is_sweep"]:
             logger.debug(
                 f"[{self.symbol}] Liquidity_Sweep: {sweep_analysis['reason']} - support={nearest_support:.2f}, price={current_price:.2f}"
             )
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Pas de setup liquidity sweep: {sweep_analysis['reason']}",
-                "metadata": {
-                    "strategy": self.name,
+            return self._create_rejection_signal(
+                f"Pas de setup liquidity sweep: {sweep_analysis['reason']}",
+                {
                     "symbol": self.symbol,
                     "nearest_support": nearest_support,
                     "current_price": current_price,
-                },
-            }
+                }
+            )
 
         # Si on a un sweep setup, générer signal BUY
         signal_side = "BUY"
@@ -425,25 +396,20 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
                     logger.info(
                         f"[{self.symbol}] Liquidity_Sweep rejet: volume trop faible ({vol_ratio:.2f}x < 0.7x)"
                     )
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet liquidity sweep: volume trop faible ({vol_ratio:.1f}x < 0.7x)",
-                        "metadata": {
-                            "strategy": self.name,
-                            "volume_ratio": vol_ratio},
-                    }
-                if 0.9 <= vol_ratio < 1.2:  # Volume correct - petit bonus
+                    return self._create_rejection_signal(
+                        f"Rejet liquidity sweep: volume trop faible ({vol_ratio:.1f}x < 0.7x)",
+                        {"volume_ratio": vol_ratio}
+                    )
+                if 0.9 <= vol_ratio < 1.2:
                     confidence_boost += 0.03
                     reason += f" + volume correct ({vol_ratio:.1f}x)"
-                elif vol_ratio >= 2.0:  # Volume exceptionnel
+                elif vol_ratio >= 2.0:
                     confidence_boost += 0.20
                     reason += f" + volume EXCEPTIONNEL ({vol_ratio:.1f}x)"
-                elif vol_ratio >= self.min_volume_spike:  # Volume élevé (1.5x)
+                elif vol_ratio >= self.min_volume_spike:
                     confidence_boost += 0.15
                     reason += f" + volume élevé ({vol_ratio:.1f}x)"
-                else:  # Volume correct mais pas exceptionnel
+                else:
                     confidence_boost += 0.05
                     reason += f" + volume correct ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
@@ -468,15 +434,10 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
                     logger.info(
                         f"[{self.symbol}] Liquidity_Sweep rejet: RSI trop haut ({rsi:.1f} > 70)"
                     )
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet liquidity sweep: RSI trop haut ({rsi:.1f}) pour BUY",
-                        "metadata": {
-                            "strategy": self.name,
-                            "rsi": rsi},
-                    }
+                    return self._create_rejection_signal(
+                        f"Rejet liquidity sweep: RSI trop haut ({rsi:.1f}) pour BUY",
+                        {"rsi": rsi}
+                    )
                 if 40 <= rsi <= 65:  # RSI neutre - pas de bonus ni malus
                     pass  # Zone neutre
                 elif rsi <= 30:  # Survente extrême
@@ -633,21 +594,14 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
 
         # Liquidity sweep nécessite un support FIXE ou fallback possible
         if (
-            self.indicators.get("nearest_support") is None
-            or self.indicators.get("nearest_support") == 0
+            (self.indicators.get("nearest_support") is None or self.indicators.get("nearest_support") == 0)
+            and (not self.data or "low" not in self.data or not self.data["low"] or len(self.data["low"]) < 8)
         ):
-            # Vérifier si on peut faire un fallback avec les données low (8
-            # barres minimum)
-            if (
-                not self.data
-                or "low" not in self.data
-                or not self.data["low"]
-                or len(self.data["low"]) < 8
-            ):
-                logger.warning(
-                    f"{self.name}: nearest_support manquant et données low insuffisantes pour fallback"
-                )
-                return False
+            # nearest_support manquant et données low insuffisantes pour fallback
+            logger.warning(
+                f"{self.name}: nearest_support manquant et données low insuffisantes pour fallback"
+            )
+            return False
 
         # Vérifier qu'on a des données OHLCV suffisantes pour analyse sweep
         required_ohlcv = ["close", "low", "high", "volume"]

@@ -5,9 +5,9 @@ Ne fait AUCUN calcul d'indicateur - transmet uniquement les données brutes
 
 import asyncio
 import logging
-import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
 
 import aiohttp
 from aiohttp import ClientTimeout
@@ -17,11 +17,7 @@ from shared.src.config import SYMBOLS
 from shared.src.redis_client import RedisClient
 
 # Ajouter le répertoire parent au path pour les imports
-sys.path.append(
-    os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../../")))
+sys.path.append(str(Path(__file__).parent / "../../"))
 
 
 logger = logging.getLogger(__name__)
@@ -109,27 +105,26 @@ class SimpleDataFetcher:
                 "interval": timeframe,
                 "limit": str(limit)}
 
-            async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                async with session.get(url, params=params) as response:
-                    if response.status == 200:
-                        klines = await response.json()
+            async with aiohttp.ClientSession(timeout=self.timeout) as session, session.get(url, params=params) as response:
+                if response.status == 200:
+                    klines = await response.json()
 
-                        # Traiter les données OHLCV brutes
-                        processed_data = self._process_raw_klines(
-                            klines, symbol, timeframe
-                        )
-
-                        # Publier sur Kafka via Redis
-                        await self._publish_to_kafka(processed_data, symbol, timeframe)
-
-                        logger.debug(
-                            f"✅ Données récupérées: {symbol} {timeframe} ({len(klines)} bougies)"
-                        )
-                        return True
-                    logger.error(
-                        f"❌ Erreur API Binance {response.status} pour {symbol} {timeframe}"
+                    # Traiter les données OHLCV brutes
+                    processed_data = self._process_raw_klines(
+                        klines, symbol, timeframe
                     )
-                    return False
+
+                    # Publier sur Kafka via Redis
+                    await self._publish_to_kafka(processed_data, symbol, timeframe)
+
+                    logger.debug(
+                        f"✅ Données récupérées: {symbol} {timeframe} ({len(klines)} bougies)"
+                    )
+                    return True
+                logger.error(
+                    f"❌ Erreur API Binance {response.status} pour {symbol} {timeframe}"
+                )
+                return False
 
         except Exception:
             logger.exception("❌ Erreur récupération {symbol} {timeframe}")
@@ -216,24 +211,23 @@ class SimpleDataFetcher:
             url = f"{self.base_url}{self.klines_endpoint}"
             params = {"symbol": symbol, "interval": timeframe, "limit": "5"}
 
-            async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                async with session.get(url, params=params) as response:
-                    if response.status == 200:
-                        klines = await response.json()
+            async with aiohttp.ClientSession(timeout=self.timeout) as session, session.get(url, params=params) as response:
+                if response.status == 200:
+                    klines = await response.json()
 
-                        # Traiter toutes les bougies fermées (pas celle en
-                        # cours)
-                        if len(klines) >= 2:
-                            closed_klines = klines[
-                                :-1
-                            ]  # Toutes sauf la dernière (en cours)
+                    # Traiter toutes les bougies fermées (pas celle en
+                    # cours)
+                    if len(klines) >= 2:
+                        closed_klines = klines[
+                            :-1
+                        ]  # Toutes sauf la dernière (en cours)
 
-                            processed_data = self._process_raw_klines(
-                                closed_klines, symbol, timeframe
-                            )
-                            await self._publish_to_kafka(
-                                processed_data, symbol, timeframe
-                            )
+                        processed_data = self._process_raw_klines(
+                            closed_klines, symbol, timeframe
+                        )
+                        await self._publish_to_kafka(
+                            processed_data, symbol, timeframe
+                        )
 
         except Exception:
             logger.exception(
@@ -257,28 +251,27 @@ class SimpleDataFetcher:
                 "limit": "1000",
             }
 
-            async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                async with session.get(url, params=params) as response:
-                    if response.status == 200:
-                        klines = await response.json()
+            async with aiohttp.ClientSession(timeout=self.timeout) as session, session.get(url, params=params) as response:
+                if response.status == 200:
+                    klines = await response.json()
 
-                        if klines:
-                            processed_data = self._process_raw_klines(
-                                klines, symbol, timeframe
-                            )
-                            await self._publish_to_kafka(
-                                processed_data, symbol, timeframe
-                            )
-
-                            logger.debug(
-                                f"✅ Période remplie: {symbol} {timeframe} ({len(klines)} bougies)"
-                            )
-                            return True
-                    else:
-                        logger.error(
-                            f"❌ Erreur API Binance {response.status} pour {symbol} {timeframe}"
+                    if klines:
+                        processed_data = self._process_raw_klines(
+                            klines, symbol, timeframe
                         )
-                        return False
+                        await self._publish_to_kafka(
+                            processed_data, symbol, timeframe
+                        )
+
+                        logger.debug(
+                            f"✅ Période remplie: {symbol} {timeframe} ({len(klines)} bougies)"
+                        )
+                        return True
+                else:
+                    logger.error(
+                        f"❌ Erreur API Binance {response.status} pour {symbol} {timeframe}"
+                    )
+                    return False
 
         except Exception:
             logger.exception("❌ Erreur fetch période {symbol} {timeframe}")

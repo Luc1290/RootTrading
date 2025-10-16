@@ -319,14 +319,14 @@ class MultiTimeframeAnalyzer:
             )
 
             support_levels = [
-                l.price
-                for l in sr_levels
-                if l.price < current_price and "support" in l.level_type.value
+                level.price
+                for level in sr_levels
+                if level.price < current_price and "support" in level.level_type.value
             ]
             resistance_levels = [
-                l.price
-                for l in sr_levels
-                if l.price > current_price and "resistance" in l.level_type.value
+                level.price
+                for level in sr_levels
+                if level.price > current_price and "resistance" in level.level_type.value
             ]
 
             # Analyse de tendance simple (with caching if symbol provided)
@@ -474,17 +474,20 @@ class MultiTimeframeAnalyzer:
         bullish_ratio = bullish_count / total_count
         bearish_ratio = bearish_count / total_count
 
+        result = TrendAlignment.CONFLICTING
+
         if bullish_ratio >= 0.8:
-            return TrendAlignment.FULLY_ALIGNED_BULL
-        if bearish_ratio >= 0.8:
-            return TrendAlignment.FULLY_ALIGNED_BEAR
-        if bullish_ratio >= 0.6:
-            return TrendAlignment.MOSTLY_ALIGNED_BULL
-        if bearish_ratio >= 0.6:
-            return TrendAlignment.MOSTLY_ALIGNED_BEAR
-        if abs(bullish_ratio - bearish_ratio) <= 0.2:
-            return TrendAlignment.MIXED
-        return TrendAlignment.CONFLICTING
+            result = TrendAlignment.FULLY_ALIGNED_BULL
+        elif bearish_ratio >= 0.8:
+            result = TrendAlignment.FULLY_ALIGNED_BEAR
+        elif bullish_ratio >= 0.6:
+            result = TrendAlignment.MOSTLY_ALIGNED_BULL
+        elif bearish_ratio >= 0.6:
+            result = TrendAlignment.MOSTLY_ALIGNED_BEAR
+        elif abs(bullish_ratio - bearish_ratio) <= 0.2:
+            result = TrendAlignment.MIXED
+
+        return result
 
     def _calculate_overall_signal_strength(
         self, signals: dict[str, TimeframeSignal]
@@ -514,16 +517,18 @@ class MultiTimeframeAnalyzer:
             return SignalStrength.VERY_WEAK
 
         avg_strength = weighted_strength / total_weight
+        result = SignalStrength.VERY_WEAK
 
         if avg_strength >= 80:
-            return SignalStrength.VERY_STRONG
-        if avg_strength >= 60:
-            return SignalStrength.STRONG
-        if avg_strength >= 40:
-            return SignalStrength.MODERATE
-        if avg_strength >= 20:
-            return SignalStrength.WEAK
-        return SignalStrength.VERY_WEAK
+            result = SignalStrength.VERY_STRONG
+        elif avg_strength >= 60:
+            result = SignalStrength.STRONG
+        elif avg_strength >= 40:
+            result = SignalStrength.MODERATE
+        elif avg_strength >= 20:
+            result = SignalStrength.WEAK
+
+        return result
 
     def _determine_primary_trend(
             self, signals: dict[str, TimeframeSignal]) -> str:
@@ -903,8 +908,8 @@ class MultiTimeframeAnalyzer:
             return []
 
         # Séparer supports et résistances
-        supports = [l for l in all_levels if l < current_price]
-        resistances = [l for l in all_levels if l > current_price]
+        supports = [level for level in all_levels if level < current_price]
+        resistances = [level for level in all_levels if level > current_price]
 
         next_levels = []
 

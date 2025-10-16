@@ -5,7 +5,7 @@ Gère le stockage des signaux validés et l'historique de validation.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from psycopg2.extras import RealDictCursor
@@ -201,10 +201,10 @@ class DatabaseManager:
             logger.warning(
                 f"Prix non trouvé pour signal {validated_signal.get('symbol')}, utilisation de 0.0"
             )
-            return 0.0
-
         except Exception:
             logger.exception("Erreur extraction prix")
+            return 0.0
+        else:
             return 0.0
 
     def _parse_timestamp(self, timestamp_str: str) -> datetime:
@@ -231,7 +231,7 @@ class DatabaseManager:
 
             for fmt in formats:
                 try:
-                    return datetime.strptime(timestamp_str, fmt)
+                    return datetime.strptime(timestamp_str, fmt).replace(tzinfo=timezone.utc)
                 except ValueError:
                     continue
 

@@ -5,7 +5,7 @@ Calcule et agrège les métriques de trading, performance et activité.
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 

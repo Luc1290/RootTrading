@@ -96,9 +96,41 @@ class Support_Breakout_Strategy(BaseStrategy):
 
         return {"is_breakout": False, "reason": "Pas de breakout détecté"}
 
+    def _validate_breakout_signal(
+        self, signal_side: str, momentum_val: float, directional_bias: str | None,
+        vol_ratio: float, conf_val: float, market_regime: str | None
+    ) -> tuple[bool, str | None]:
+        """Valide les conditions pour un signal de breakout. Returns (is_valid, rejection_reason)."""
+        # Rejet momentum
+        if signal_side == "BUY" and momentum_val < 50:
+            return False, f"Rejet BUY: momentum trop faible ({momentum_val:.0f})"
+        if signal_side == "SELL" and momentum_val > 50:
+            return False, f"Rejet SELL: momentum trop fort ({momentum_val:.0f})"
+
+        # Rejet bias contradictoire
+        if (signal_side == "BUY" and directional_bias == "BEARISH") or (
+            signal_side == "SELL" and directional_bias == "BULLISH"
+        ):
+            return False, f"Rejet {signal_side}: bias contradictoire ({directional_bias})"
+
+        # Rejet volume faible
+        if vol_ratio < 1.1:
+            return False, f"Rejet: volume trop faible ({vol_ratio:.1f}x)"
+
+        # Rejet confluence faible
+        if conf_val < 40:
+            return False, f"Rejet: confluence insuffisante ({conf_val})"
+
+        # Rejet régime contradictoire
+        if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or (
+            signal_side == "SELL" and market_regime == "TRENDING_BULL"
+        ):
+            return False, f"Rejet {signal_side}: régime contradictoire ({market_regime})"
+
+        return True, None
+
     def generate_signal(self) -> dict[str, Any]:
         """Version ULTRA SIMPLIFIÉE pour crypto spot breakouts."""
-
         # Validation minimale
         if not self.validate_data():
             return {
@@ -148,96 +180,57 @@ class Support_Breakout_Strategy(BaseStrategy):
         signal_side = breakout_analysis["signal_side"]
         reason = breakout_analysis["reason"]
 
-        # REJETS CRITIQUES - cohérence momentum/bias
+        # Préparer les valeurs pour validation
         momentum_score = values.get("momentum_score")
         directional_bias = values.get("directional_bias")
+        volume_ratio = values.get("volume_ratio")
+        confluence_score = values.get("confluence_score")
+        market_regime = values.get("market_regime")
 
         try:
-            momentum_val = float(
-                momentum_score) if momentum_score is not None else 50.0
+            momentum_val = float(momentum_score) if momentum_score is not None else 50.0
         except (ValueError, TypeError):
             momentum_val = 50.0
 
-        # Rejet momentum DURCI - plus tranchant
-        if signal_side == "BUY" and momentum_val < 50:
+        try:
+            vol_ratio = float(volume_ratio) if volume_ratio is not None else 1.0
+        except (ValueError, TypeError):
+            vol_ratio = 1.0
+
+        try:
+            conf_val = float(confluence_score) if confluence_score is not None else 0.0
+        except (ValueError, TypeError):
+            conf_val = 0.0
+
+        # VALIDATIONS GROUPÉES
+        is_valid, rejection_reason = self._validate_breakout_signal(
+            signal_side, momentum_val, directional_bias, vol_ratio, conf_val, market_regime
+        )
+        if not is_valid:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Rejet BUY: momentum trop faible ({momentum_val:.0f})",
-                "metadata": {
-                    "strategy": self.name},
-            }
-        if signal_side == "SELL" and momentum_val > 50:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Rejet SELL: momentum trop fort ({momentum_val:.0f})",
-                "metadata": {
-                    "strategy": self.name},
+                "reason": rejection_reason,
+                "metadata": {"strategy": self.name},
             }
 
-        # Rejet si incohérence signal/bias + BONUS si aligné
-        if (signal_side == "BUY" and directional_bias == "BEARISH") or (
-            signal_side == "SELL" and directional_bias == "BULLISH"
-        ):
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Rejet {signal_side}: bias contradictoire ({directional_bias})",
-                "metadata": {
-                    "strategy": self.name},
-            }
+        # BONUS alignements
         if (signal_side == "BUY" and directional_bias == "BULLISH") or (
             signal_side == "SELL" and directional_bias == "BEARISH"
         ):
             confidence_boost += 0.10
             reason += f" + bias aligné ({directional_bias})"
 
-        # Bonus simples
+        # Volume bonus
+        if vol_ratio >= 1.8:
+            confidence_boost += 0.15
+            reason += f" + volume fort ({vol_ratio:.1f}x)"
+        elif vol_ratio >= 1.5:
+            confidence_boost += 0.08
+            reason += f" + volume ({vol_ratio:.1f}x)"
 
-        # Volume DURCI - évite breakouts neutres
-        volume_ratio = values.get("volume_ratio")
-        try:
-            vol_ratio = float(
-                volume_ratio) if volume_ratio is not None else 1.0
-            if vol_ratio >= 1.8:  # Seuil plus strict
-                confidence_boost += 0.15
-                reason += f" + volume fort ({vol_ratio:.1f}x)"
-            elif vol_ratio >= 1.5:
-                confidence_boost += 0.08
-                reason += f" + volume ({vol_ratio:.1f}x)"
-            elif vol_ratio < 1.1:  # Rejet durci (vs 1.0)
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Rejet: volume trop faible ({vol_ratio:.1f}x)",
-                    "metadata": {"strategy": self.name},
-                }
-        except (ValueError, TypeError):
-            pass
-
-        # Confluence avec rejet
-        confluence_score = values.get("confluence_score")
-        try:
-            conf_val = float(
-                confluence_score) if confluence_score is not None else 0.0
-        except (ValueError, TypeError):
-            conf_val = 0.0
-
-        if conf_val < 40:  # Rejet si confluence trop faible
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Rejet: confluence insuffisante ({conf_val})",
-                "metadata": {
-                    "strategy": self.name,
-                    "confluence_score": conf_val},
-            }
+        # Confluence bonus
         if conf_val >= 75:  # Confluence affinée
             confidence_boost += 0.10
             reason += f" + confluence excellente ({conf_val:.0f})"
@@ -248,20 +241,7 @@ class Support_Breakout_Strategy(BaseStrategy):
         # Enrichir reason avec détails systématiques
         reason += f" (momentum={momentum_val:.0f}, conf={conf_val:.0f})"
 
-        # Market regime avec rejets contradictoires + BONUS aligné
-        market_regime = values.get("market_regime")
-        if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or (
-            signal_side == "SELL" and market_regime == "TRENDING_BULL"
-        ):
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Rejet {signal_side}: régime contradictoire ({market_regime})",
-                "metadata": {
-                    "strategy": self.name,
-                    "market_regime": market_regime},
-            }
+        # Regime bonus (validations déjà faites dans _validate_breakout_signal)
         if (signal_side == "BUY" and market_regime == "TRENDING_BULL") or (
             signal_side == "SELL" and market_regime == "TRENDING_BEAR"
         ):

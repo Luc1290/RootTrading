@@ -8,6 +8,7 @@ import signal
 import sys
 import threading
 import time
+from pathlib import Path
 from urllib.parse import urljoin
 
 import requests  # type: ignore
@@ -17,11 +18,7 @@ from coordinator import Coordinator  # type: ignore
 from shared.src.redis_client import RedisClient
 
 # Ajouter le répertoire parent au path pour les imports
-sys.path.append(
-    os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../../")))
+sys.path.append(str(Path(__file__).parent.parent.parent.resolve()))
 
 
 # Configuration du logging centralisée
@@ -173,7 +170,8 @@ class CoordinatorService:
                         else None
                     ),
                 }
-            return {"status": "unhealthy", "status_code": response.status_code}
+            else:
+                return {"status": "unhealthy", "status_code": response.status_code}
 
         except Exception as e:
             return {"status": "error", "error": str(e)}
@@ -192,10 +190,11 @@ class CoordinatorService:
             if response.status_code == 200:
                 # Log de santé réussi supprimé pour réduire la verbosité
                 return True
-            logger.warning(
-                f"⚠️ Service Portfolio a retourné un code d'état non-OK: {response.status_code}"
-            )
-            return False
+            else:
+                logger.warning(
+                    f"⚠️ Service Portfolio a retourné un code d'état non-OK: {response.status_code}"
+                )
+                return False
 
         except Exception:
             logger.exception(
@@ -345,7 +344,7 @@ def main():
     coordinator = CoordinatorService()
 
     # Configurer les gestionnaires de signaux
-    def shutdown_handler(signum, frame):
+    def shutdown_handler(signum, _frame):
         logger.info(f"Signal {signum} reçu, arrêt en cours...")
         coordinator.stop()
 

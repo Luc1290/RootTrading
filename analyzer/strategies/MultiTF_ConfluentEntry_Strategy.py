@@ -59,6 +59,45 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         self.min_adx_trend = 15  # Assoupli (20 -> 15)
         self.strong_adx_trend = 25  # Assoupli (30 -> 25)
 
+    def _create_rejection_signal(self, reason: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Helper to create rejection signals."""
+        base_metadata = {"strategy": self.name}
+        if metadata:
+            base_metadata.update(metadata)
+        return {
+            "side": None,
+            "confidence": 0.0,
+            "strength": "weak",
+            "reason": reason,
+            "metadata": base_metadata,
+        }
+
+    def _validate_initial_conditions(self, values: dict[str, Any]) -> tuple[float | None, dict[str, Any] | None]:
+        """Valide les conditions initiales. Retourne (current_price, error_signal)."""
+        current_price = self._get_current_price()
+        if current_price is None:
+            return None, self._create_rejection_signal("Prix non disponible", {})
+
+        # Vérification des scores de confluence principaux
+        try:
+            confluence_score = (
+                float(values["confluence_score"])
+                if values["confluence_score"] is not None
+                else 40.0  # Default optimiste
+            )
+        except (ValueError, TypeError) as e:
+            return None, self._create_rejection_signal(f"Erreur conversion scores: {e}", {})
+
+        # Seuil confluence
+        min_confluence_dynamic = 20 if confluence_score == 40.0 else self.min_confluence_score
+        if confluence_score < min_confluence_dynamic:
+            return None, self._create_rejection_signal(
+                f"Confluence insuffisante ({confluence_score:.1f} < {min_confluence_dynamic})",
+                {"confluence_score": confluence_score}
+            )
+
+        return current_price, None
+
     def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs multi-TF."""
         return {
@@ -350,70 +389,32 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         Génère un signal basé sur la confluence multi-timeframes.
         """
         if not self.validate_data():
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Données insuffisantes",
-                "metadata": {"strategy": self.name},
-            }
+            return self._create_rejection_signal("Données insuffisantes", {})
 
         values = self._get_current_values()
-        current_price = self._get_current_price()
 
-        if current_price is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Prix non disponible",
-                "metadata": {"strategy": self.name},
-            }
+        # Valider les conditions initiales
+        current_price, error_signal = self._validate_initial_conditions(values)
+        if error_signal:
+            return error_signal
 
-        # Vérification des scores de confluence principaux
+        # Récupérer les scores
         try:
             confluence_score = (
                 float(values["confluence_score"])
                 if values["confluence_score"] is not None
-                else None
+                else 40.0
             )
-            signal_strength = values[
-                "signal_strength"
-            ]  # STRING: WEAK/MODERATE/STRONG/VERY_STRONG
+            signal_strength = values["signal_strength"]  # STRING: WEAK/MODERATE/STRONG/VERY_STRONG
             trend_alignment = (
                 float(values["trend_alignment"])
                 if values["trend_alignment"] is not None
                 else None
             )
-        except (ValueError, TypeError) as e:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Erreur conversion scores: {e}",
-                "metadata": {"strategy": self.name},
-            }
-
-        # Confluence score ASSOUPLI avec fallback intelligent
-        if confluence_score is None:
-            confluence_score = 40.0  # Default optimiste au lieu de 0.0
-
-        # Seuil confluence ABAISSÉ pour plus de signaux
-        min_confluence_dynamic = (
-            20 if confluence_score == 40.0 else self.min_confluence_score
-        )  # 20 pour fallback, 30 pour valeurs réelles
-
-        if confluence_score < min_confluence_dynamic:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Confluence insuffisante ({confluence_score:.1f} < {min_confluence_dynamic})",
-                "metadata": {
-                    "strategy": self.name,
-                    "confluence_score": confluence_score,
-                },
-            }
+        except (ValueError, TypeError):
+            confluence_score = 40.0
+            signal_strength = "MODERATE"
+            trend_alignment = None
 
         # Signal_strength ULTRA-ASSOUPLI avec fallback
         valid_strengths = ["WEAK", "MODERATE", "STRONG", "VERY_STRONG"]
@@ -446,15 +447,10 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             and adx_value is not None
             and adx_value < self.min_adx_trend
         ):
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"ADX insuffisant ({adx_value:.1f} < {self.min_adx_trend}) - marché ranging",
-                "metadata": {
-                    "strategy": self.name,
-                    "adx": adx_value},
-            }
+            return self._create_rejection_signal(
+                f"ADX insuffisant ({adx_value:.1f} < {self.min_adx_trend}) - marché ranging",
+                {"adx": adx_value}
+            )
 
         # Analyse de l'alignement des moyennes mobiles
         ma_analysis = self._analyze_ma_alignment(values, current_price)
@@ -533,17 +529,13 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
 
         # Pas d'alignement clair ou contradictoire
         if signal_side is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Pas de confluence claire - MA: {ma_analysis['direction']}, Osc: {osc_analysis['confluence']}",
-                "metadata": {
-                    "strategy": self.name,
+            return self._create_rejection_signal(
+                f"Pas de confluence claire - MA: {ma_analysis['direction']}, Osc: {osc_analysis['confluence']}",
+                {
                     "ma_analysis": ma_analysis,
                     "osc_analysis": osc_analysis,
-                },
-            }
+                }
+            )
 
         # === BOOSTS SIMPLIFIÉS - 4 catégories principales ===
 
@@ -646,17 +638,12 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                     confidence_boost += 0.08
                     reason += f" + régime aligné ({market_regime} modéré)"
 
-            elif regime_str == "WEAK":
+            elif regime_str == "WEAK" and (
+                (signal_side == "BUY" and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]) or
+                (signal_side == "SELL" and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"])):
                 # Régimes faibles : impact minimal
-                if (
-                    signal_side == "BUY"
-                    and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]
-                ) or (
-                    signal_side == "SELL"
-                    and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]
-                ):
-                    confidence_boost += 0.03  # Bonus minimal
-                    reason += f" + régime aligné ({market_regime} faible)"
+                confidence_boost += 0.03  # Bonus minimal
+                reason += f" + régime aligné ({market_regime} faible)"
                 # Pas de pénalité pour les contradictions faibles
 
         # VALIDATION VOLUME STRICTE avec rejet
@@ -696,20 +683,17 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
 
         # Seuil final ULTRA-ABAISSÉ pour maximum de signaux
         if confidence < 0.30:  # Abaissé de 0.45 à 0.30
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Setup MultiTF rejeté - confiance critique ({confidence:.2f} < 0.30)",
-                "metadata": {
-                    "strategy": self.name,
+            return self._create_rejection_signal(
+                f"Setup MultiTF rejeté - confiance critique ({confidence:.2f} < 0.30)",
+                {
                     "rejected_signal": signal_side,
                     "rejected_confidence": confidence,
                     "confluence_score": confluence_score,
                     "signal_strength": signal_strength_str,
                     "trend_alignment": trend_alignment,
-                },
-            }
+                }
+            )
+
         strength = self.get_strength_from_confidence(confidence)
 
         return {

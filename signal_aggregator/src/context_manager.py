@@ -4,6 +4,8 @@ Récupère et structure les données nécessaires depuis la base de données.
 """
 
 import logging
+import math
+import time
 from typing import Any
 
 from psycopg2.extras import RealDictCursor
@@ -179,8 +181,6 @@ class ContextManager:
         cache_key = f"{symbol}_{timeframe}"
 
         # Vérifier le cache avec TTL dynamique
-        import time
-
         current_time = time.time()
         dynamic_ttl = self._get_dynamic_cache_ttl(timeframe)
 
@@ -631,8 +631,6 @@ class ContextManager:
             else:
                 # MICRO-CAPS: Adaptation dynamique pour prix < 1 (PEPE, etc.)
                 # Déterminer le nombre de décimales significatives
-                import math
-
                 if price > 0:
                     significant_digits = max(
                         2, -math.floor(math.log10(price)) + 1)

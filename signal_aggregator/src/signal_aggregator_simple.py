@@ -14,7 +14,7 @@ NOUVEAU: Consensus adaptatif + filtres de sécurité seulement
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import redis.asyncio as redis
@@ -55,7 +55,7 @@ class SimpleSignalAggregatorService:
         # Buffer intelligent - OPTIMISÉ POUR RAPIDITÉ avec système de vague
         self.signal_buffer = IntelligentSignalBuffer(
             buffer_timeout=6.0,  # RÉDUIT: 6s pour crypto rapide
-            max_buffer_size=100,  # AUGMENTÉ: 100 signaux max pour 28 stratégies × 4 TF
+            max_buffer_size=100,  # AUGMENTÉ: 100 signaux max pour 28 stratégies x 4 TF
             min_batch_size=1,  # Minimum 1 signal
             sync_window=3.0,  # RÉDUIT: 3s pour sync multi-TF crypto
             enable_mtf_sync=True,  # Sync multi-timeframes
