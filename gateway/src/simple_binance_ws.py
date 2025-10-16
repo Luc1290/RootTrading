@@ -4,29 +4,34 @@ ARCHITECTURE PROPRE : Reçoit uniquement les données OHLCV brutes en temps rée
 AUCUN calcul d'indicateur - transmission pure des données de marché.
 """
 
+from shared.src.kafka_client import KafkaClient
+from shared.src.config import SYMBOLS
+from gateway.src.kafka_producer import get_producer
+import asyncio
 import json
 import logging
-import time
-from typing import Dict, Any, List, Optional
-import asyncio
-import websockets
-from websockets.client import WebSocketClientProtocol
-from websockets.exceptions import ConnectionClosed, InvalidStatus
-
+import os
 # Importer les clients partagés
 import sys
-import os
+import time
+from typing import TYPE_CHECKING, Any
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+import websockets
 
-from shared.src.config import SYMBOLS, INTERVAL
-from shared.src.kafka_client import KafkaClient
-from gateway.src.kafka_producer import get_producer
+sys.path.append(
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "../../")))
+
+
+if TYPE_CHECKING:
+    from websockets.client import WebSocketClientProtocol
 
 # Configuration du logging
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("simple_binance_ws")
 
 
@@ -39,9 +44,9 @@ class SimpleBinanceWebSocket:
 
     def __init__(
         self,
-        symbols: Optional[List[str]] = None,
-        intervals: Optional[List[str]] = None,
-        kafka_client: Optional[KafkaClient] = None,
+        symbols: list[str] | None = None,
+        intervals: list[str] | None = None,
+        kafka_client: KafkaClient | None = None,
     ):
         """
         Initialise la connexion WebSocket Binance.
@@ -54,7 +59,7 @@ class SimpleBinanceWebSocket:
         self.symbols = symbols or SYMBOLS
         self.intervals = intervals or ["1m", "3m", "5m", "15m", "1h", "1d"]
         self.kafka_client = kafka_client or get_producer()
-        self.ws: Optional[WebSocketClientProtocol] = None
+        self.ws: WebSocketClientProtocol | None = None
         self.running = False
         self.reconnect_delay = 1  # Secondes, pour backoff exponentiel
         self.last_message_time = 0.0
@@ -63,11 +68,12 @@ class SimpleBinanceWebSocket:
         # Générateur de streams pour le WebSocket
         self.stream_paths = self._generate_stream_paths()
 
-        logger.info(f"📡 SimpleBinanceWebSocket initialisé - OHLCV brutes uniquement")
+        logger.info(
+            "📡 SimpleBinanceWebSocket initialisé - OHLCV brutes uniquement")
         logger.info(f"🎯 Symboles: {', '.join(self.symbols)}")
         logger.info(f"⏱️ Intervalles: {', '.join(self.intervals)}")
 
-    def _generate_stream_paths(self) -> List[str]:
+    def _generate_stream_paths(self) -> list[str]:
         """
         Génère les chemins de streams WebSocket pour tous les symboles/intervalles.
         """
@@ -93,8 +99,8 @@ class SimpleBinanceWebSocket:
         while self.running:
             try:
                 await self._connect_and_listen()
-            except Exception as e:
-                logger.error(f"❌ Erreur WebSocket: {e}")
+            except Exception:
+                logger.exception("❌ Erreur WebSocket")
                 if self.running:
                     logger.info(
                         f"🔄 Reconnexion dans {self.reconnect_delay} secondes..."
@@ -146,14 +152,15 @@ class SimpleBinanceWebSocket:
             if "k" in data:
                 await self._process_kline_data(data)
             else:
-                logger.debug(f"⚠️ Message non-kline ignoré: {data.get('e', 'unknown')}")
+                logger.debug(
+                    f"⚠️ Message non-kline ignoré: {data.get('e', 'unknown')}")
 
-        except json.JSONDecodeError as e:
-            logger.error(f"❌ Erreur décodage JSON: {e}")
-        except Exception as e:
-            logger.error(f"❌ Erreur traitement message: {e}")
+        except json.JSONDecodeError:
+            logger.exception("❌ Erreur décodage JSON")
+        except Exception:
+            logger.exception("❌ Erreur traitement message")
 
-    async def _process_kline_data(self, data: Dict[str, Any]):
+    async def _process_kline_data(self, data: dict[str, Any]):
         """
         Traite les données de chandelier (kline) SANS calcul d'indicateur.
 
@@ -190,14 +197,15 @@ class SimpleBinanceWebSocket:
                     f"📤 Bougie fermée publiée: {raw_candle['symbol']} @ {raw_candle['close']}"
                 )
             else:
-                logger.debug(f"⏳ Bougie en cours ignorée: {raw_candle['symbol']}")
+                logger.debug(
+                    f"⏳ Bougie en cours ignorée: {raw_candle['symbol']}")
 
-        except KeyError as e:
-            logger.error(f"❌ Champ manquant dans les données kline: {e}")
-        except Exception as e:
-            logger.error(f"❌ Erreur traitement kline: {e}")
+        except KeyError:
+            logger.exception("❌ Champ manquant dans les données kline")
+        except Exception:
+            logger.exception("❌ Erreur traitement kline")
 
-    async def _publish_raw_data(self, candle_data: Dict[str, Any]):
+    async def _publish_raw_data(self, candle_data: dict[str, Any]):
         """
         Publie les données brutes vers Kafka.
 
@@ -234,23 +242,22 @@ class SimpleBinanceWebSocket:
                 self.kafka_client.publish_market_data(
                     market_data, key=candle_data["symbol"]
                 )
+            # Fallback - essayer d'autres méthodes disponibles
+            elif hasattr(self.kafka_client, "send"):
+                self.kafka_client.send(
+                    "market_data", market_data, key=candle_data["symbol"]
+                )
             else:
-                # Fallback - essayer d'autres méthodes disponibles
-                if hasattr(self.kafka_client, "send"):
-                    self.kafka_client.send(
-                        "market_data", market_data, key=candle_data["symbol"]
-                    )
-                else:
-                    logger.warning(
-                        f"Méthode de publication Kafka non trouvée pour {type(self.kafka_client)}"
-                    )
+                logger.warning(
+                    f"Méthode de publication Kafka non trouvée pour {type(self.kafka_client)}"
+                )
 
             logger.debug(
                 f"📡 Données brutes publiées: {candle_data['symbol']} @ {candle_data['interval']}"
             )
 
-        except Exception as e:
-            logger.error(f"❌ Erreur publication Kafka: {e}")
+        except Exception:
+            logger.exception("❌ Erreur publication Kafka")
 
     async def stop(self):
         """
@@ -265,7 +272,7 @@ class SimpleBinanceWebSocket:
 
         logger.info("✅ WebSocket arrêté")
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """
         Retourne le statut de la connexion WebSocket.
 

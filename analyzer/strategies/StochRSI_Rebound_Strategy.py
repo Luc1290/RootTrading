@@ -3,9 +3,10 @@ StochRSI_Rebound_Strategy - Stratégie basée sur les signaux StochRSI pré-calc
 OPTIMISÉE POUR CRYPTO SPOT INTRADAY
 """
 
-from typing import Dict, Any, Optional
-from .base_strategy import BaseStrategy
 import logging
+from typing import Any
+
+from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,8 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
     - SELL: StochRSI en zone de surachat avec signaux favorables
     """
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Seuils StochRSI - RESSERREÉS POUR QUALITÉ
         self.oversold_zone = 28  # Resserré (30 -> 28)
@@ -32,8 +34,10 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
         # Seuils RSI assouplis crypto
         self.rsi_oversold = 35  # RSI survente accessible (était 25)
         self.rsi_overbought = 65  # RSI surachat accessible (était 75)
-        self.rsi_oversold_strong = 30  # RSI survente forte accessible (était 20)
-        self.rsi_overbought_strong = 70  # RSI surachat fort accessible (était 80)
+        # RSI survente forte accessible (était 20)
+        self.rsi_oversold_strong = 30
+        # RSI surachat fort accessible (était 80)
+        self.rsi_overbought_strong = 70
 
         # Seuils momentum assouplis
         self.momentum_bullish = 53  # Momentum haussier modéré (était 58)
@@ -46,7 +50,7 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
         self.min_confluence = 35  # Confluence minimum réduite (était 45)
         self.strong_confluence = 60  # Confluence forte réduite (était 65)
 
-    def _safe_float(self, value) -> Optional[float]:
+    def _safe_float(self, value) -> float | None:
         """Convertit en float de manière sécurisée."""
         if value is None:
             return None
@@ -55,7 +59,7 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
         except (ValueError, TypeError):
             return None
 
-    def _get_current_values(self) -> Dict[str, Any]:
+    def _get_current_values(self) -> dict[str, Any]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
         return {
             "stoch_rsi": self._safe_float(self.indicators.get("stoch_rsi")),
@@ -80,7 +84,7 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
             "adx_14": self._safe_float(self.indicators.get("adx_14")),
         }
 
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """
         Génère un signal basé sur les indicateurs StochRSI pré-calculés.
         """
@@ -126,13 +130,16 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
             if stoch_signal == "OVERSOLD":
                 signal_side = "BUY"
                 reason = f"Signal StochRSI pré-calculé: {stoch_signal}"
-                confidence_boost += 0.20  # Signal pré-calculé fiable (amélioré)
+                # Signal pré-calculé fiable (amélioré)
+                confidence_boost += 0.20
             elif stoch_signal == "OVERBOUGHT":
                 signal_side = "SELL"
                 reason = f"Signal StochRSI pré-calculé: {stoch_signal}"
-                confidence_boost += 0.20  # Signal pré-calculé fiable (amélioré)
+                # Signal pré-calculé fiable (amélioré)
+                confidence_boost += 0.20
 
-        # Si pas de signal pré-calculé, analyse manuelle avec seuils plus stricts
+        # Si pas de signal pré-calculé, analyse manuelle avec seuils plus
+        # stricts
         if not signal_side:
             if stoch_rsi <= self.oversold_zone:
                 signal_side = "BUY"
@@ -160,7 +167,8 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
             # Bonus MAJEUR pour divergence détectée (AMÉLIORÉ)
             stoch_divergence = values.get("stoch_divergence")
             if stoch_divergence is True:
-                confidence_boost += 0.30  # Divergence = signal très puissant (amélioré)
+                # Divergence = signal très puissant (amélioré)
+                confidence_boost += 0.30
                 reason += " avec DIVERGENCE détectée"
 
             # Confirmation avec croisement K/D - PLUS STRICT
@@ -171,8 +179,7 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
 
                 # Croisement favorable avec écart minimum (AJUSTÉ)
                 if (signal_side == "BUY" and stoch_k > stoch_d and k_d_diff >= 2.5) or (
-                    signal_side == "SELL" and stoch_k < stoch_d and k_d_diff >= 2.5
-                ):
+                        signal_side == "SELL" and stoch_k < stoch_d and k_d_diff >= 2.5):
                     confidence_boost += 0.18  # Amélioré (était 0.15)
                     reason += " + K/D fort"
                 elif (
@@ -273,7 +280,7 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                     reason += " + tendance"
                 elif trend_str in ["weak", "absent"]:
                     confidence_boost -= 0.08  # Pénalité réduite (était -0.12)
-                    pass  # Tendance faible
+                    # Tendance faible
 
             # Utilisation du directional_bias - CRITIQUE EN CRYPTO
             directional_bias = values.get("directional_bias")
@@ -381,7 +388,7 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                             "adx_14": adx_14,
                         },
                     }
-                elif adx_14 > 40:  # Tendance trop forte = StochRSI trompeur
+                if adx_14 > 40:  # Tendance trop forte = StochRSI trompeur
                     return {
                         "side": None,
                         "confidence": 0.0,
@@ -408,8 +415,9 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
             # Appliquer pénalité volatilité
             confidence_boost += volatility_penalty
 
-            # SUPPRIMÉ: plus de filtre de rejet final - laisser aggregator décider
-            raw_confidence = base_confidence * (1 + confidence_boost)
+            # SUPPRIMÉ: plus de filtre de rejet final - laisser aggregator
+            # décider
+            base_confidence * (1 + confidence_boost)
 
             confidence = self.calculate_confidence(
                 base_confidence, 1.0 + confidence_boost

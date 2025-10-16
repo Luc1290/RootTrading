@@ -8,10 +8,10 @@ ATR is commonly used for:
 - Position sizing
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
-from typing import List, Optional, Union, Tuple, Dict
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ except ImportError:
 
 
 def calculate_true_range(
-    high: float, low: float, prev_close: Optional[float] = None
+    high: float, low: float, prev_close: float | None = None
 ) -> float:
     """
     Calculate True Range for a single period.
@@ -55,11 +55,11 @@ def calculate_true_range(
 
 
 def calculate_atr(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 14,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate Average True Range (ATR).
 
@@ -97,7 +97,8 @@ def calculate_atr(
             atr_values = talib.ATR(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return float(atr_values[-1]) if not np.isnan(atr_values[-1]) else None
+            return float(
+                atr_values[-1]) if not np.isnan(atr_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib ATR error: {e}, using fallback")
 
@@ -105,11 +106,11 @@ def calculate_atr(
 
 
 def calculate_atr_series(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 14,
-) -> List[Optional[float]]:
+) -> list[float | None]:
     """
     Calculate ATR for entire price series.
 
@@ -137,12 +138,14 @@ def calculate_atr_series(
             atr_values = talib.ATR(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return [float(val) if not np.isnan(val) else None for val in atr_values]
+            return [float(val) if not np.isnan(
+                val) else None for val in atr_values]
         except Exception as e:
             logger.warning(f"TA-Lib ATR series error: {e}, using fallback")
 
     # Manual calculation
-    return _calculate_atr_series_manual(highs_array, lows_array, closes_array, period)
+    return _calculate_atr_series_manual(
+        highs_array, lows_array, closes_array, period)
 
 
 def calculate_atr_incremental(
@@ -180,11 +183,11 @@ def calculate_atr_incremental(
 
 
 def calculate_atr_percent(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 14,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate ATR as a percentage of current price.
 
@@ -211,11 +214,11 @@ def calculate_atr_percent(
 
 
 def calculate_natr(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 14,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate Normalized ATR (NATR).
 
@@ -239,7 +242,8 @@ def calculate_natr(
             natr_values = talib.NATR(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return float(natr_values[-1]) if not np.isnan(natr_values[-1]) else None
+            return float(
+                natr_values[-1]) if not np.isnan(natr_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib NATR error: {e}, using fallback")
 
@@ -266,17 +270,16 @@ def calculate_atr_stop_loss(
 
     if is_long:
         return price - stop_distance
-    else:
-        return price + stop_distance
+    return price + stop_distance
 
 
 def calculate_atr_bands(
-    prices: Union[List[float], np.ndarray, pd.Series],
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
     period: int = 14,
     multiplier: float = 2.0,
-) -> Dict[str, Optional[float]]:
+) -> dict[str, float | None]:
     """
     Calculate ATR-based bands around price.
 
@@ -290,7 +293,6 @@ def calculate_atr_bands(
     Returns:
         Dictionary with upper, middle, lower bands
     """
-    from typing import Dict
 
     atr = calculate_atr(highs, lows, prices, period)
     if atr is None:
@@ -307,13 +309,13 @@ def calculate_atr_bands(
 
 
 def calculate_atr_percentile(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 14,
     lookback: int = 100,
     max_lookback: int = 500,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate ATR percentile over historical distribution.
 
@@ -355,16 +357,18 @@ def calculate_atr_percentile(
 
     for i in range(start_idx, len(highs_array)):
         atr_val = _calculate_atr_manual(
-            highs_array[i - period : i + 1],
-            lows_array[i - period : i + 1],
-            closes_array[i - period : i + 1],
+            highs_array[i - period: i + 1],
+            lows_array[i - period: i + 1],
+            closes_array[i - period: i + 1],
             period,
         )
         if atr_val is not None:
             atr_values.append(atr_val)
 
-    if not atr_values or len(atr_values) < 20:  # Need minimum 20 values for percentile
-        logger.debug(f"Not enough ATR values for percentile: {len(atr_values)}")
+    if not atr_values or len(
+            atr_values) < 20:  # Need minimum 20 values for percentile
+        logger.debug(
+            f"Not enough ATR values for percentile: {len(atr_values)}")
         return 50.0
 
     current_atr = atr_values[-1]
@@ -378,9 +382,9 @@ def calculate_atr_percentile(
 
 
 def volatility_regime(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 14,
     lookback: int = 50,
 ) -> str:
@@ -409,34 +413,33 @@ def volatility_regime(
     # Calculate percentiles
     p25 = np.percentile(recent_atr, 25)
     p50 = np.percentile(recent_atr, 50)
-    p75 = np.percentile(recent_atr, 75)
+    np.percentile(recent_atr, 75)
     p90 = np.percentile(recent_atr, 90)
 
     if current_atr <= p25:
         return "low"
-    elif current_atr <= p50:
+    if current_atr <= p50:
         return "normal"
-    elif current_atr <= p90:
+    if current_atr <= p90:
         return "high"
-    else:
-        return "extreme"
+    return "extreme"
 
 
 # ============ Helper Functions ============
 
 
-def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
+def _to_numpy_array(data: list[float] | np.ndarray | pd.Series) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
         return np.asarray(data.values, dtype=float)
-    elif isinstance(data, list):
+    if isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
 
 
 def _calculate_atr_manual(
     highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int
-) -> Optional[float]:
+) -> float | None:
     """Manual ATR calculation using Wilder's method."""
     if len(highs) < period + 1:
         return None
@@ -444,7 +447,8 @@ def _calculate_atr_manual(
     # Calculate True Range values
     tr_values = []
     for i in range(1, len(highs)):
-        tr = calculate_true_range(float(highs[i]), float(lows[i]), float(closes[i - 1]))
+        tr = calculate_true_range(
+            float(highs[i]), float(lows[i]), float(closes[i - 1]))
         tr_values.append(tr)
 
     if len(tr_values) < period:
@@ -462,9 +466,9 @@ def _calculate_atr_manual(
 
 def _calculate_atr_series_manual(
     highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int
-) -> List[Optional[float]]:
+) -> list[float | None]:
     """Manual ATR series calculation."""
-    atr_series: List[Optional[float]] = []
+    atr_series: list[float | None] = []
 
     # Not enough data for first period
     if len(highs) < period + 1:
@@ -477,7 +481,8 @@ def _calculate_atr_series_manual(
     # Calculate True Range values
     tr_values = []
     for i in range(1, len(highs)):
-        tr = calculate_true_range(float(highs[i]), float(lows[i]), float(closes[i - 1]))
+        tr = calculate_true_range(
+            float(highs[i]), float(lows[i]), float(closes[i - 1]))
         tr_values.append(tr)
 
     # Initial ATR (simple average of first 'period' TR values)

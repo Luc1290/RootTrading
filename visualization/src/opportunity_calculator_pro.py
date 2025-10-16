@@ -13,12 +13,14 @@ Version: 2.1 - Professional Grade + Early Warning System
 """
 
 import logging
-from typing import Optional, Dict, List
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 
-from opportunity_scoring import OpportunityScoring, OpportunityScore
-from opportunity_validator import OpportunityValidator, ValidationSummary
-from opportunity_early_detector import OpportunityEarlyDetector, EarlySignal
+from visualization.src.opportunity_early_detector import (
+    EarlySignal, OpportunityEarlyDetector)
+from visualization.src.opportunity_scoring import (OpportunityScore,
+                                                   OpportunityScoring)
+from visualization.src.opportunity_validator import (OpportunityValidator,
+                                                     ValidationSummary)
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +36,7 @@ class TradingOpportunity:
     validation: ValidationSummary
 
     # Early Warning (NOUVEAU)
-    early_signal: Optional[EarlySignal]  # Signal early warning si disponible
+    early_signal: EarlySignal | None  # Signal early warning si disponible
     is_early_entry: bool  # True si détecté par early detector
 
     # Pricing
@@ -47,8 +49,8 @@ class TradingOpportunity:
     tp1_percent: float
     tp2: float
     tp2_percent: float
-    tp3: Optional[float]
-    tp3_percent: Optional[float]
+    tp3: float | None
+    tp3_percent: float | None
 
     # Stop Loss
     stop_loss: float
@@ -113,9 +115,9 @@ class OpportunityCalculatorPro:
         symbol: str,
         current_price: float,
         analyzer_data: dict,
-        higher_tf_data: Optional[dict] = None,
-        signals_data: Optional[dict] = None,
-        historical_data: Optional[List[dict]] = None,
+        higher_tf_data: dict | None = None,
+        signals_data: dict | None = None,
+        historical_data: list[dict] | None = None,
     ) -> TradingOpportunity:
         """
         Calcule une opportunité de trading complète.
@@ -143,7 +145,8 @@ class OpportunityCalculatorPro:
                 current_data=analyzer_data, historical_data=historical_data
             )
 
-            # Si early signal fort (ENTRY_NOW ou PREPARE), on peut bypass certaines validations
+            # Si early signal fort (ENTRY_NOW ou PREPARE), on peut bypass
+            # certaines validations
             if (
                 early_signal.level.value in ["entry_now", "prepare"]
                 and early_signal.score >= 65
@@ -154,7 +157,8 @@ class OpportunityCalculatorPro:
                 )
 
         # === ÉTAPE 1: SCORING ===
-        score = self.scorer.calculate_opportunity_score(analyzer_data, current_price)
+        score = self.scorer.calculate_opportunity_score(
+            analyzer_data, current_price)
 
         # === ÉTAPE 2: VALIDATION ===
         validation = self.validator.validate_opportunity(
@@ -163,8 +167,7 @@ class OpportunityCalculatorPro:
 
         # === ÉTAPE 3: DÉCISION (avec early signal) ===
         action, confidence, reasons, warnings, recommendations = self._make_decision(
-            score, validation, analyzer_data, early_signal, is_early_entry
-        )
+            score, validation, analyzer_data, early_signal, is_early_entry)
 
         # === ÉTAPE 4: PRICING ===
         entry_optimal, entry_aggressive = self._calculate_entry_prices(
@@ -183,11 +186,11 @@ class OpportunityCalculatorPro:
 
         # === ÉTAPE 7: RISK MANAGEMENT ===
         rr_ratio, risk_level, max_position_pct = self._calculate_risk_metrics(
-            current_price, tp1, stop_loss, score, validation, analyzer_data, action
-        )
+            current_price, tp1, stop_loss, score, validation, analyzer_data, action)
 
         # === ÉTAPE 8: TIMING ===
-        hold_time, urgency = self._calculate_timing(analyzer_data, score, action)
+        hold_time, urgency = self._calculate_timing(
+            analyzer_data, score, action)
 
         # === ÉTAPE 9: CONTEXT ===
         market_regime = analyzer_data.get("market_regime", "UNKNOWN")
@@ -235,7 +238,7 @@ class OpportunityCalculatorPro:
         score: OpportunityScore,
         validation: ValidationSummary,
         ad: dict,
-        early_signal: Optional[EarlySignal] = None,
+        early_signal: EarlySignal | None = None,
         is_early_entry: bool = False,
     ) -> tuple[str, float, list[str], list[str], list[str]]:
         """
@@ -266,7 +269,7 @@ class OpportunityCalculatorPro:
                 action = "AVOID"
                 confidence = 0.0
                 reasons.append(
-                    f"❌ Qualité données insuffisante - Indicateurs non fiables"
+                    "❌ Qualité données insuffisante - Indicateurs non fiables"
                 )
                 reasons.extend(validation.blocking_issues)
                 warnings.extend(validation.warnings)
@@ -293,7 +296,6 @@ class OpportunityCalculatorPro:
         # MODE 3 (<40): Aucun effet
 
         early_boost = 0.0
-        bypass_validation = False
 
         if early_signal:
             # === MODE 1: EARLY SIGNAL FORT (≥70) - INDÉPENDANCE ===
@@ -302,8 +304,8 @@ class OpportunityCalculatorPro:
                     f"🚀 EARLY MODE 1: Signal fort {early_signal.score:.0f} - Bypass validation partielle"
                 )
 
-                # Bypass Market Conditions & Entry Timing (garde Data Quality & Risk Management)
-                bypass_validation = True
+                # Bypass Market Conditions & Entry Timing (garde Data Quality &
+                # Risk Management)
 
                 # Action = EARLY_ENTRY (nouveau type)
                 action = "EARLY_ENTRY"
@@ -325,10 +327,10 @@ class OpportunityCalculatorPro:
 
                 # Warnings spécifiques early
                 warnings.append(
-                    f"⚡ MODE EARLY ENTRY - Risque élevé (moins de confirmation)"
+                    "⚡ MODE EARLY ENTRY - Risque élevé (moins de confirmation)"
                 )
                 warnings.append(
-                    f"💡 Réduire taille position de 30% vs BUY_NOW classique"
+                    "💡 Réduire taille position de 30% vs BUY_NOW classique"
                 )
 
                 if early_signal.estimated_move_completion_pct > 40:
@@ -342,11 +344,12 @@ class OpportunityCalculatorPro:
                 # Stop loss plus serré pour early entry
                 warnings.append("🛡️ Stop loss recommandé: -1.5% (serré)")
 
-                # Retourner directement pour ce mode (bypass reste de la logique)
+                # Retourner directement pour ce mode (bypass reste de la
+                # logique)
                 return action, confidence, reasons, warnings, recommendations
 
             # === MODE 2: EARLY SIGNAL MOYEN (40-69) - BOOST ===
-            elif early_signal.score >= 40 and is_early_entry:
+            if early_signal.score >= 40 and is_early_entry:
                 logger.info(
                     f"⚡ EARLY MODE 2: Signal moyen {early_signal.score:.0f} - Boost au scoring"
                 )
@@ -385,10 +388,14 @@ class OpportunityCalculatorPro:
         # Appliquer pénalité validation si non parfaite
         # Score validation 80/100 → multiplicateur 0.9 (10% de pénalité)
         validation_multiplier = validation.overall_score / 100.0
-        adjusted_score = min(100.0, (total_score + early_boost) * validation_multiplier)
+        adjusted_score = min(
+            100.0, (total_score + early_boost) * validation_multiplier)
         adjusted_confidence = min(
-            100.0, (score_confidence + early_boost * 0.5) * validation_multiplier
-        )
+            100.0,
+            (score_confidence +
+             early_boost *
+             0.5) *
+            validation_multiplier)
 
         # Détecter pump context pour assouplir seuil confiance
         vol_spike = self.safe_float(ad.get("volume_spike_multiplier"), 1.0)
@@ -421,11 +428,12 @@ class OpportunityCalculatorPro:
             reasons.append(f"✅ Validation: {validation.overall_score:.0f}/100")
 
             # Ajouter détails des meilleures catégories
-            from opportunity_scoring import ScoreCategory
 
             top_cats = sorted(
-                score.category_scores.items(), key=lambda x: x[1].score, reverse=True
-            )[:3]
+                score.category_scores.items(),
+                key=lambda x: x[1].score,
+                reverse=True)[
+                :3]
 
             for cat, cat_score in top_cats:
                 if cat_score.score >= 70:
@@ -446,15 +454,17 @@ class OpportunityCalculatorPro:
                 f"✅ Score brut: {total_score:.0f}/100 (Grade {score.grade})"
             )
             if validation_multiplier < 1.0:
-                reasons.append(f"⚠️ Score ajusté validation: {adjusted_score:.0f}/100")
+                reasons.append(
+                    f"⚠️ Score ajusté validation: {adjusted_score:.0f}/100")
             reasons.append(f"✅ Validation: {validation.overall_score:.0f}/100")
             reasons.append("⚠️ Entrée progressive recommandée (DCA)")
 
-            recommendations.append("📊 ACHETER EN DCA - Diviser en 2-3 tranches")
-            recommendations.append("Zone d'achat: entry_optimal → entry_aggressive")
+            recommendations.append(
+                "📊 ACHETER EN DCA - Diviser en 2-3 tranches")
+            recommendations.append(
+                "Zone d'achat: entry_optimal → entry_aggressive")
 
             # Ajouter warnings des catégories faibles
-            from opportunity_scoring import ScoreCategory
 
             for cat, cat_score in score.category_scores.items():
                 if cat_score.score < 60:
@@ -467,23 +477,24 @@ class OpportunityCalculatorPro:
             action = "WAIT"
             confidence = max(adjusted_score * 0.7, 40.0)
 
-            reasons.append(f"⏸️ Score brut: {total_score:.0f}/100 (Grade {score.grade})")
+            reasons.append(
+                f"⏸️ Score brut: {total_score:.0f}/100 (Grade {score.grade})")
             if validation_multiplier < 1.0:
-                reasons.append(f"⚠️ Score ajusté validation: {adjusted_score:.0f}/100")
+                reasons.append(
+                    f"⚠️ Score ajusté validation: {adjusted_score:.0f}/100")
             reasons.append(f"⚠️ Confiance: {adjusted_confidence:.0f}%")
 
             recommendations.append("⏸️ ATTENDRE - Conditions pas optimales")
             recommendations.append("Surveiller amélioration du score")
 
             # Lister ce qui manque
-            from opportunity_scoring import ScoreCategory
 
             weak_cats = [
-                (cat, cs) for cat, cs in score.category_scores.items() if cs.score < 50
-            ]
+                (cat, cs) for cat, cs in score.category_scores.items() if cs.score < 50]
 
             for cat, cat_score in weak_cats:
-                warnings.append(f"❌ {cat.value.title()}: {cat_score.score:.0f}/100")
+                warnings.append(
+                    f"❌ {cat.value.title()}: {cat_score.score:.0f}/100")
                 if cat_score.issues:
                     for issue in cat_score.issues[:2]:  # Top 2 issues
                         warnings.append(f"   {issue}")
@@ -497,7 +508,8 @@ class OpportunityCalculatorPro:
                 f"❌ Score brut: {total_score:.0f}/100 (Grade {score.grade})"
             )
             if validation_multiplier < 1.0:
-                reasons.append(f"❌ Score ajusté validation: {adjusted_score:.0f}/100")
+                reasons.append(
+                    f"❌ Score ajusté validation: {adjusted_score:.0f}/100")
             reasons.append("❌ Setup non favorable")
 
             recommendations.append("🛑 NE PAS ACHETER - Risque élevé")
@@ -555,7 +567,7 @@ class OpportunityCalculatorPro:
 
     def _calculate_targets(
         self, current_price: float, ad: dict, score: OpportunityScore
-    ) -> tuple[float, float, Optional[float], list[float]]:
+    ) -> tuple[float, float, float | None, list[float]]:
         """
         Calcule targets adaptatifs basés sur ATR + résistances + score.
 
@@ -582,10 +594,12 @@ class OpportunityCalculatorPro:
         tp2_dist = max(0.015, atr_percent * 1.2)
 
         # TP3: Aggressive (seulement si score excellent)
-        if score.grade in ["S", "A"]:
-            tp3_dist = max(0.020, atr_percent * 2.0)
-        else:
-            tp3_dist = None
+        tp3_dist = max(
+            0.02,
+            atr_percent *
+            2.0) if score.grade in [
+            "S",
+            "A"] else None
 
         # Ajuster si résistance proche MAIS pas trop proche
         if nearest_resistance > 0 and current_price > 0:
@@ -737,16 +751,13 @@ class OpportunityCalculatorPro:
         """
         regime = ad.get("market_regime", "").upper()
         adx = self.safe_float(ad.get("adx_14"))
-        vol_regime = ad.get("volatility_regime", "").lower()
+        ad.get("volatility_regime", "").lower()
 
         # Durée hold
         if regime == "BREAKOUT_BULL":
             hold_time = "5-15 min"
         elif regime == "TRENDING_BULL":
-            if adx > 35:
-                hold_time = "10-20 min"
-            else:
-                hold_time = "15-30 min"
+            hold_time = "10-20 min" if adx > 35 else "15-30 min"
         elif regime in ["RANGING", "TRANSITION"]:
             hold_time = "20-45 min"
         else:
@@ -766,7 +777,6 @@ class OpportunityCalculatorPro:
 
     def _serialize_score(self, score: OpportunityScore) -> dict:
         """Sérialise OpportunityScore pour export."""
-        from opportunity_scoring import ScoreCategory
 
         return {
             "total_score": score.total_score,
@@ -810,12 +820,10 @@ class OpportunityCalculatorPro:
         self, symbol: str, current_price: float
     ) -> TradingOpportunity:
         """Crée une opportunité vide (pas de données)."""
-        from opportunity_scoring import OpportunityScore, CategoryScore, ScoreCategory
-        from opportunity_validator import (
-            ValidationSummary,
-            ValidationResult,
-            ValidationLevel,
-        )
+        from visualization.src.opportunity_scoring import (CategoryScore,
+                                                           OpportunityScore,
+                                                           ScoreCategory)
+        from visualization.src.opportunity_validator import ValidationSummary
 
         # Score vide
         zero_category = CategoryScore(
@@ -831,7 +839,7 @@ class OpportunityCalculatorPro:
         score = OpportunityScore(
             total_score=0.0,
             grade="F",
-            category_scores={cat: zero_category for cat in ScoreCategory},
+            category_scores=dict.fromkeys(ScoreCategory, zero_category),
             confidence=0.0,
             risk_level="EXTREME",
             recommendation="AVOID",
@@ -969,9 +977,8 @@ class OpportunityCalculatorPro:
 # EXEMPLE D'UTILISATION
 # ===========================================================
 if __name__ == "__main__":
-    import json
-    import sys
     import io
+    import sys
 
     # Fix Windows encoding
     if sys.platform == "win32":
@@ -1068,40 +1075,43 @@ if __name__ == "__main__":
         f"Validation: {'✅ PASSÉE' if opportunity.validation.all_passed else '❌ ÉCHOUÉE'}"
     )
 
-    print(f"\n💰 PRICING:")
+    print("\n💰 PRICING:")
     print(f"  Prix actuel: {opportunity.current_price:.6f}")
     print(f"  Entrée optimale: {opportunity.entry_price_optimal:.6f}")
     print(f"  Entrée aggressive: {opportunity.entry_price_aggressive:.6f}")
 
-    print(f"\n🎯 TARGETS:")
+    print("\n🎯 TARGETS:")
     print(f"  TP1: {opportunity.tp1:.6f} (+{opportunity.tp1_percent:.2f}%)")
     print(f"  TP2: {opportunity.tp2:.6f} (+{opportunity.tp2_percent:.2f}%)")
     if opportunity.tp3:
-        print(f"  TP3: {opportunity.tp3:.6f} (+{opportunity.tp3_percent:.2f}%)")
+        print(
+            f"  TP3: {opportunity.tp3:.6f} (+{opportunity.tp3_percent:.2f}%)")
 
-    print(f"\n🛡️ STOP LOSS:")
-    print(f"  SL: {opportunity.stop_loss:.6f} (-{opportunity.stop_loss_percent:.2f}%)")
+    print("\n🛡️ STOP LOSS:")
+    print(
+        f"  SL: {opportunity.stop_loss:.6f} (-{opportunity.stop_loss_percent:.2f}%)")
     print(f"  Basis: {opportunity.stop_loss_basis}")
 
-    print(f"\n📊 RISK:")
+    print("\n📊 RISK:")
     print(f"  R/R Ratio: {opportunity.rr_ratio:.2f}")
     print(f"  Risk Level: {opportunity.risk_level}")
-    print(f"  Max Position: {opportunity.max_position_size_pct:.2f}% du capital")
+    print(
+        f"  Max Position: {opportunity.max_position_size_pct:.2f}% du capital")
 
-    print(f"\n⏱️ TIMING:")
+    print("\n⏱️ TIMING:")
     print(f"  Hold estimé: {opportunity.estimated_hold_time}")
     print(f"  Urgence: {opportunity.entry_urgency}")
 
-    print(f"\n📋 RAISONS:")
+    print("\n📋 RAISONS:")
     for reason in opportunity.reasons:
         print(f"  {reason}")
 
     if opportunity.warnings:
-        print(f"\n⚠️ WARNINGS:")
+        print("\n⚠️ WARNINGS:")
         for warning in opportunity.warnings:
             print(f"  {warning}")
 
-    print(f"\n💡 RECOMMANDATIONS:")
+    print("\n💡 RECOMMANDATIONS:")
     for rec in opportunity.recommendations:
         print(f"  {rec}")
 

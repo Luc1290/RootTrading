@@ -3,11 +3,13 @@ Module de persistance des données de marché en base de données.
 Sauve les données Kafka vers PostgreSQL/TimescaleDB.
 """
 
-import logging
 import asyncio
-import asyncpg  # type: ignore[import-untyped]
+import logging
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Any
+
+import asyncpg  # type: ignore[import-untyped]
+
 from shared.src.config import get_db_config
 
 logger = logging.getLogger(__name__)
@@ -19,9 +21,9 @@ class DatabasePersister:
     """
 
     def __init__(self) -> None:
-        self.db_pool: Optional[asyncpg.Pool] = None
+        self.db_pool: asyncpg.Pool | None = None
         self.running = False
-        self.loop: Optional[asyncio.AbstractEventLoop] = None
+        self.loop: asyncio.AbstractEventLoop | None = None
 
     async def initialize(self):
         """Initialise la connexion à la base de données."""
@@ -36,10 +38,11 @@ class DatabasePersister:
                 min_size=2,
                 max_size=5,
             )
-            logger.info("✅ Connexion base de données initialisée pour persistance")
+            logger.info(
+                "✅ Connexion base de données initialisée pour persistance")
             self.running = True
-        except Exception as e:
-            logger.error(f"❌ Erreur initialisation base de données: {e}")
+        except Exception:
+            logger.exception("❌ Erreur initialisation base de données")
             self.db_pool = None
 
     def start_persister(self):
@@ -60,7 +63,7 @@ class DatabasePersister:
 
             time.sleep(1)
 
-    def save_market_data(self, topic: str, message: Dict[str, Any]):
+    def save_market_data(self, topic: str, message: dict[str, Any]):
         """
         Sauve les données de marché en base.
 
@@ -75,7 +78,8 @@ class DatabasePersister:
         symbol = None
         timeframe = None
 
-        # D'abord essayer d'extraire du topic (format: market.data.{symbol}.{timeframe})
+        # D'abord essayer d'extraire du topic (format:
+        # market.data.{symbol}.{timeframe})
         parts = topic.split(".")
         if len(parts) >= 4:
             symbol = parts[2].upper()
@@ -116,7 +120,8 @@ class DatabasePersister:
 
         # Vérifier les données essentielles OHLCV
         if not data["time"] or data["close"] is None:
-            logger.error(f"Données OHLCV essentielles manquantes pour {symbol}")
+            logger.error(
+                f"Données OHLCV essentielles manquantes pour {symbol}")
             return
 
         # Traiter le timestamp pour PostgreSQL
@@ -147,12 +152,13 @@ class DatabasePersister:
         except Exception as e:
             import traceback
 
-            logger.error(f"Erreur lors de l'insertion des données de marché: {e}")
-            logger.error(f"Type d'erreur: {type(e).__name__}")
-            logger.error(f"Traceback complet: {traceback.format_exc()}")
-            logger.error(f"Données problématiques: {data}")
+            logger.exception(
+                "Erreur lors de l'insertion des données de marché")
+            logger.exception(f"Type d'erreur: {type(e).__name__}")
+            logger.exception(f"Traceback complet: {traceback.format_exc()}")
+            logger.exception(f"Données problématiques: {data}")
 
-    async def _insert_market_data(self, data: Dict[str, Any]):
+    async def _insert_market_data(self, data: dict[str, Any]):
         """
         Insert les données de marché BRUTES en base (méthode async).
         ARCHITECTURE PROPRE: Seulement OHLCV + métadonnées Binance.
@@ -163,7 +169,7 @@ class DatabasePersister:
         query = """
             INSERT INTO market_data (
                 time, symbol, timeframe, open, high, low, close, volume,
-                quote_asset_volume, number_of_trades, 
+                quote_asset_volume, number_of_trades,
                 taker_buy_base_asset_volume, taker_buy_quote_asset_volume
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
@@ -208,10 +214,10 @@ class DatabasePersister:
         except Exception as e:
             import traceback
 
-            logger.error(f"Erreur lors de l'insertion OHLCV en base: {e}")
-            logger.error(f"Type d'erreur: {type(e).__name__}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            logger.error(f"Données OHLCV: {data}")
+            logger.exception("Erreur lors de l'insertion OHLCV en base")
+            logger.exception(f"Type d'erreur: {type(e).__name__}")
+            logger.exception(f"Traceback: {traceback.format_exc()}")
+            logger.exception(f"Données OHLCV: {data}")
             raise
 
     async def close(self):

@@ -4,12 +4,11 @@ Regroupe les signaux par symbole et timeframe pendant une fenêtre temporelle.
 """
 
 import asyncio
+import contextlib
 import logging
-from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional
 from collections import defaultdict
-import sys
-import os
+from datetime import datetime
+from typing import Any
 
 from .strategy_classification import get_strategy_family
 
@@ -48,20 +47,24 @@ class IntelligentSignalBuffer:
         self.enable_mtf_sync = enable_mtf_sync
 
         # NOUVEAU: Buffer par SYMBOLE SEULEMENT (pas par timeframe/direction)
-        # On regroupe TOUS les signaux d'un symbole pour choisir UN gagnant final
-        self.symbol_wave_buffer: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        # On regroupe TOUS les signaux d'un symbole pour choisir UN gagnant
+        # final
+        self.symbol_wave_buffer: dict[str,
+                                      list[dict[str, Any]]] = defaultdict(list)
 
-        # Timestamps pour détecter la fin de vague (dernier signal reçu par symbole)
-        self.last_signal_time: Dict[str, datetime] = {}
-        self.first_signal_time: Dict[str, datetime] = {}
+        # Timestamps pour détecter la fin de vague (dernier signal reçu par
+        # symbole)
+        self.last_signal_time: dict[str, datetime] = {}
+        self.first_signal_time: dict[str, datetime] = {}
 
         # Timeout pour détecter fin de vague (configurable, défaut 10 secondes)
         self.wave_timeout = wave_timeout
 
         # ANCIEN: Conservé pour compatibilité mais plus utilisé
-        self.signal_buffer: Dict[tuple, List[Dict[str, Any]]] = defaultdict(list)
-        self.mtf_buffer: Dict[tuple, List[Dict[str, Any]]] = defaultdict(list)
-        self.first_mtf_signal_time: Dict[tuple, datetime] = {}
+        self.signal_buffer: dict[tuple,
+                                 list[dict[str, Any]]] = defaultdict(list)
+        self.mtf_buffer: dict[tuple, list[dict[str, Any]]] = defaultdict(list)
+        self.first_mtf_signal_time: dict[tuple, datetime] = {}
 
         # Lock pour thread safety
         self.buffer_lock = asyncio.Lock()
@@ -73,7 +76,8 @@ class IntelligentSignalBuffer:
         self.timeout_task = None
 
         # Timeframes par ordre de priorité décisionnelle
-        # ARCHITECTURE: 3m/5m = decision makers, 15m = context validator, 1m = timing tool
+        # ARCHITECTURE: 3m/5m = decision makers, 15m = context validator, 1m =
+        # timing tool
         self.timeframe_priority = {
             "1d": 1000,
             "1h": 200,
@@ -85,7 +89,8 @@ class IntelligentSignalBuffer:
 
         # Pondération pour calcul de consensus (influence réelle sur décisions)
         self.decision_weights = {
-            "15m": 0.25,  # 25% - Validation contexte/régime (peut être overridé par pump 1m)
+            # 25% - Validation contexte/régime (peut être overridé par pump 1m)
+            "15m": 0.25,
             "5m": 0.35,  # 35% - Cœur décisionnel
             "3m": 0.25,  # 25% - Cœur décisionnel
             "1m": 0.15,  # 15% - PUMP DETECTOR - peut overrider si signal explosif
@@ -118,7 +123,7 @@ class IntelligentSignalBuffer:
         """Définit la fonction de callback pour traiter les batches."""
         self.batch_processor = processor_callback
 
-    def _detect_pump_signal(self, signal: Dict[str, Any]) -> bool:
+    def _detect_pump_signal(self, signal: dict[str, Any]) -> bool:
         """
         Détecte si un signal 1m est un pump/dump explosif qui doit override les autres TF.
 
@@ -170,8 +175,7 @@ class IntelligentSignalBuffer:
                 f"🚀 PUMP DÉTECTÉ {signal.get('symbol')} {signal.get('side')}: "
                 f"confidence={confidence:.2f}, volume={volume_ratio:.1f}x, "
                 f"momentum={momentum_score:.1f}x, confluence={confluence_score:.2f}, "
-                f"breakout={breakout_strength:.2f}"
-            )
+                f"breakout={breakout_strength:.2f}")
             self.stats["pumps_detected"] += 1
 
         return is_pump
@@ -188,20 +192,21 @@ class IntelligentSignalBuffer:
 
                     for symbol, last_time in self.last_signal_time.items():
                         if (
-                            symbol in self.symbol_wave_buffer
-                            and self.symbol_wave_buffer[symbol]
+                            self.symbol_wave_buffer.get(symbol)
                         ):
                             elapsed = (now - last_time).total_seconds()
                             wave_size = len(self.symbol_wave_buffer[symbol])
 
-                            # Fin de vague détectée si timeout atteint ET au moins 1 signal
+                            # Fin de vague détectée si timeout atteint ET au
+                            # moins 1 signal
                             if elapsed >= self.wave_timeout and wave_size >= 1:
                                 symbols_to_process.append(symbol)
 
                     # Traiter les vagues complètes
                     for symbol in symbols_to_process:
                         wave_size = len(self.symbol_wave_buffer[symbol])
-                        elapsed = (now - self.last_signal_time[symbol]).total_seconds()
+                        elapsed = (
+                            now - self.last_signal_time[symbol]).total_seconds()
                         logger.info(
                             f"🌊 FIN DE VAGUE détectée {symbol}: {wave_size} signaux, {elapsed:.1f}s timeout"
                         )
@@ -210,10 +215,13 @@ class IntelligentSignalBuffer:
 
             except asyncio.CancelledError:
                 break
-            except Exception as e:
-                logger.error(f"Erreur dans wave_timeout_monitor: {e}")
+            except Exception:
+                logger.exception("Erreur dans wave_timeout_monitor")
 
-    async def _process_symbol_wave(self, symbol: str, trigger: str = "manual") -> None:
+    async def _process_symbol_wave(
+            self,
+            symbol: str,
+            trigger: str = "manual") -> None:
         """
         NOUVEAU: Traite une vague complète de signaux pour un symbole.
         Résout les conflits BUY vs SELL et choisit UN signal gagnant final.
@@ -266,7 +274,8 @@ class IntelligentSignalBuffer:
                 await self.batch_processor(winning_signals, wave_context_key)
                 self.stats["wave_completed"] += 1
 
-                # Pas de log ici car on ne sait pas encore si la validation va réussir
+                # Pas de log ici car on ne sait pas encore si la validation va
+                # réussir
         else:
             logger.info(f"🚫 Vague {symbol}: aucun gagnant, signal ignoré")
 
@@ -275,9 +284,9 @@ class IntelligentSignalBuffer:
     async def _choose_winning_signal(
         self,
         symbol: str,
-        buy_signals: List[Dict[str, Any]],
-        sell_signals: List[Dict[str, Any]],
-    ) -> Optional[List[Dict[str, Any]]]:
+        buy_signals: list[dict[str, Any]],
+        sell_signals: list[dict[str, Any]],
+    ) -> list[dict[str, Any]] | None:
         """
         Choisit les signaux gagnants entre BUY et SELL selon les critères :
         - 40% nombre de stratégies
@@ -299,25 +308,31 @@ class IntelligentSignalBuffer:
 
         # Si une seule direction, pas de conflit
         if buy_count > 0 and sell_count == 0:
-            logger.info(f"✅ {symbol}: BUY gagne par défaut ({buy_count} signaux)")
+            logger.info(
+                f"✅ {symbol}: BUY gagne par défaut ({buy_count} signaux)")
             self.stats["wave_no_conflicts"] += 1
             # NOUVEAU: Retourner les signaux BUY originaux directement
-            return self._prepare_winning_signals(buy_signals, 1.0, 0.0, wave_total)
+            return self._prepare_winning_signals(
+                buy_signals, 1.0, 0.0, wave_total)
 
         if sell_count > 0 and buy_count == 0:
-            logger.info(f"✅ {symbol}: SELL gagne par défaut ({sell_count} signaux)")
+            logger.info(
+                f"✅ {symbol}: SELL gagne par défaut ({sell_count} signaux)")
             self.stats["wave_no_conflicts"] += 1
             # NOUVEAU: Retourner les signaux SELL originaux directement
-            return self._prepare_winning_signals(sell_signals, 1.0, 0.0, wave_total)
+            return self._prepare_winning_signals(
+                sell_signals, 1.0, 0.0, wave_total)
 
         # Conflit détecté : appliquer les critères de choix
-        logger.warning(f"🤼 CONFLIT {symbol}: {buy_count} BUY vs {sell_count} SELL")
+        logger.warning(
+            f"🤼 CONFLIT {symbol}: {buy_count} BUY vs {sell_count} SELL")
         self.stats["wave_conflicts_resolved"] += 1
 
         buy_score = self._calculate_signal_strength(buy_signals)
         sell_score = self._calculate_signal_strength(sell_signals)
 
-        logger.info(f"📊 Scores {symbol}: BUY={buy_score:.3f} vs SELL={sell_score:.3f}")
+        logger.info(
+            f"📊 Scores {symbol}: BUY={buy_score:.3f} vs SELL={sell_score:.3f}")
 
         # Seuil adaptatif selon le nombre de signaux
         min_diff = self._get_min_diff_threshold(buy_count, sell_count)
@@ -331,21 +346,26 @@ class IntelligentSignalBuffer:
 
         # Déterminer le gagnant et retourner les signaux originaux
         if buy_score > sell_score:
-            logger.info(f"🟢 {symbol}: BUY gagne ({buy_score:.3f} vs {sell_score:.3f})")
-            # NOUVEAU: Retourner les signaux BUY originaux pour validation de consensus
+            logger.info(
+                f"🟢 {symbol}: BUY gagne ({buy_score:.3f} vs {sell_score:.3f})")
+            # NOUVEAU: Retourner les signaux BUY originaux pour validation de
+            # consensus
             return self._prepare_winning_signals(
                 buy_signals, buy_score, sell_score, wave_total
             )
-        else:
-            logger.info(
-                f"🔴 {symbol}: SELL gagne ({sell_score:.3f} vs {buy_score:.3f})"
-            )
-            # NOUVEAU: Retourner les signaux SELL originaux pour validation de consensus
-            return self._prepare_winning_signals(
-                sell_signals, sell_score, buy_score, wave_total
-            )
+        logger.info(
+            f"🔴 {symbol}: SELL gagne ({sell_score:.3f} vs {buy_score:.3f})"
+        )
+        # NOUVEAU: Retourner les signaux SELL originaux pour validation de
+        # consensus
+        return self._prepare_winning_signals(
+            sell_signals, sell_score, buy_score, wave_total
+        )
 
-    def _get_min_diff_threshold(self, buy_count: int, sell_count: int) -> float:
+    def _get_min_diff_threshold(
+            self,
+            buy_count: int,
+            sell_count: int) -> float:
         """
         Calcule le seuil de différence minimum adaptatif selon le nombre de signaux.
 
@@ -363,12 +383,13 @@ class IntelligentSignalBuffer:
 
         if total >= 20:  # Beaucoup de signaux = forte conviction statistique
             return 0.03  # 3% suffisant avec beaucoup de données
-        elif total >= 10:  # Nombre moyen de signaux
+        if total >= 10:  # Nombre moyen de signaux
             return 0.05  # 5% standard
-        else:  # Peu de signaux = besoin de plus de certitude
-            return 0.05  # PATCH: 8%→5% pour récupérer plus de vagues
+        # Peu de signaux = besoin de plus de certitude
+        return 0.05  # PATCH: 8%→5% pour récupérer plus de vagues
 
-    def _calculate_signal_strength(self, signals: List[Dict[str, Any]]) -> float:
+    def _calculate_signal_strength(
+            self, signals: list[dict[str, Any]]) -> float:
         """
         Calcule le score de force d'un groupe de signaux selon les critères pondérés.
 
@@ -431,11 +452,11 @@ class IntelligentSignalBuffer:
 
     def _prepare_winning_signals(
         self,
-        winning_signals: List[Dict[str, Any]],
+        winning_signals: list[dict[str, Any]],
         winning_score: float,
         losing_score: float,
         wave_total: int | None = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         NOUVEAU: Prépare les signaux gagnants en ajoutant les métadonnées de résolution de conflit.
         Contrairement à _create_consensus_signal, cette méthode préserve les signaux originaux
@@ -464,9 +485,8 @@ class IntelligentSignalBuffer:
                 enriched_signal["metadata"] = {}
 
             # PATCH F: Propager la volatilité vers adaptive_consensus
-            vr = signal.get("volatility_regime") or (signal.get("metadata") or {}).get(
-                "volatility_regime"
-            )
+            vr = signal.get("volatility_regime") or (
+                signal.get("metadata") or {}).get("volatility_regime")
             if vr:
                 enriched_signal["metadata"]["volatility_regime"] = vr
 
@@ -493,7 +513,8 @@ class IntelligentSignalBuffer:
         )
         return enriched_signals
 
-    def _create_consensus_signal(self, signals: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _create_consensus_signal(
+            self, signals: list[dict[str, Any]]) -> dict[str, Any]:
         """
         Crée un signal de consensus à partir d'un groupe de signaux de même direction.
 
@@ -514,14 +535,14 @@ class IntelligentSignalBuffer:
 
         # Calculer les métadonnees du consensus
         strategies = [s.get("strategy", "Unknown") for s in signals]
-        timeframes = list(set(s.get("timeframe", "5m") for s in signals))
+        timeframes = list({s.get("timeframe", "5m") for s in signals})
         confidences = [s.get("confidence", 0.5) for s in signals]
 
         avg_confidence = sum(confidences) / len(confidences)
         max_confidence = max(confidences)
 
         # Créer le signal de consensus
-        consensus_signal = {
+        return {
             "strategy": "WAVE_CONSENSUS",
             "symbol": symbol,
             "side": side,
@@ -545,9 +566,8 @@ class IntelligentSignalBuffer:
             },
         }
 
-        return consensus_signal
-
-    def _has_simultaneous_opposite_processing(self, symbol: str, side: str) -> bool:
+    def _has_simultaneous_opposite_processing(
+            self, symbol: str, side: str) -> bool:
         """
         Vérifie s'il y a un traitement simultané de la direction opposée.
         Plus strict - utilisé pour les déclenchements normaux.
@@ -555,21 +575,23 @@ class IntelligentSignalBuffer:
         opposite_side = "SELL" if side == "BUY" else "BUY"
         opposite_key = (symbol, opposite_side)
 
-        # Vérifier si l'opposé a des signaux en buffer ET dans une fenêtre critique
-        if opposite_key in self.mtf_buffer and self.mtf_buffer[opposite_key]:
-            if opposite_key in self.first_mtf_signal_time:
-                opposite_first_time = self.first_mtf_signal_time[opposite_key]
-                our_first_time = self.first_mtf_signal_time.get((symbol, side))
+        # Vérifier si l'opposé a des signaux en buffer ET dans une fenêtre
+        # critique
+        if self.mtf_buffer.get(
+                opposite_key) and opposite_key in self.first_mtf_signal_time:
+            opposite_first_time = self.first_mtf_signal_time[opposite_key]
+            our_first_time = self.first_mtf_signal_time.get((symbol, side))
 
-                if our_first_time:
-                    time_diff = abs(
-                        (our_first_time - opposite_first_time).total_seconds()
-                    )
-                    # Considérer comme simultané si dans les 3 secondes
-                    return time_diff < 3.0
+            if our_first_time:
+                time_diff = abs(
+                    (our_first_time - opposite_first_time).total_seconds()
+                )
+                # Considérer comme simultané si dans les 3 secondes
+                return time_diff < 3.0
         return False
 
-    def _has_critical_opposite_processing(self, symbol: str, side: str) -> bool:
+    def _has_critical_opposite_processing(
+            self, symbol: str, side: str) -> bool:
         """
         Vérifie s'il y a un traitement critique de la direction opposée.
         Moins strict - utilisé pour les timeouts où on peut être plus permissif.
@@ -577,8 +599,9 @@ class IntelligentSignalBuffer:
         opposite_side = "SELL" if side == "BUY" else "BUY"
         opposite_key = (symbol, opposite_side)
 
-        # Seulement bloquer si l'opposé a beaucoup de signaux OU est très récent
-        if opposite_key in self.mtf_buffer and self.mtf_buffer[opposite_key]:
+        # Seulement bloquer si l'opposé a beaucoup de signaux OU est très
+        # récent
+        if self.mtf_buffer.get(opposite_key):
             opposite_buffer_size = len(self.mtf_buffer[opposite_key])
 
             # Bloquer si l'opposé a plus de 3 signaux (forte conviction)
@@ -595,7 +618,7 @@ class IntelligentSignalBuffer:
 
         return False
 
-    async def add_signal(self, signal: Dict[str, Any]) -> None:
+    async def add_signal(self, signal: dict[str, Any]) -> None:
         """
         NOUVEAU: Ajoute un signal au buffer de vague par symbole.
         Détecte automatiquement la fin de vague avec timeout intelligent.
@@ -610,7 +633,8 @@ class IntelligentSignalBuffer:
 
             # PATCH D: Exclure side=None dès l'entrée (veto/filtres)
             if side is None:
-                logger.debug(f"🚫 Signal veto/filtre ignoré pour {symbol} (side=None)")
+                logger.debug(
+                    f"🚫 Signal veto/filtre ignoré pour {symbol} (side=None)")
                 return
 
             # Ajouter au buffer de vague pour ce symbole
@@ -627,7 +651,8 @@ class IntelligentSignalBuffer:
 
             # Démarrer le monitor de timeout si pas actif
             if self.timeout_task is None or self.timeout_task.done():
-                self.timeout_task = asyncio.create_task(self._wave_timeout_monitor())
+                self.timeout_task = asyncio.create_task(
+                    self._wave_timeout_monitor())
 
             side = signal.get("side", "UNKNOWN")
             timeframe = signal.get("timeframe", "UNKNOWN")
@@ -675,10 +700,13 @@ class IntelligentSignalBuffer:
             our_first_time = self.first_mtf_signal_time.get(mtf_key)
 
             if our_first_time and opposite_first_time:
-                time_diff = abs((our_first_time - opposite_first_time).total_seconds())
-                # Si les deux directions ont commencé dans les 2 secondes, traiter en priorité
+                time_diff = abs(
+                    (our_first_time - opposite_first_time).total_seconds())
+                # Si les deux directions ont commencé dans les 2 secondes,
+                # traiter en priorité
                 if time_diff < 2.0:
-                    opposite_buffer_size = len(self.mtf_buffer.get(opposite_key, []))
+                    opposite_buffer_size = len(
+                        self.mtf_buffer.get(opposite_key, []))
                     if opposite_buffer_size > 0:
                         logger.warning(
                             f"⚠️ CONFLIT MTF détecté {symbol}: {side}({buffer_size}) vs {opposite_side}({opposite_buffer_size})"
@@ -702,45 +730,49 @@ class IntelligentSignalBuffer:
             self.stats["size_triggers"] += 1
             return
 
-        # Analyser la diversité des timeframes (pas besoin de directions, déjà séparé)
-        timeframes_present = set(s.get("timeframe", "5m") for s in mtf_signals)
+        # Analyser la diversité des timeframes (pas besoin de directions, déjà
+        # séparé)
+        timeframes_present = {s.get("timeframe", "5m") for s in mtf_signals}
         # Toutes les directions sont identiques maintenant car séparées par clé
 
         # Conditions de déclenchement intelligent :
 
-        # 1. Si on a des signaux de TOUS les timeframes principaux (3m+5m+15m) dans la même direction
-        expected_timeframes = {"3m", "5m", "15m"}  # Timeframes principaux de l'analyzer
-        has_all_main_timeframes = expected_timeframes.issubset(timeframes_present)
+        # 1. Si on a des signaux de TOUS les timeframes principaux (3m+5m+15m)
+        # dans la même direction
+        # Timeframes principaux de l'analyzer
+        expected_timeframes = {"3m", "5m", "15m"}
+        has_all_main_timeframes = expected_timeframes.issubset(
+            timeframes_present)
 
         if has_all_main_timeframes:
             logger.info(
                 f"Déclenchement MTF par timeframes complets: {len(timeframes_present)} TFs "
-                f"({list(timeframes_present)}), direction {side} pour {symbol}"
-            )
+                f"({list(timeframes_present)}), direction {side} pour {symbol}")
             await self._process_mtf_symbol(mtf_key, trigger="complete_timeframes")
             self.stats["mtf_sync_triggers"] += 1
             return
 
-        # 2. Fallback: Si on a 3+ timeframes différents ET aucun conflit détecté
-        elif len(timeframes_present) >= 3:
-            # Vérifier une dernière fois qu'il n'y a pas de traitement simultané de l'opposé
+        # 2. Fallback: Si on a 3+ timeframes différents ET aucun conflit
+        # détecté
+        if len(timeframes_present) >= 3:
+            # Vérifier une dernière fois qu'il n'y a pas de traitement
+            # simultané de l'opposé
             if not self._has_simultaneous_opposite_processing(symbol, side):
                 logger.info(
                     f"Déclenchement MTF par diversité TF: {len(timeframes_present)} TFs, "
-                    f"direction {side} pour {symbol}"
-                )
+                    f"direction {side} pour {symbol}")
                 await self._process_mtf_symbol(mtf_key, trigger="timeframe_diversity")
                 self.stats["mtf_sync_triggers"] += 1
                 return
-            else:
-                logger.warning(
-                    f"🚫 Déclenchement MTF bloqué {symbol} {side}: traitement opposé simultané"
-                )
+            logger.warning(
+                f"🚫 Déclenchement MTF bloqué {symbol} {side}: traitement opposé simultané"
+            )
 
         # 3. Plus de conflits possibles car BUY/SELL sont séparés!
         # Les conflits sont maintenant impossibles dans le même buffer
 
-        # 4. Si on a un signal de timeframe élevé (1h+) avec confirmation courte ET aucun conflit
+        # 4. Si on a un signal de timeframe élevé (1h+) avec confirmation
+        # courte ET aucun conflit
         high_tf_signals = [
             s
             for s in mtf_signals
@@ -754,21 +786,21 @@ class IntelligentSignalBuffer:
         ):
             logger.info(
                 f"Déclenchement MTF par TF élevé: {len(high_tf_signals)} signaux 1h+ "
-                f"avec {buffer_size-len(high_tf_signals)} confirmations {side} pour {symbol}"
-            )
+                f"avec {buffer_size-len(high_tf_signals)} confirmations {side} pour {symbol}")
             await self._process_mtf_symbol(mtf_key, trigger="high_timeframe")
             self.stats["mtf_sync_triggers"] += 1
             return
 
-        # 5. Si fenêtre de sync expirée et assez de signaux ET aucun conflit critique
+        # 5. Si fenêtre de sync expirée et assez de signaux ET aucun conflit
+        # critique
         first_time = self.first_mtf_signal_time.get(mtf_key)
         if first_time:
             elapsed = (datetime.utcnow() - first_time).total_seconds()
             if elapsed >= self.sync_window and buffer_size >= self.min_batch_size:
-                # Vérifier les conflits avant le timeout (mais être plus permissif)
+                # Vérifier les conflits avant le timeout (mais être plus
+                # permissif)
                 can_process_timeout = not self._has_critical_opposite_processing(
-                    symbol, side
-                )
+                    symbol, side)
                 if can_process_timeout:
                     logger.info(
                         f"Déclenchement MTF par timeout sync: {elapsed:.1f}s, "
@@ -815,8 +847,8 @@ class IntelligentSignalBuffer:
             try:
                 await self.batch_processor(signals, context_key)
                 self.stats["batches_processed"] += 1
-            except Exception as e:
-                logger.error(f"Erreur traitement batch {context_key}: {e}")
+            except Exception:
+                logger.exception("Erreur traitement batch {context_key}")
 
     async def _process_mtf_symbol(
         self, mtf_key: tuple, trigger: str = "manual"
@@ -843,7 +875,7 @@ class IntelligentSignalBuffer:
 
         # Nettoyer aussi les buffers individuels de ce symbole
         contexts_to_clean = []
-        for context_key in self.signal_buffer.keys():
+        for context_key in self.signal_buffer:
             if context_key[0] == symbol:  # Premier élément = symbole
                 contexts_to_clean.append(context_key)
 
@@ -855,14 +887,18 @@ class IntelligentSignalBuffer:
 
         # Trier par priorité de timeframe (plus élevé = plus important)
         signals.sort(
-            key=lambda s: self.timeframe_priority.get(s.get("timeframe", "5m"), 0),
+            key=lambda s: self.timeframe_priority.get(
+                s.get(
+                    "timeframe",
+                    "5m"),
+                0),
             reverse=True,
         )
 
         # Analyser la composition
         timeframes = [s.get("timeframe", "5m") for s in signals]
-        sides = [s.get("side", "UNKNOWN") for s in signals]
-        strategies = [s.get("strategy", "Unknown") for s in signals]
+        [s.get("side", "UNKNOWN") for s in signals]
+        [s.get("strategy", "Unknown") for s in signals]
 
         logger.info(
             f"Traitement MTF {symbol} {side}: {len(signals)} signaux "
@@ -871,7 +907,7 @@ class IntelligentSignalBuffer:
 
         # Plus de conflits possibles car BUY/SELL sont déjà séparés!
         final_signals = signals
-        original_signal_count = len(signals)
+        len(signals)
 
         # Traiter le batch MTF si on a un processor
         if self.batch_processor and final_signals:
@@ -880,7 +916,8 @@ class IntelligentSignalBuffer:
             await self.batch_processor(final_signals, mtf_context_key)
             self.stats["mtf_batches_processed"] += 1
 
-    def _analyze_mtf_conflicts(self, signals: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _analyze_mtf_conflicts(
+            self, signals: list[dict[str, Any]]) -> dict[str, Any]:
         """
         OBSOLÈTE: Plus de conflits possibles car BUY/SELL sont séparés dès le buffer.
         Méthode conservée pour compatibilité mais ne devrait plus être appelée.
@@ -902,9 +939,10 @@ class IntelligentSignalBuffer:
         for symbol in symbols_to_process:
             await self._process_symbol_wave(symbol, trigger="flush")
 
-        logger.info(f"🌊 Flush forcé: {len(symbols_to_process)} vagues traitées")
+        logger.info(
+            f"🌊 Flush forcé: {len(symbols_to_process)} vagues traitées")
 
-    async def get_buffer_status(self) -> Dict[str, Any]:
+    async def get_buffer_status(self) -> dict[str, Any]:
         """NOUVEAU: Retourne le statut des vagues en cours."""
         async with self.buffer_lock:
             total_buffered = sum(
@@ -928,7 +966,7 @@ class IntelligentSignalBuffer:
                 # Analyser la composition
                 buy_count = sum(1 for s in signals if s.get("side") == "BUY")
                 sell_count = sum(1 for s in signals if s.get("side") == "SELL")
-                timeframes = list(set(s.get("timeframe", "5m") for s in signals))
+                timeframes = list({s.get("timeframe", "5m") for s in signals})
 
                 wave_details[symbol] = {
                     "total_signals": len(signals),
@@ -954,10 +992,8 @@ class IntelligentSignalBuffer:
         """Nettoie les ressources du buffer."""
         if self.timeout_task is not None and not self.timeout_task.done():
             self.timeout_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self.timeout_task
-            except asyncio.CancelledError:
-                pass
 
         await self.force_flush_all()
         logger.info("🧹 Buffer de vagues nettoyé")

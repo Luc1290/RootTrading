@@ -3,12 +3,11 @@ Gestionnaire de trailing sell intelligent avec tracking du prix maximum historiq
 Extrait du coordinator pour alléger le code et améliorer la maintenance.
 """
 
+import json
 import logging
 import time
-import json
-import numpy as np
-from typing import Optional, Tuple, Dict, Any
 from datetime import datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -57,12 +56,11 @@ class TrailingSellManager:
         """
         if position_id:
             return f"{key_type}:{symbol}:{position_id}"
-        else:
-            # Legacy fallback (pour compatibilité, mais logguer warning)
-            logger.warning(
-                f"⚠️ Clé Redis {key_type}:{symbol} sans position_id - risque collision!"
-            )
-            return f"{key_type}:{symbol}"
+        # Legacy fallback (pour compatibilité, mais logguer warning)
+        logger.warning(
+            f"⚠️ Clé Redis {key_type}:{symbol} sans position_id - risque collision!"
+        )
+        return f"{key_type}:{symbol}"
 
     def check_trailing_sell(
         self,
@@ -71,7 +69,7 @@ class TrailingSellManager:
         entry_price: float,
         entry_time: Any,
         position_id: str | None = None,
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """
         Vérifie si on doit exécuter le SELL selon la logique de trailing sell améliorée.
         Utilise le prix maximum historique du cycle pour une meilleure décision.
@@ -86,7 +84,8 @@ class TrailingSellManager:
         Returns:
             (should_sell, reason)
         """
-        logger.info(f"🔍 DEBUT check_trailing_sell pour {symbol} @ {current_price}")
+        logger.info(
+            f"🔍 DEBUT check_trailing_sell pour {symbol} @ {current_price}")
 
         try:
             # Convertir timestamp ISO en epoch si nécessaire
@@ -96,14 +95,16 @@ class TrailingSellManager:
                 )
                 entry_time_epoch = entry_time_dt.timestamp()
             else:
-                entry_time_epoch = float(entry_time) if entry_time else time.time()
+                entry_time_epoch = float(
+                    entry_time) if entry_time else time.time()
 
             precision = self._get_price_precision(current_price)
             logger.info(
                 f"🔍 Prix entrée: {entry_price:.{precision}f}, Prix actuel: {current_price:.{precision}f}"
             )
 
-            # Calculer la performance actuelle (positif = gain, négatif = perte)
+            # Calculer la performance actuelle (positif = gain, négatif =
+            # perte)
             performance_percent = (current_price - entry_price) / entry_price
 
             # Récupérer et afficher le prix max historique dès le début
@@ -130,7 +131,8 @@ class TrailingSellManager:
                     f"🧠 Stop-loss adaptatif pour {symbol}: {adaptive_threshold*100:.2f}% (perte actuelle: {abs(performance_percent)*100:.2f}%)"
                 )
 
-            # Si perte dépasse le seuil adaptatif : SELL immédiat (perte = performance négative)
+            # Si perte dépasse le seuil adaptatif : SELL immédiat (perte =
+            # performance négative)
             if (
                 performance_percent < 0
                 and abs(performance_percent) >= adaptive_threshold
@@ -154,14 +156,16 @@ class TrailingSellManager:
                 )
 
             # === POSITION GAGNANTE : BREAKEVEN + TAKE PROFIT + TRAILING ===
-            gain_percent = performance_percent  # Maintenant cohérent (positif = gain)
+            # Maintenant cohérent (positif = gain)
+            gain_percent = performance_percent
             logger.info(
                 f"🔍 Position gagnante détectée: +{gain_percent*100:.2f}%, vérification breakeven/take profit/trailing"
             )
 
             # === BREAKEVEN INTELLIGENT : Protection critique basée sur MAX historique ===
             # CORRECTION CRITIQUE : Breakeven basé sur le GAIN MAX atteint, pas le gain actuel
-            # Sinon si max=+2% puis retour à +0.5%, le breakeven niveau 2 ne se déclenche jamais
+            # Sinon si max=+2% puis retour à +0.5%, le breakeven niveau 2 ne se
+            # déclenche jamais
             max_gain_percent = (historical_max - entry_price) / entry_price
             fee_percent = 0.0008  # 8 bps (taker Binance standard)
             breakeven_threshold_1 = 0.012  # 1.2%
@@ -186,7 +190,8 @@ class TrailingSellManager:
 
             elif max_gain_percent >= breakeven_threshold_1:
                 # Max a dépassé +1.2% : protéger entry + frais (pas de perte)
-                breakeven_price = entry_price * (1 + 2 * fee_percent)  # Entry + 2×frais
+                breakeven_price = entry_price * \
+                    (1 + 2 * fee_percent)  # Entry + 2×frais
                 if current_price < breakeven_price:
                     logger.warning(
                         f"🛡️ BREAKEVEN NIVEAU 1 déclenché: prix {current_price:.{precision}f} < breakeven {breakeven_price:.{precision}f} (max atteint: +{max_gain_percent*100:.2f}%)"
@@ -211,9 +216,11 @@ class TrailingSellManager:
             time_elapsed_sec = time.time() - entry_time_epoch
             pump_rider_mode = (
                 market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]
-                and atr_percent > 0.030  # Volatilité très élevée (>3% - vrais pumps)
+                # Volatilité très élevée (>3% - vrais pumps)
+                and atr_percent > 0.030
                 and gain_percent >= 0.05  # Déjà +5% minimum (pas 3%)
-                and time_elapsed_sec < 600  # <10min (vitesse = confirmation pump)
+                # <10min (vitesse = confirmation pump)
+                and time_elapsed_sec < 600
             )
 
             if pump_rider_mode:
@@ -222,10 +229,10 @@ class TrailingSellManager:
                 )
             elif gain_percent >= 0.025:  # Activer TP progressif à partir de +2.5%
                 should_take_profit, tp_reason = self._check_progressive_take_profit(
-                    symbol, gain_percent, position_id
-                )
+                    symbol, gain_percent, position_id)
                 if should_take_profit:
-                    logger.info(f"💰 TAKE PROFIT PROGRESSIF DÉCLENCHÉ: {tp_reason}")
+                    logger.info(
+                        f"💰 TAKE PROFIT PROGRESSIF DÉCLENCHÉ: {tp_reason}")
                     self._cleanup_references(symbol, position_id)
                     return True, tp_reason
             else:
@@ -261,18 +268,21 @@ class TrailingSellManager:
             max_gain_from_entry = (historical_max - entry_price) / entry_price
 
             # Marge adaptative : plus on a monté, plus on serre le trailing
-            adaptive_margin = self._get_adaptive_trailing_margin(max_gain_from_entry)
+            adaptive_margin = self._get_adaptive_trailing_margin(
+                max_gain_from_entry)
             logger.info(
                 f"🎯 TRAILING ADAPTATIF: max_gain={max_gain_from_entry*100:.2f}%, marge={adaptive_margin*100:.2f}%"
             )
 
             # Récupérer le prix SELL précédent
-            previous_sell_price = self._get_previous_sell_price(symbol, position_id)
+            previous_sell_price = self._get_previous_sell_price(
+                symbol, position_id)
             logger.info(f"🔍 Prix SELL précédent: {previous_sell_price}")
 
             # === DÉCISION DE VENTE BASÉE SUR LE PRIX MAX ===
 
-            # Si chute importante depuis le max (utiliser marge adaptative), vendre immédiatement
+            # Si chute importante depuis le max (utiliser marge adaptative),
+            # vendre immédiatement
             if drop_from_max >= adaptive_margin:
                 logger.warning(
                     f"📉 CHUTE IMPORTANTE depuis max ({drop_from_max*100:.2f}%), SELL IMMÉDIAT!"
@@ -297,7 +307,8 @@ class TrailingSellManager:
 
             # === SELL SUIVANTS : TRAILING DÉJÀ PROTÉGÉ PAR ADAPTIVE_MARGIN LIGNE 158 ===
             # Cette section ne devrait être atteinte que si drop_from_max < adaptive_margin
-            # Donc on fait juste le trailing classique sur le previous_sell_price
+            # Donc on fait juste le trailing classique sur le
+            # previous_sell_price
 
             # Ensuite logique classique de trailing avec marge ATR
             sell_threshold = previous_sell_price * (1 - sell_margin)
@@ -316,7 +327,7 @@ class TrailingSellManager:
                     f"Prix monte, référence mise à jour (max: {historical_max:.{precision}f})",
                 )
 
-            elif current_price > sell_threshold:
+            if current_price > sell_threshold:
                 # Prix dans la marge de tolérance
                 logger.info(
                     f"🟡 Prix stable: {current_price:.{precision}f} > seuil {sell_threshold:.{precision}f}"
@@ -326,24 +337,23 @@ class TrailingSellManager:
                     f"Prix dans marge de tolérance (max: {historical_max:.{precision}f})",
                 )
 
-            else:
-                # Prix baisse significativement : VENDRE
-                logger.warning(
-                    f"📉 Baisse significative: {current_price:.{precision}f} ≤ {sell_threshold:.{precision}f}, SELL!"
-                )
-                self._cleanup_references(symbol, position_id)
-                return (
-                    True,
-                    f"Baisse sous seuil trailing ({current_price:.{precision}f} ≤ {sell_threshold:.{precision}f})",
-                )
+            # Prix baisse significativement : VENDRE
+            logger.warning(
+                f"📉 Baisse significative: {current_price:.{precision}f} ≤ {sell_threshold:.{precision}f}, SELL!"
+            )
+            self._cleanup_references(symbol, position_id)
+            return (
+                True,
+                f"Baisse sous seuil trailing ({current_price:.{precision}f} ≤ {sell_threshold:.{precision}f})",
+            )
 
-        except Exception as e:
-            logger.error(f"❌ Erreur dans check_trailing_sell pour {symbol}: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur dans check_trailing_sell pour {symbol}")
             import traceback
 
-            logger.error(f"❌ Traceback: {traceback.format_exc()}")
+            logger.exception(f"❌ Traceback: {traceback.format_exc()}")
             # En cas d'erreur, autoriser le SELL par sécurité
-            return True, f"Erreur technique, SELL autorisé par défaut"
+            return True, "Erreur technique, SELL autorisé par défaut"
 
     def update_max_price_if_needed(
         self, symbol: str, current_price: float, position_id: str | None = None
@@ -361,7 +371,8 @@ class TrailingSellManager:
             True si le prix max a été mis à jour
         """
         try:
-            max_price_key = self._get_redis_key("cycle_max_price", symbol, position_id)
+            max_price_key = self._get_redis_key(
+                "cycle_max_price", symbol, position_id)
             max_price_data = self.redis_client.get(max_price_key)
 
             historical_max = None
@@ -369,16 +380,17 @@ class TrailingSellManager:
                 try:
                     if isinstance(max_price_data, dict):
                         historical_max = float(max_price_data.get("price", 0))
-                    elif isinstance(max_price_data, (str, bytes)):
+                    elif isinstance(max_price_data, str | bytes):
                         if isinstance(max_price_data, bytes):
                             max_price_data = max_price_data.decode("utf-8")
                         max_price_dict = json.loads(max_price_data)
                         historical_max = float(max_price_dict.get("price", 0))
-                except Exception as e:
-                    logger.error(f"Erreur parsing prix max: {e}")
+                except Exception:
+                    logger.exception("Erreur parsing prix max")
 
             if historical_max is None or current_price > historical_max:
-                self._update_cycle_max_price(symbol, current_price, position_id)
+                self._update_cycle_max_price(
+                    symbol, current_price, position_id)
                 precision = self._get_price_precision(current_price)
                 logger.info(
                     f"📈 Nouveau max pour {symbol}: {current_price:.{precision}f}"
@@ -387,8 +399,8 @@ class TrailingSellManager:
 
             return False
 
-        except Exception as e:
-            logger.error(f"Erreur mise à jour prix max {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur mise à jour prix max {symbol}")
             return False
 
     def _get_and_update_max_price(
@@ -411,7 +423,8 @@ class TrailingSellManager:
             Prix maximum historique
         """
         # Récupérer le prix max historique
-        max_price_key = self._get_redis_key("cycle_max_price", symbol, position_id)
+        max_price_key = self._get_redis_key(
+            "cycle_max_price", symbol, position_id)
         max_price_data = self.redis_client.get(max_price_key)
         historical_max = None
 
@@ -419,13 +432,13 @@ class TrailingSellManager:
             try:
                 if isinstance(max_price_data, dict):
                     historical_max = float(max_price_data.get("price", 0))
-                elif isinstance(max_price_data, (str, bytes)):
+                elif isinstance(max_price_data, str | bytes):
                     if isinstance(max_price_data, bytes):
                         max_price_data = max_price_data.decode("utf-8")
                     max_price_dict = json.loads(max_price_data)
                     historical_max = float(max_price_dict.get("price", 0))
-            except Exception as e:
-                logger.error(f"Erreur récupération prix max: {e}")
+            except Exception:
+                logger.exception("Erreur récupération prix max")
 
         # Si pas de prix max, initialiser avec le prix d'entrée
         if historical_max is None:
@@ -445,7 +458,7 @@ class TrailingSellManager:
 
     def _get_previous_sell_price(
         self, symbol: str, position_id: str | None = None
-    ) -> Optional[float]:
+    ) -> float | None:
         """
         Récupère le prix du SELL précédent stocké en référence.
 
@@ -457,7 +470,8 @@ class TrailingSellManager:
             Prix du SELL précédent ou None
         """
         try:
-            ref_key = self._get_redis_key("sell_reference", symbol, position_id)
+            ref_key = self._get_redis_key(
+                "sell_reference", symbol, position_id)
             price_data = self.redis_client.get(ref_key)
 
             if not price_data:
@@ -471,27 +485,27 @@ class TrailingSellManager:
             if isinstance(price_data, dict):
                 if "price" in price_data:
                     return float(price_data["price"])
-                else:
-                    logger.warning(
-                        f"Clé 'price' manquante dans dict Redis pour {symbol}"
-                    )
-                    return None
+                logger.warning(
+                    f"Clé 'price' manquante dans dict Redis pour {symbol}"
+                )
+                return None
 
-            elif isinstance(price_data, (str, bytes)):
+            if isinstance(price_data, str | bytes):
                 try:
                     if isinstance(price_data, bytes):
                         price_data = price_data.decode("utf-8")
 
                     parsed_data = json.loads(price_data)
-                    if isinstance(parsed_data, dict) and "price" in parsed_data:
+                    if isinstance(
+                            parsed_data,
+                            dict) and "price" in parsed_data:
                         return float(parsed_data["price"])
-                    else:
-                        logger.warning(
-                            f"Format JSON invalide pour {symbol}: {parsed_data}"
-                        )
-                        return None
-                except json.JSONDecodeError as e:
-                    logger.error(f"Erreur JSON decode pour {symbol}: {e}")
+                    logger.warning(
+                        f"Format JSON invalide pour {symbol}: {parsed_data}"
+                    )
+                    return None
+                except json.JSONDecodeError:
+                    logger.exception("Erreur JSON decode pour {symbol}")
                     return None
 
             else:
@@ -500,8 +514,9 @@ class TrailingSellManager:
                 )
                 return None
 
-        except Exception as e:
-            logger.error(f"Erreur récupération sell reference pour {symbol}: {e}")
+        except Exception:
+            logger.exception(
+                "Erreur récupération sell reference pour {symbol}")
             return None
 
     def _update_sell_reference(
@@ -516,14 +531,21 @@ class TrailingSellManager:
             position_id: ID unique de position
         """
         try:
-            ref_key = self._get_redis_key("sell_reference", symbol, position_id)
+            ref_key = self._get_redis_key(
+                "sell_reference", symbol, position_id)
             ref_data = {"price": price, "timestamp": int(time.time() * 1000)}
             # TTL de 7 jours (604800s) - sera refresh à chaque check
-            self.redis_client.set(ref_key, json.dumps(ref_data), expiration=604800)
-        except Exception as e:
-            logger.error(f"Erreur mise à jour sell reference pour {symbol}: {e}")
+            self.redis_client.set(
+                ref_key,
+                json.dumps(ref_data),
+                expiration=604800)
+        except Exception:
+            logger.exception("Erreur mise à jour sell reference pour {symbol}")
 
-    def _clear_sell_reference(self, symbol: str, position_id: str | None = None) -> None:
+    def _clear_sell_reference(
+            self,
+            symbol: str,
+            position_id: str | None = None) -> None:
         """
         Supprime la référence de prix SELL pour un symbole.
 
@@ -532,11 +554,12 @@ class TrailingSellManager:
             position_id: ID unique de position
         """
         try:
-            ref_key = self._get_redis_key("sell_reference", symbol, position_id)
+            ref_key = self._get_redis_key(
+                "sell_reference", symbol, position_id)
             self.redis_client.delete(ref_key)
             logger.info(f"🧹 Référence SELL supprimée pour {symbol}")
-        except Exception as e:
-            logger.error(f"Erreur suppression sell reference pour {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur suppression sell reference pour {symbol}")
 
     def _update_cycle_max_price(
         self, symbol: str, price: float, position_id: str | None = None
@@ -550,15 +573,22 @@ class TrailingSellManager:
             position_id: ID unique de position
         """
         try:
-            max_key = self._get_redis_key("cycle_max_price", symbol, position_id)
+            max_key = self._get_redis_key(
+                "cycle_max_price", symbol, position_id)
             max_data = {"price": price, "timestamp": int(time.time() * 1000)}
             # TTL de 7 jours (604800s) - sera refresh à chaque check
-            self.redis_client.set(max_key, json.dumps(max_data), expiration=604800)
+            self.redis_client.set(
+                max_key,
+                json.dumps(max_data),
+                expiration=604800)
             logger.debug(f"📈 Prix max mis à jour pour {symbol}: {price}")
-        except Exception as e:
-            logger.error(f"Erreur mise à jour prix max pour {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur mise à jour prix max pour {symbol}")
 
-    def _clear_cycle_max_price(self, symbol: str, position_id: str | None = None) -> None:
+    def _clear_cycle_max_price(
+            self,
+            symbol: str,
+            position_id: str | None = None) -> None:
         """
         Supprime le prix maximum historique d'un cycle.
 
@@ -567,15 +597,17 @@ class TrailingSellManager:
             position_id: ID unique de position
         """
         try:
-            max_key = self._get_redis_key("cycle_max_price", symbol, position_id)
+            max_key = self._get_redis_key(
+                "cycle_max_price", symbol, position_id)
             self.redis_client.delete(max_key)
             logger.info(f"🧹 Prix max historique supprimé pour {symbol}")
-        except Exception as e:
-            logger.error(f"Erreur suppression prix max pour {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur suppression prix max pour {symbol}")
 
-    # SUPPRIMÉ - fonction dupliquée, gardée seulement la version mise à jour plus bas
+    # SUPPRIMÉ - fonction dupliquée, gardée seulement la version mise à jour
+    # plus bas
 
-    def _get_atr_based_thresholds(self, symbol: str) -> Dict[str, float]:
+    def _get_atr_based_thresholds(self, symbol: str) -> dict[str, float]:
         """
         Calcule les seuils adaptatifs OPTIMISÉS pour maximiser les gains en haussier.
 
@@ -591,7 +623,8 @@ class TrailingSellManager:
             market_regime = self._get_market_regime(symbol)
 
             if atr_percent is None:
-                logger.debug(f"Pas d'ATR pour {symbol}, seuils par défaut scalp")
+                logger.debug(
+                    f"Pas d'ATR pour {symbol}, seuils par défaut scalp")
                 return {
                     "trailing_margin": 0.012,  # 1.2% par défaut
                     "activate_trailing_gain": 0.015,  # 1.5% activation scalp
@@ -599,8 +632,10 @@ class TrailingSellManager:
                 }
 
             # === ACTIVATION TRAILING : Optimisée pour scalp intraday ===
-            # Base 1.5% pour scalp BTC - capture gains réalistes sans over-trading
-            activate_trailing_gain = max(0.015, 0.8 * atr_percent)  # Min 1.5% scalp
+            # Base 1.5% pour scalp BTC - capture gains réalistes sans
+            # over-trading
+            activate_trailing_gain = max(
+                0.015, 0.8 * atr_percent)  # Min 1.5% scalp
 
             # === MARGES TRAILING : Adaptatives au régime de marché ===
             base_trailing_margin = max(
@@ -609,7 +644,8 @@ class TrailingSellManager:
 
             # Multiplicateurs selon le régime (optimisés pour gains)
             regime_multipliers = {
-                "TRENDING_BULL": 1.8,  # Bull fort = marges très larges (ride les pumps)
+                # Bull fort = marges très larges (ride les pumps)
+                "TRENDING_BULL": 1.8,
                 "BREAKOUT_BULL": 1.6,  # Breakout = marges larges
                 "RANGING": 1.0,  # Range = marges normales
                 "TRANSITION": 1.2,  # Transition = légèrement plus large
@@ -624,7 +660,9 @@ class TrailingSellManager:
             trailing_margin = base_trailing_margin * regime_factor
 
             # Contraintes finales scalp
-            trailing_margin = max(0.012, min(0.030, trailing_margin))  # 1.2% à 3.0%
+            trailing_margin = max(
+                0.012, min(
+                    0.030, trailing_margin))  # 1.2% à 3.0%
             activate_trailing_gain = max(
                 0.015, min(0.025, activate_trailing_gain)
             )  # 1.5% à 2.5% scalp
@@ -635,8 +673,7 @@ class TrailingSellManager:
             logger.debug(
                 f"🚀 Seuils OPTIMISÉS {symbol}: trailing={trailing_margin*100:.2f}%, "
                 f"activation={activate_trailing_gain*100:.2f}%, SL={adaptive_sl*100:.2f}% "
-                f"(ATR={atr_percent*100:.2f}%, régime={market_regime})"
-            )
+                f"(ATR={atr_percent*100:.2f}%, régime={market_regime})")
 
             return {
                 "trailing_margin": trailing_margin,
@@ -644,15 +681,15 @@ class TrailingSellManager:
                 "adaptive_sl": adaptive_sl,
             }
 
-        except Exception as e:
-            logger.error(f"Erreur calcul seuils optimisés {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur calcul seuils optimisés {symbol}")
             return {
                 "trailing_margin": 0.012,  # Fallback scalp
                 "activate_trailing_gain": 0.015,  # 1.5% scalp cohérent
                 "adaptive_sl": self.stop_loss_percent_base,
             }
 
-    def _get_atr_percentage(self, symbol: str) -> Optional[float]:
+    def _get_atr_percentage(self, symbol: str) -> float | None:
         """
         Récupère l'ATR en pourcentage depuis les données d'analyse.
 
@@ -674,7 +711,7 @@ class TrailingSellManager:
                     JOIN market_data md ON (ad.symbol = md.symbol AND ad.timeframe = md.timeframe AND ad.time = md.time)
                     WHERE ad.symbol = %s AND ad.timeframe = '1m'
                     AND ad.atr_14 IS NOT NULL
-                    ORDER BY ad.time DESC 
+                    ORDER BY ad.time DESC
                     LIMIT 1
                 """,
                     (symbol,),
@@ -684,11 +721,10 @@ class TrailingSellManager:
                 if result and result[0] and result[1]:
                     atr_value = float(result[0])
                     close_price = float(result[1])
-                    atr_percent = atr_value / close_price if close_price > 0 else 0
-                    return atr_percent
+                    return atr_value / close_price if close_price > 0 else 0
                 return None
-        except Exception as e:
-            logger.error(f"Erreur récupération ATR {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur récupération ATR {symbol}")
             return None
 
     def _get_market_regime(self, symbol: str) -> str:
@@ -722,8 +758,8 @@ class TrailingSellManager:
                 if result and result[0]:
                     return result[0]
                 return "UNKNOWN"
-        except Exception as e:
-            logger.error(f"Erreur récupération régime marché {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur récupération régime marché {symbol}")
             return "UNKNOWN"
 
     def _calculate_adaptive_threshold(
@@ -746,9 +782,8 @@ class TrailingSellManager:
             atr_based_sl = atr_thresholds["adaptive_sl"]
 
             # Récupérer les données d'analyse si disponibles
-            analysis = (
-                self._get_latest_analysis_data(symbol) if self.db_connection else None
-            )
+            analysis = (self._get_latest_analysis_data(
+                symbol) if self.db_connection else None)
 
             if not analysis:
                 logger.debug(
@@ -757,15 +792,17 @@ class TrailingSellManager:
                 return atr_based_sl
 
             # Récupérer le régime de marché
-            regime = analysis.get("market_regime", "UNKNOWN")
+            analysis.get("market_regime", "UNKNOWN")
 
             # Calculer les facteurs d'ajustement (version allégée)
             regime_factor = self._calculate_regime_factor(analysis)
-            support_factor = self._calculate_support_factor(analysis, entry_price)
+            support_factor = self._calculate_support_factor(
+                analysis, entry_price)
             time_factor = self._calculate_time_factor(entry_time)
 
             # Combiner ATR avec moyenne pondérée (éviter l'écrasement par produit)
-            # ATR = base (60%), régime = important (25%), support/temps = modéré (15%)
+            # ATR = base (60%), régime = important (25%), support/temps =
+            # modéré (15%)
             weighted_factor = (
                 0.60 * 1.0  # ATR base (neutre à 1.0)
                 + 0.25 * regime_factor
@@ -774,7 +811,8 @@ class TrailingSellManager:
             )
             adaptive_threshold = float(atr_based_sl) * float(weighted_factor)
 
-            # Contraintes finales équilibrées - coupe faux signaux, préserve vrais trades
+            # Contraintes finales équilibrées - coupe faux signaux, préserve
+            # vrais trades
             adaptive_threshold = max(
                 0.014, min(0.025, adaptive_threshold)
             )  # 1.4%-2.5% - équilibré
@@ -785,11 +823,11 @@ class TrailingSellManager:
 
             return adaptive_threshold
 
-        except Exception as e:
-            logger.error(f"Erreur calcul stop-loss adaptatif {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur calcul stop-loss adaptatif {symbol}")
             return self.stop_loss_percent_base
 
-    def _get_latest_analysis_data(self, symbol: str) -> Optional[Dict]:
+    def _get_latest_analysis_data(self, symbol: str) -> dict | None:
         """
         Récupère les données d'analyse les plus récentes.
         """
@@ -800,14 +838,14 @@ class TrailingSellManager:
             with self.db_connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT 
+                    SELECT
                         market_regime, regime_strength, regime_confidence,
                         volatility_regime, atr_percentile,
                         nearest_support, support_strength,
                         trend_alignment, directional_bias
-                    FROM analyzer_data 
+                    FROM analyzer_data
                     WHERE symbol = %s AND timeframe = '1m'
-                    ORDER BY time DESC 
+                    ORDER BY time DESC
                     LIMIT 1
                 """,
                     (symbol,),
@@ -818,32 +856,37 @@ class TrailingSellManager:
                     return {
                         "market_regime": result[0],
                         "regime_strength": result[1],
-                        "regime_confidence": float(result[2]) if result[2] else 50.0,
+                        "regime_confidence": float(
+                            result[2]) if result[2] else 50.0,
                         "volatility_regime": result[3],
-                        "atr_percentile": float(result[4]) if result[4] else 50.0,
-                        "nearest_support": float(result[5]) if result[5] else None,
+                        "atr_percentile": float(
+                            result[4]) if result[4] else 50.0,
+                        "nearest_support": float(
+                            result[5]) if result[5] else None,
                         "support_strength": result[6],
                         "trend_alignment": result[7],
                         "directional_bias": result[8],
                     }
                 return None
-        except Exception as e:
-            logger.error(f"Erreur récupération données analyse {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur récupération données analyse {symbol}")
             return None
 
-    def _calculate_regime_factor(self, analysis: Dict) -> float:
+    def _calculate_regime_factor(self, analysis: dict) -> float:
         """Calcule le facteur basé sur le régime de marché."""
         regime = analysis.get("market_regime", "UNKNOWN")
         strength = analysis.get("regime_strength", "WEAK")
         confidence = float(analysis.get("regime_confidence", 50))
 
-        # LOGIQUE CORRIGÉE : en bear, SL plus large (laisser respirer reversals)
+        # LOGIQUE CORRIGÉE : en bear, SL plus large (laisser respirer
+        # reversals)
         regime_multipliers = {
             "TRENDING_BULL": 1.2,  # Bull = plus tolérant (seuil plus large)
             "BREAKOUT_BULL": 1.1,  # Breakout bull = modérément tolérant
             "RANGING": 1.0,  # Range = neutre
             "TRANSITION": 0.95,  # Transition = légèrement strict
-            "TRENDING_BEAR": 1.1,  # Bear = TOLÉRANT (laisser respirer reversals)
+            # Bear = TOLÉRANT (laisser respirer reversals)
+            "TRENDING_BEAR": 1.1,
             "VOLATILE": 0.9,  # Volatile = légèrement strict
             "BREAKOUT_BEAR": 1.0,  # Breakout bear = neutre (reversal possible)
         }
@@ -862,7 +905,7 @@ class TrailingSellManager:
 
         return float(base_factor * strength_factor * confidence_factor)
 
-    def _calculate_volatility_factor(self, analysis: Dict) -> float:
+    def _calculate_volatility_factor(self, analysis: dict) -> float:
         """Calcule le facteur basé sur la volatilité."""
         volatility_regime = analysis.get("volatility_regime", "normal")
         atr_percentile = float(analysis.get("atr_percentile", 50))
@@ -879,7 +922,10 @@ class TrailingSellManager:
 
         return float(base_factor * percentile_factor)
 
-    def _calculate_support_factor(self, analysis: Dict, entry_price: float) -> float:
+    def _calculate_support_factor(
+            self,
+            analysis: dict,
+            entry_price: float) -> float:
         """Calcule le facteur basé sur la proximité des supports."""
         nearest_support = analysis.get("nearest_support")
         support_strength = analysis.get("support_strength", "WEAK")
@@ -889,7 +935,8 @@ class TrailingSellManager:
 
         support_price = float(nearest_support)
         entry_price_float = float(entry_price)
-        support_distance = abs(entry_price_float - support_price) / entry_price_float
+        support_distance = abs(
+            entry_price_float - support_price) / entry_price_float
 
         strength_multipliers = {
             "MAJOR": 1.6,
@@ -922,14 +969,13 @@ class TrailingSellManager:
         # LOGIQUE INVERSÉE : strict sur récent, tolérant sur ancien
         if minutes_elapsed < 2:
             return 0.8  # Très récent = strict (non confirmé, risque max)
-        elif minutes_elapsed < 10:
+        if minutes_elapsed < 10:
             return 1.0  # Récent = neutre
-        elif minutes_elapsed < 60:
+        if minutes_elapsed < 60:
             return 1.1  # Confirmé = tolérant (a tenu 10-60min)
-        else:
-            return 1.2  # Très ancien (>1h) = très tolérant (a bien résisté)
+        return 1.2  # Très ancien (>1h) = très tolérant (a bien résisté)
 
-    def get_current_price(self, symbol: str) -> Optional[float]:
+    def get_current_price(self, symbol: str) -> float | None:
         """
         Récupère le prix actuel d'un symbole depuis Redis ou DB en fallback.
 
@@ -976,10 +1022,10 @@ class TrailingSellManager:
                     with self.db_connection.cursor() as cursor:
                         cursor.execute(
                             """
-                            SELECT close 
-                            FROM market_data 
-                            WHERE symbol = %s 
-                            ORDER BY time DESC 
+                            SELECT close
+                            FROM market_data
+                            WHERE symbol = %s
+                            ORDER BY time DESC
                             LIMIT 1
                         """,
                             (symbol,),
@@ -991,23 +1037,22 @@ class TrailingSellManager:
                                 f"💾 Prix récupéré depuis DB pour {symbol}: {result[0]}"
                             )
                             return float(result[0])
-                        else:
-                            logger.warning(f"💾 Aucun résultat DB pour {symbol}")
+                        logger.warning(f"💾 Aucun résultat DB pour {symbol}")
                 except Exception as db_error:
-                    logger.error(f"❌ Erreur DB pour {symbol}: {db_error}")
+                    logger.exception(f"❌ Erreur DB pour {symbol}: {db_error}")
             else:
                 logger.warning(f"💾 Pas de connexion DB pour {symbol}")
 
             logger.warning(f"⚠️ Prix non trouvé pour {symbol} (Redis + DB)")
             return None
 
-        except Exception as e:
-            logger.error(f"❌ Erreur récupération prix pour {symbol}: {e}")
+        except Exception:
+            logger.exception("❌ Erreur récupération prix pour {symbol}")
             return None
 
     def _check_progressive_take_profit(
         self, symbol: str, gain_percent: float, position_id: str | None = None
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """
         Take profit progressif AMÉLIORÉ : vend si rechute significative depuis le palier atteint.
         Permet de rider les pumps tout en fermant les cycles efficacement.
@@ -1020,7 +1065,8 @@ class TrailingSellManager:
         Returns:
             (should_sell, reason)
         """
-        # Paliers TP SIMPLIFIÉS - focus gains réels, stop micro-trading destructeur
+        # Paliers TP SIMPLIFIÉS - focus gains réels, stop micro-trading
+        # destructeur
         tp_levels = [
             0.12,  # 12% - gains exceptionnels (pump majeur)
             0.08,  # 8% - gains très importants
@@ -1041,21 +1087,25 @@ class TrailingSellManager:
             return False, f"Aucun palier TP atteint (+{gain_percent*100:.2f}%)"
 
         # Récupérer le palier max historique pour ce symbole
-        historical_tp_key = self._get_redis_key("max_tp_level", symbol, position_id)
+        historical_tp_key = self._get_redis_key(
+            "max_tp_level", symbol, position_id)
         historical_tp_data = self.redis_client.get(historical_tp_key)
         historical_max_tp = None
 
         if historical_tp_data:
             try:
-                if isinstance(historical_tp_data, (str, bytes)):
+                if isinstance(historical_tp_data, str | bytes):
                     if isinstance(historical_tp_data, bytes):
                         historical_tp_data = historical_tp_data.decode("utf-8")
                     historical_tp_dict = json.loads(historical_tp_data)
-                    historical_max_tp = float(historical_tp_dict.get("level", 0))
+                    historical_max_tp = float(
+                        historical_tp_dict.get("level", 0))
                 elif isinstance(historical_tp_data, dict):
-                    historical_max_tp = float(historical_tp_data.get("level", 0))
-            except Exception as e:
-                logger.error(f"Erreur récupération palier TP historique {symbol}: {e}")
+                    historical_max_tp = float(
+                        historical_tp_data.get("level", 0))
+            except Exception:
+                logger.exception(
+                    "Erreur récupération palier TP historique {symbol}")
 
         # Initialiser si pas de palier historique
         if historical_max_tp is None:
@@ -1079,7 +1129,9 @@ class TrailingSellManager:
             tolerance_factor = 0.75  # Garde 75% du palier (rend 25%)
         else:  # Petits gains (<3%)
             tolerance_factor = (
-                0.70  # Garde 70% du palier (permissif - rend 30%, acceptable en scalp)
+                # Garde 70% du palier (permissif - rend 30%, acceptable en
+                # scalp)
+                0.70
             )
 
         adjusted_threshold = historical_max_tp * tolerance_factor
@@ -1088,7 +1140,8 @@ class TrailingSellManager:
             logger.warning(
                 f"📉 Rechute significative pour {symbol}: +{gain_percent*100:.2f}% < seuil ajusté +{adjusted_threshold*100:.2f}% (palier max: +{historical_max_tp*100:.1f}%)"
             )
-            self._clear_max_tp_level(symbol, position_id)  # Nettoyer après vente
+            self._clear_max_tp_level(
+                symbol, position_id)  # Nettoyer après vente
             return (
                 True,
                 f"Rechute sous seuil TP ajusté +{adjusted_threshold*100:.2f}% (palier: +{historical_max_tp*100:.1f}%, gain: +{gain_percent*100:.2f}%)",
@@ -1115,12 +1168,17 @@ class TrailingSellManager:
             tp_key = self._get_redis_key("max_tp_level", symbol, position_id)
             tp_data = {"level": tp_level, "timestamp": int(time.time() * 1000)}
             # TTL de 7 jours (604800s) - sera refresh à chaque check
-            self.redis_client.set(tp_key, json.dumps(tp_data), expiration=604800)
-            logger.debug(f"🎯 Palier TP mis à jour pour {symbol}: +{tp_level*100:.1f}%")
-        except Exception as e:
-            logger.error(f"Erreur mise à jour palier TP pour {symbol}: {e}")
+            self.redis_client.set(
+                tp_key, json.dumps(tp_data), expiration=604800)
+            logger.debug(
+                f"🎯 Palier TP mis à jour pour {symbol}: +{tp_level*100:.1f}%")
+        except Exception:
+            logger.exception("Erreur mise à jour palier TP pour {symbol}")
 
-    def _clear_max_tp_level(self, symbol: str, position_id: str | None = None) -> None:
+    def _clear_max_tp_level(
+            self,
+            symbol: str,
+            position_id: str | None = None) -> None:
         """
         Supprime le palier TP maximum pour un symbole.
 
@@ -1132,8 +1190,8 @@ class TrailingSellManager:
             tp_key = self._get_redis_key("max_tp_level", symbol, position_id)
             self.redis_client.delete(tp_key)
             logger.info(f"🧹 Palier TP max supprimé pour {symbol}")
-        except Exception as e:
-            logger.error(f"Erreur suppression palier TP pour {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur suppression palier TP pour {symbol}")
 
     def _get_adaptive_trailing_margin(self, max_gain_percent: float) -> float:
         """
@@ -1164,7 +1222,10 @@ class TrailingSellManager:
 
         return margin
 
-    def _cleanup_references(self, symbol: str, position_id: str | None = None) -> None:
+    def _cleanup_references(
+            self,
+            symbol: str,
+            position_id: str | None = None) -> None:
         """
         Nettoie toutes les références pour un symbole après une vente.
 
@@ -1183,13 +1244,10 @@ class TrailingSellManager:
         """
         if price >= 1000:
             return 2
-        elif price >= 100:
+        if price >= 100:
             return 3
-        elif price >= 1:
+        if price >= 1 or price >= 0.01:
             return 6
-        elif price >= 0.01:
-            return 6
-        elif price >= 0.0001:
+        if price >= 0.0001:
             return 10
-        else:
-            return 12
+        return 12

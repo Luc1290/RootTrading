@@ -4,9 +4,10 @@ Récupère et structure les données nécessaires depuis la base de données.
 """
 
 import logging
-from typing import Dict, Any, Optional, List
-import psycopg2
+from typing import Any
+
 from psycopg2.extras import RealDictCursor
+
 from .field_converters import FieldConverter  # type: ignore[import-not-found]
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ class ContextManager:
             self.db_connection = None
         else:
             self.db_connection = db_connection
-            self.db_config: Optional[Dict[str, Any]] = None
+            self.db_config: dict[str, Any] | None = None
 
         # Cache pour optimiser les requêtes répétées avec TTL dynamique
         self.context_cache = {}
@@ -37,7 +38,7 @@ class ContextManager:
 
     def get_unified_market_regime(
         self, symbol: str, signal_timeframe: str | None = None
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Récupère le régime de marché unifié adapté au timeframe du signal.
 
@@ -101,13 +102,12 @@ class ContextManager:
                     "regime_source": f"{reference_timeframe}_unified",
                     "regime_timestamp": regime_data["time"],
                 }
-            else:
-                # Fallback si pas de données 3m
-                logger.warning(f"Pas de régime 3m pour {symbol}, fallback sur 1m")
-                cursor = self.db_connection.cursor(cursor_factory=RealDictCursor)
-                try:
-                    cursor.execute(
-                        """
+            # Fallback si pas de données 3m
+            logger.warning(f"Pas de régime 3m pour {symbol}, fallback sur 1m")
+            cursor = self.db_connection.cursor(cursor_factory=RealDictCursor)
+            try:
+                cursor.execute(
+                    """
                             SELECT market_regime, regime_strength, regime_confidence,
                                    directional_bias, volatility_regime, time
                             FROM analyzer_data
@@ -115,22 +115,22 @@ class ContextManager:
                             ORDER BY time DESC
                             LIMIT 1
                         """,
-                        (symbol,),
-                    )
+                    (symbol,),
+                )
 
-                    fallback_data = cursor.fetchone()
-                finally:
-                    cursor.close()
-                if fallback_data:
-                    return {
-                        "market_regime": fallback_data["market_regime"],
-                        "regime_strength": fallback_data["regime_strength"],
-                        "regime_confidence": fallback_data["regime_confidence"],
-                        "directional_bias": fallback_data["directional_bias"],
-                        "volatility_regime": fallback_data["volatility_regime"],
-                        "regime_source": "1m_fallback",
-                        "regime_timestamp": fallback_data["time"],
-                    }
+                fallback_data = cursor.fetchone()
+            finally:
+                cursor.close()
+            if fallback_data:
+                return {
+                    "market_regime": fallback_data["market_regime"],
+                    "regime_strength": fallback_data["regime_strength"],
+                    "regime_confidence": fallback_data["regime_confidence"],
+                    "directional_bias": fallback_data["directional_bias"],
+                    "volatility_regime": fallback_data["volatility_regime"],
+                    "regime_source": "1m_fallback",
+                    "regime_timestamp": fallback_data["time"],
+                }
 
             return {
                 "market_regime": "UNKNOWN",
@@ -142,8 +142,8 @@ class ContextManager:
                 "regime_timestamp": None,
             }
 
-        except Exception as e:
-            logger.error(f"Erreur récupération régime unifié {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur récupération régime unifié {symbol}")
             return {
                 "market_regime": "UNKNOWN",
                 "regime_strength": 0.5,
@@ -164,7 +164,8 @@ class ContextManager:
             return 30
         return 60  # défaut raisonnable au-delà
 
-    def get_market_context(self, symbol: str, timeframe: str) -> Dict[str, Any]:
+    def get_market_context(
+            self, symbol: str, timeframe: str) -> dict[str, Any]:
         """
         Récupère le contexte de marché complet pour un symbole et timeframe.
 
@@ -187,9 +188,8 @@ class ContextManager:
             cached_context, cache_timestamp = self.context_cache[cache_key]
             if current_time - cache_timestamp < dynamic_ttl:
                 return cached_context
-            else:
-                # Cache expiré, le supprimer
-                del self.context_cache[cache_key]
+            # Cache expiré, le supprimer
+            del self.context_cache[cache_key]
 
         try:
             # Récupérer les composants du contexte
@@ -221,16 +221,21 @@ class ContextManager:
                 "unified_regime": unified_regime,  # Régime unifié pour tous les signaux
             }
 
-            # Exposer les champs critiques au niveau racine pour compatibilité validators
+            # Exposer les champs critiques au niveau racine pour compatibilité
+            # validators
             if indicators:
-                # IMPORTANT: Préserver TOUS les régimes pour éviter la confusion
+                # IMPORTANT: Préserver TOUS les régimes pour éviter la
+                # confusion
                 original_regime = indicators.get("market_regime")
                 original_regime_strength = indicators.get("regime_strength")
-                original_regime_confidence = indicators.get("regime_confidence")
+                original_regime_confidence = indicators.get(
+                    "regime_confidence")
                 original_directional_bias = indicators.get("directional_bias")
-                original_volatility_regime = indicators.get("volatility_regime")
+                original_volatility_regime = indicators.get(
+                    "volatility_regime")
 
-                context.update(indicators)  # Tous les indicateurs au niveau racine
+                # Tous les indicateurs au niveau racine
+                context.update(indicators)
 
                 # Sauvegarder le régime original du timeframe
                 if original_regime:
@@ -259,12 +264,14 @@ class ContextManager:
                 ]
                 context["regime_source"] = unified_regime["regime_source"]
 
-                # PAR DÉFAUT: Utiliser le régime du timeframe SAUF si très faible confidence
+                # PAR DÉFAUT: Utiliser le régime du timeframe SAUF si très
+                # faible confidence
                 if (
                     original_regime_confidence
                     and float(original_regime_confidence) < 30
                 ):
-                    # Si le régime du timeframe a une confidence très faible, préférer l'unifié
+                    # Si le régime du timeframe a une confidence très faible,
+                    # préférer l'unifié
                     context["market_regime"] = unified_regime["market_regime"]
                     context["regime_strength"] = unified_regime["regime_strength"]
                     context["regime_confidence"] = unified_regime["regime_confidence"]
@@ -280,7 +287,8 @@ class ContextManager:
                     "current_price"
                 ]  # Prix actuel au niveau racine
 
-            # Fallback pour current_price si absent - avec protection ohlcv vide
+            # Fallback pour current_price si absent - avec protection ohlcv
+            # vide
             if "current_price" not in context:
                 if ohlcv_data and len(ohlcv_data) > 0:
                     context["current_price"] = float(ohlcv_data[-1]["close"])
@@ -295,13 +303,14 @@ class ContextManager:
 
             return context
 
-        except Exception as e:
-            logger.error(f"Erreur récupération contexte {symbol} {timeframe}: {e}")
+        except Exception:
+            logger.exception(
+                "Erreur récupération contexte {symbol} {timeframe}")
             return {}
 
     def _get_ohlcv_data(
         self, symbol: str, timeframe: str, limit: int = 100
-    ) -> List[Dict[str, float]]:
+    ) -> list[dict[str, float]]:
         """
         Récupère les données OHLCV historiques.
 
@@ -344,11 +353,11 @@ class ContextManager:
                 for row in reversed(rows)  # Ordre chronologique
             ]
 
-        except Exception as e:
-            logger.error(f"Erreur récupération OHLCV {symbol} {timeframe}: {e}")
+        except Exception:
+            logger.exception("Erreur récupération OHLCV {symbol} {timeframe}")
             return []
 
-    def _get_indicators(self, symbol: str, timeframe: str) -> Dict[str, Any]:
+    def _get_indicators(self, symbol: str, timeframe: str) -> dict[str, Any]:
         """
         Récupère tous les indicateurs techniques pré-calculés.
 
@@ -394,7 +403,8 @@ class ContextManager:
             # Utiliser le convertisseur pour harmoniser les types
             indicators = FieldConverter.convert_indicators(raw_indicators)
 
-            # FALLBACK pour volume_quality_score si manquant (critique pour filtres)
+            # FALLBACK pour volume_quality_score si manquant (critique pour
+            # filtres)
             if (
                 not indicators.get("volume_quality_score")
                 or indicators.get("volume_quality_score") == 0
@@ -418,15 +428,18 @@ class ContextManager:
             if "atr_14" in indicators:
                 logger.debug(f"ATR_14 trouvé: {indicators['atr_14']}")
             if "atr_percentile" in indicators:
-                logger.debug(f"ATR_percentile trouvé: {indicators['atr_percentile']}")
+                logger.debug(
+                    f"ATR_percentile trouvé: {indicators['atr_percentile']}")
 
             return indicators
 
-        except Exception as e:
-            logger.error(f"Erreur récupération indicateurs {symbol} {timeframe}: {e}")
+        except Exception:
+            logger.exception(
+                "Erreur récupération indicateurs {symbol} {timeframe}")
             return {}
 
-    def _get_market_structure(self, symbol: str, timeframe: str) -> Dict[str, Any]:
+    def _get_market_structure(
+            self, symbol: str, timeframe: str) -> dict[str, Any]:
         """
         Analyse la structure de marché (support/résistance, pivots, etc.).
 
@@ -459,7 +472,7 @@ class ContextManager:
             recent_high = max(highs[-20:]) if len(highs) >= 20 else max(highs)
             recent_low = min(lows[-20:]) if len(lows) >= 20 else min(lows)
 
-            structure: Dict[str, Any] = {
+            structure: dict[str, Any] = {
                 "current_price": current_price,
                 "recent_high": recent_high,
                 "recent_low": recent_low,
@@ -474,16 +487,19 @@ class ContextManager:
             }
 
             # Détection de niveaux psychologiques simples
-            psychological_levels = self._find_psychological_levels(current_price)
+            psychological_levels = self._find_psychological_levels(
+                current_price)
             structure["psychological_levels"] = psychological_levels
 
             return structure
 
-        except Exception as e:
-            logger.error(f"Erreur analyse structure marché {symbol} {timeframe}: {e}")
+        except Exception:
+            logger.exception(
+                "Erreur analyse structure marché {symbol} {timeframe}")
             return {}
 
-    def _get_volume_profile(self, symbol: str, timeframe: str) -> Dict[str, Any]:
+    def _get_volume_profile(
+            self, symbol: str, timeframe: str) -> dict[str, Any]:
         """
         Analyse le profil de volume.
 
@@ -511,21 +527,20 @@ class ContextManager:
             avg_volume = sum(volumes) / len(volumes) if volumes else 0
             current_volume = volumes[-1] if volumes else 0
 
-            volume_profile = {
+            return {
                 "current_volume": current_volume,
                 "average_volume": avg_volume,
-                "volume_ratio": current_volume / avg_volume if avg_volume > 0 else 1,
+                "volume_ratio": current_volume /
+                avg_volume if avg_volume > 0 else 1,
                 "total_quote_volume": sum(quote_volumes),
                 "volume_trend": self._calculate_volume_trend(volumes),
             }
 
-            return volume_profile
-
-        except Exception as e:
-            logger.error(f"Erreur profil volume {symbol} {timeframe}: {e}")
+        except Exception:
+            logger.exception("Erreur profil volume {symbol} {timeframe}")
             return {}
 
-    def _get_multi_timeframe_context(self, symbol: str) -> Dict[str, Any]:
+    def _get_multi_timeframe_context(self, symbol: str) -> dict[str, Any]:
         """
         Récupère le contexte multi-timeframe.
 
@@ -551,11 +566,11 @@ class ContextManager:
 
             return mtf_context
 
-        except Exception as e:
-            logger.error(f"Erreur contexte multi-timeframe {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur contexte multi-timeframe {symbol}")
             return {}
 
-    def _get_correlation_context(self, symbol: str) -> Dict[str, Any]:
+    def _get_correlation_context(self, symbol: str) -> dict[str, Any]:
         """
         Récupère le contexte de corrélation avec d'autres actifs.
         DÉSACTIVÉ pour le moment car non implémenté.
@@ -579,11 +594,11 @@ class ContextManager:
             # }
             # return correlation_context
 
-        except Exception as e:
-            logger.error(f"Erreur contexte corrélation {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur contexte corrélation {symbol}")
             return {}
 
-    def _find_psychological_levels(self, price: float) -> List[float]:
+    def _find_psychological_levels(self, price: float) -> list[float]:
         """
         Trouve les niveaux psychologiques proches du prix actuel.
 
@@ -594,7 +609,7 @@ class ContextManager:
             Liste des niveaux psychologiques
         """
         try:
-            levels: List[float] = []
+            levels: list[float] = []
 
             # Niveaux ronds basés sur la magnitude du prix
             if price >= 1000:
@@ -619,7 +634,8 @@ class ContextManager:
                 import math
 
                 if price > 0:
-                    significant_digits = max(2, -int(math.floor(math.log10(price))) + 1)
+                    significant_digits = max(
+                        2, -math.floor(math.log10(price)) + 1)
                     base = round(price, significant_digits)
                     step = 10 ** (
                         -significant_digits + 1
@@ -634,11 +650,11 @@ class ContextManager:
 
             return levels
 
-        except Exception as e:
-            logger.error(f"Erreur niveaux psychologiques: {e}")
+        except Exception:
+            logger.exception("Erreur niveaux psychologiques")
             return []
 
-    def _get_htf_validation_data(self, symbol: str) -> Dict[str, Any]:
+    def _get_htf_validation_data(self, symbol: str) -> dict[str, Any]:
         """
         Récupère les données Higher TimeFrame pour validation MTF stricte.
         Inclut: EMAs 15m, ATR 15m et sa moyenne.
@@ -652,7 +668,8 @@ class ContextManager:
         try:
             htf_data = {}
 
-            # Récupérer données 15m (direction + ATR) - JOIN avec market_data pour le close
+            # Récupérer données 15m (direction + ATR) - JOIN avec market_data
+            # pour le close
             cursor = self.db_connection.cursor()
             try:
                 cursor.execute(
@@ -705,7 +722,8 @@ class ContextManager:
                     )
 
                     # Moyenne ATR historique
-                    historical_atrs = [float(r[0]) for r in results_15m if r[0]]
+                    historical_atrs = [float(r[0])
+                                       for r in results_15m if r[0]]
                     if historical_atrs:
                         htf_data["mtf_atr15m_ma"] = sum(historical_atrs) / len(
                             historical_atrs
@@ -715,18 +733,19 @@ class ContextManager:
                         atr15m_val = htf_data.get("mtf_atr15m")
                         atr15m_ma_val = htf_data.get("mtf_atr15m_ma")
                         if atr15m_val is not None and atr15m_ma_val is not None and atr15m_ma_val > 0:
-                            htf_data["mtf_atr15m_ratio"] = float(atr15m_val) / float(atr15m_ma_val)
+                            htf_data["mtf_atr15m_ratio"] = float(
+                                atr15m_val) / float(atr15m_ma_val)
 
             finally:
                 cursor.close()
 
             return htf_data
 
-        except Exception as e:
-            logger.error(f"Erreur récupération données HTF {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur récupération données HTF {symbol}")
             return {}
 
-    def _calculate_volume_trend(self, volumes: List[float]) -> str:
+    def _calculate_volume_trend(self, volumes: list[float]) -> str:
         """
         Calcule la tendance du volume.
 
@@ -746,18 +765,17 @@ class ContextManager:
 
             if recent_avg > previous_avg * 1.2:
                 return "increasing"
-            elif recent_avg < previous_avg * 0.8:
+            if recent_avg < previous_avg * 0.8:
                 return "decreasing"
-            else:
-                return "stable"
+            return "stable"
 
-        except Exception as e:
-            logger.error(f"Erreur calcul tendance volume: {e}")
+        except Exception:
+            logger.exception("Erreur calcul tendance volume")
             return "stable"
 
     def _get_volume_quality_fallback(
         self, symbol: str, original_timeframe: str
-    ) -> Optional[float]:
+    ) -> float | None:
         """
         Fallback pour récupérer volume_quality_score depuis timeframes inférieurs.
 
@@ -780,7 +798,8 @@ class ContextManager:
             "1m": [],  # Pas de fallback pour 1m
         }
 
-        timeframes_to_try = fallback_sequence.get(original_timeframe, ["3m", "1m"])
+        timeframes_to_try = fallback_sequence.get(
+            original_timeframe, ["3m", "1m"])
 
         try:
             cursor = self.db_connection.cursor(cursor_factory=RealDictCursor)
@@ -814,8 +833,8 @@ class ContextManager:
             )
             return self._estimate_volume_quality(symbol)
 
-        except Exception as e:
-            logger.error(f"Erreur fallback volume quality {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur fallback volume quality {symbol}")
             return None
 
     def _estimate_volume_quality(self, symbol: str) -> float:
@@ -848,30 +867,28 @@ class ContextManager:
                 cursor.close()
 
             if results:
-                vol_ratios = [
-                    float(row["volume_ratio"]) for row in results if row["volume_ratio"]
-                ]
+                vol_ratios = [float(row["volume_ratio"])
+                              for row in results if row["volume_ratio"]]
                 avg_vol_ratio = sum(vol_ratios) / len(vol_ratios)
 
                 # Convertir volume_ratio en estimation volume_quality_score
                 if avg_vol_ratio >= 2.0:
                     return 70.0  # Volume fort = qualité élevée
-                elif avg_vol_ratio >= 1.5:
+                if avg_vol_ratio >= 1.5:
                     return 50.0  # Volume modéré = qualité moyenne
-                elif avg_vol_ratio >= 1.0:
+                if avg_vol_ratio >= 1.0:
                     return 35.0  # Volume normal = qualité acceptable
-                else:
-                    return 22.0  # Volume faible = P10 réel (bas mais valide)
+                return 22.0  # Volume faible = P10 réel (bas mais valide)
 
             # Fallback ultime basé sur P10 réel
             return 22.0  # P10 = 10% plus bas de la distribution réelle
 
-        except Exception as e:
-            logger.error(f"Erreur estimation volume quality {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur estimation volume quality {symbol}")
             return 22.0  # P10 réel, reste dans les bornes DB
 
     def _enrich_indicators(
-        self, indicators: Dict[str, Any], symbol: str, timeframe: str, cursor
+        self, indicators: dict[str, Any], symbol: str, timeframe: str, cursor
     ) -> None:
         """
         Enrichit les indicateurs avec des champs calculés manquants.
@@ -901,13 +918,16 @@ class ContextManager:
                 )
 
             # 3. VOLUME_RATIO mapping depuis relative_volume
-            if "relative_volume" in indicators and not indicators.get("volume_ratio"):
+            if "relative_volume" in indicators and not indicators.get(
+                    "volume_ratio"):
                 indicators["volume_ratio"] = indicators["relative_volume"]
 
-        except Exception as e:
-            logger.error(f"Erreur enrichissement indicateurs {symbol} {timeframe}: {e}")
+        except Exception:
+            logger.exception(
+                "Erreur enrichissement indicateurs {symbol} {timeframe}")
 
-    def _calculate_bars_since_ema20_touch(self, symbol: str, cursor) -> Optional[int]:
+    def _calculate_bars_since_ema20_touch(
+            self, symbol: str, cursor) -> int | None:
         """
         Calcule le nombre de bougies depuis le dernier touch de l'EMA20 (3m).
 
@@ -919,7 +939,8 @@ class ContextManager:
             Nombre de bougies ou None si pas trouvé
         """
         try:
-            # Récupérer les 15 dernières bougies 3m avec prix et EMA26 (proxy EMA20)
+            # Récupérer les 15 dernières bougies 3m avec prix et EMA26 (proxy
+            # EMA20)
             cursor.execute(
                 """
                 SELECT md.close, ad.ema_26, md.time
@@ -939,7 +960,8 @@ class ContextManager:
             if not rows or len(rows) < 3:
                 return None
 
-            # Chercher la dernière fois où le prix était proche de l'EMA20 (±0.5%)
+            # Chercher la dernière fois où le prix était proche de l'EMA20
+            # (±0.5%)
             for i, row in enumerate(rows):
                 close_price = float(row[0]) if row[0] else 0
                 ema20 = float(row[1]) if row[1] else 0
@@ -951,8 +973,8 @@ class ContextManager:
 
             return 15  # Plus de 15 bougies depuis dernier touch
 
-        except Exception as e:
-            logger.error(f"Erreur calcul bars_since_ema20_touch {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur calcul bars_since_ema20_touch {symbol}")
             return None
 
     def clear_cache(self):
@@ -960,7 +982,7 @@ class ContextManager:
         self.context_cache.clear()
         logger.info("Cache contexte vidé")
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         """
         Récupère les statistiques du cache.
 
@@ -970,7 +992,7 @@ class ContextManager:
         return {
             "cache_size": len(self.context_cache),
             "cached_symbols": list(
-                set(key.split("_")[0] for key in self.context_cache.keys())
+                {key.split("_")[0] for key in self.context_cache}
             ),
             "base_cache_ttl": self.base_cache_ttl,
             "cache_strategy": "dynamic_ttl_per_timeframe",

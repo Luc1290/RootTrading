@@ -2,15 +2,15 @@
 Tests pour la gestion d'erreurs dans les stratégies.
 """
 
-import pytest
-import sys
+from analyzer.strategies.RSI_Cross_Strategy import RSI_Cross_Strategy
+from analyzer.strategies.MACD_Crossover_Strategy import MACD_Crossover_Strategy
+from analyzer.strategies.EMA_Cross_Strategy import EMA_Cross_Strategy
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-
-from analyzer.strategies.MACD_Crossover_Strategy import MACD_Crossover_Strategy
-from analyzer.strategies.RSI_Cross_Strategy import RSI_Cross_Strategy
-from analyzer.strategies.EMA_Cross_Strategy import EMA_Cross_Strategy
 
 
 class TestErrorHandling:
@@ -69,7 +69,10 @@ class TestErrorHandling:
 
     def test_strategies_with_empty_data(self):
         """Test stratégies avec données vides."""
-        strategies = [MACD_Crossover_Strategy, RSI_Cross_Strategy, EMA_Cross_Strategy]
+        strategies = [
+            MACD_Crossover_Strategy,
+            RSI_Cross_Strategy,
+            EMA_Cross_Strategy]
 
         for StrategyClass in strategies:
             strategy = StrategyClass("BTCUSDC", {}, {})
@@ -84,7 +87,10 @@ class TestErrorHandling:
         data = None
         indicators = None
 
-        strategies = [MACD_Crossover_Strategy, RSI_Cross_Strategy, EMA_Cross_Strategy]
+        strategies = [
+            MACD_Crossover_Strategy,
+            RSI_Cross_Strategy,
+            EMA_Cross_Strategy]
 
         for StrategyClass in strategies:
             strategy = StrategyClass("BTCUSDC", data, indicators)

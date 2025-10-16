@@ -3,19 +3,17 @@ Coordinator simplifié pour RootTrading.
 Rôle : Valider la faisabilité des signaux et les transmettre au trader.
 """
 
-import logging
-import time
 import json
-import asyncio
+import logging
 import threading
-import os
-import numpy as np
-from typing import Dict, Any, Optional
-from shared.src.db_pool import DBConnectionPool
+import time
+from typing import Any
 
-from shared.src.redis_client import RedisClient
+from shared.src.db_pool import DBConnectionPool
 from shared.src.enums import OrderSide, SignalStrength
+from shared.src.redis_client import RedisClient
 from shared.src.schemas import StrategySignal
+
 from .service_client import ServiceClient
 from .trailing_sell_manager import TrailingSellManager
 from .universe_manager import UniverseManager
@@ -48,23 +46,26 @@ class Coordinator:
 
         # Thread de monitoring stop-loss
         self.stop_loss_active = True
-        self.stop_loss_thread: Optional[threading.Thread] = None
+        self.stop_loss_thread: threading.Thread | None = None
 
         # Thread de mise à jour de l'univers
         self.universe_update_active = True
-        self.universe_update_thread: Optional[threading.Thread] = None
+        self.universe_update_thread: threading.Thread | None = None
         self.universe_update_interval = 300  # Mise à jour toutes les 5 minutes
 
         # Configuration dynamique basée sur l'USDC disponible
         self.fee_rate = 0.001  # 0.1% de frais estimés par trade
 
         # Allocation basée USDC - AUGMENTÉE pour positions plus importantes
-        self.base_allocation_usdc_percent = 18.0  # 18% de l'USDC disponible (était 10%)
-        self.strong_allocation_usdc_percent = 22.0  # 22% pour signaux forts (était 12%)
+        # 18% de l'USDC disponible (était 10%)
+        self.base_allocation_usdc_percent = 18.0
+        # 22% pour signaux forts (était 12%)
+        self.strong_allocation_usdc_percent = 22.0
         self.max_allocation_usdc_percent = (
             28.0  # 28% maximum pour VERY_STRONG (était 15%)
         )
-        self.weak_allocation_usdc_percent = 12.0  # 12% pour signaux faibles (était 7%)
+        # 12% pour signaux faibles (était 7%)
+        self.weak_allocation_usdc_percent = 12.0
         self.usdc_safety_margin = 0.98  # Garde 2% d'USDC en sécurité
         self.min_absolute_trade_usdc = (
             15.0  # 15 USDC minimum - évite micro-positions (était 1 USDC)
@@ -72,10 +73,12 @@ class Coordinator:
 
         # Configuration des seuils de force de signal (centralisée)
         self.signal_strength_config = {
-            # Seuils pour consensus override (BUY fort = ajout immédiat à l'univers)
+            # Seuils pour consensus override (BUY fort = ajout immédiat à
+            # l'univers)
             "consensus_override": {
                 "min_force": 2.0,  # Force minimum (au lieu de 2.5 arbitraire)
-                "min_strategies": 5,  # Stratégies minimum (au lieu de 6 arbitraire)
+                # Stratégies minimum (au lieu de 6 arbitraire)
+                "min_strategies": 5,
             },
             # Seuils pour catégorisation de force (allocation)
             "categorization": {
@@ -104,7 +107,8 @@ class Coordinator:
             trailing_db_connection = self.db_pool.get_connection()
             logger.info("Connexion DB dédiée créée pour TrailingSellManager")
 
-        # Initialiser le gestionnaire de trailing sell avec une connexion directe
+        # Initialiser le gestionnaire de trailing sell avec une connexion
+        # directe
         self.trailing_db_connection = trailing_db_connection  # Garder la référence
         self.trailing_manager = TrailingSellManager(
             redis_client=self.redis_client,
@@ -121,7 +125,9 @@ class Coordinator:
 
         # Configuration stop-loss - SUPPRIMÉE : toute la logique est dans TrailingSellManager
         # self.stop_loss_percent_* supprimés pour éviter duplication de code
-        self.price_check_interval = 60  # Vérification des prix toutes les 60 secondes (aligné sur la fréquence des données)
+        # Vérification des prix toutes les 60 secondes (aligné sur la fréquence
+        # des données)
+        self.price_check_interval = 60
 
         # Démarrer le monitoring stop-loss
         self.start_stop_loss_monitoring()
@@ -147,8 +153,8 @@ class Coordinator:
         try:
             self.db_pool = DBConnectionPool.get_instance()
             logger.info("Pool de connexions DB initialisé")
-        except Exception as e:
-            logger.error(f"Erreur initialisation pool DB: {e}")
+        except Exception:
+            logger.exception("Erreur initialisation pool DB")
             self.db_pool = None
 
     def _init_symbols(self):
@@ -169,7 +175,8 @@ class Coordinator:
                 # Comparer avec les symboles du .env
                 if set(existing) != set(SYMBOLS):
                     # Mettre à jour avec les nouveaux symboles
-                    self.redis_client.set("trading:symbols", json.dumps(SYMBOLS))
+                    self.redis_client.set(
+                        "trading:symbols", json.dumps(SYMBOLS))
                     logger.info(
                         f"Symboles mis à jour dans Redis: {len(existing)} → {len(SYMBOLS)} symboles"
                     )
@@ -180,13 +187,16 @@ class Coordinator:
             else:
                 # Initialiser depuis .env (SYMBOLS est déjà une liste)
                 self.redis_client.set("trading:symbols", json.dumps(SYMBOLS))
-                logger.info(f"Symboles initialisés dans Redis: {len(SYMBOLS)} symboles")
+                logger.info(
+                    f"Symboles initialisés dans Redis: {len(SYMBOLS)} symboles")
 
-        except Exception as e:
-            logger.error(f"Erreur initialisation symboles: {e}")
+        except Exception:
+            logger.exception("Erreur initialisation symboles")
             # Fallback sur symboles par défaut
             default_symbols = ["BTCUSDC", "ETHUSDC"]
-            self.redis_client.set("trading:symbols", json.dumps(default_symbols))
+            self.redis_client.set(
+                "trading:symbols",
+                json.dumps(default_symbols))
             logger.info(f"Symboles par défaut configurés: {default_symbols}")
 
     def _calculate_unified_signal_strength(
@@ -202,12 +212,14 @@ class Coordinator:
             tuple[force, strategy_count, avg_confidence]: Force calculée, nombre de stratégies, confiance moyenne
         """
         try:
-            # Méthode 1 (prioritaire) : Depuis metadata (consensus multi-stratégies)
+            # Méthode 1 (prioritaire) : Depuis metadata (consensus
+            # multi-stratégies)
             if signal.metadata:
-                consensus_strength = signal.metadata.get("consensus_strength", 0)
+                consensus_strength = signal.metadata.get(
+                    "consensus_strength", 0)
                 strategies_count = signal.metadata.get(
-                    "strategies_count", signal.metadata.get("strategy_count", 1)
-                )
+                    "strategies_count", signal.metadata.get(
+                        "strategy_count", 1))
                 avg_confidence = signal.metadata.get(
                     "avg_confidence", signal.metadata.get("confidence", 0.5)
                 )
@@ -216,9 +228,8 @@ class Coordinator:
                     # Formule améliorée : donner plus de poids aux stratégies multiples
                     # Force = consensus × √(strategies) × confidence
                     # √(strategies) pour éviter explosion linéaire, mais récompenser diversité
-                    force = (
-                        consensus_strength * (strategies_count**0.5) * avg_confidence
-                    )
+                    force = (consensus_strength *
+                             (strategies_count**0.5) * avg_confidence)
                     logger.debug(
                         f"Force consensus: {consensus_strength} × √{strategies_count} × {avg_confidence:.2f} = {force:.2f}"
                     )
@@ -231,12 +242,13 @@ class Coordinator:
                 and signal.confidence >= 50
             ):
                 # Convertir confidence (0-100) en force (0-3)
-                force = (signal.confidence / 100) * 2.0  # Max 2.0 pour signal unique
+                force = (signal.confidence / 100) * \
+                    2.0  # Max 2.0 pour signal unique
                 return force, 1, signal.confidence / 100
 
             # Méthode 3 : Enum strength
             if hasattr(signal, "strength") and signal.strength is not None:
-                strength_map: Dict[SignalStrength, float] = {
+                strength_map: dict[SignalStrength, float] = {
                     SignalStrength.VERY_STRONG: 2.5,
                     SignalStrength.STRONG: 2.0,
                     SignalStrength.MODERATE: 1.5,
@@ -248,8 +260,8 @@ class Coordinator:
             # Fallback : signal basique
             return 1.0, 1, 0.5
 
-        except Exception as e:
-            logger.error(f"Erreur calcul force signal: {e}")
+        except Exception:
+            logger.exception("Erreur calcul force signal")
             return 1.0, 1, 0.5
 
     def _categorize_signal_strength(self, force: float) -> str:
@@ -266,12 +278,11 @@ class Coordinator:
 
         if force >= thresholds["very_strong_threshold"]:
             return "VERY_STRONG"
-        elif force >= thresholds["strong_threshold"]:
+        if force >= thresholds["strong_threshold"]:
             return "STRONG"
-        elif force >= thresholds["moderate_threshold"]:
+        if force >= thresholds["moderate_threshold"]:
             return "MODERATE"
-        else:
-            return "WEAK"
+        return "WEAK"
 
     def _check_consensus_sell_override(
         self, signal: StrategySignal, entry_price: float
@@ -299,10 +310,12 @@ class Coordinator:
             loss_multiplier = config["loss_multiplier"]
 
             # Vérifier si c'est un signal de consensus
-            signal_type = signal.metadata.get("type", "") if signal.metadata else ""
+            signal_type = signal.metadata.get(
+                "type", "") if signal.metadata else ""
 
             # Calculer la perte actuelle
-            current_loss_pct = ((signal.price - entry_price) / entry_price) * 100
+            current_loss_pct = (
+                (signal.price - entry_price) / entry_price) * 100
 
             # Récupérer l'ATR pour seuil dynamique
             atr_pct = self.trailing_manager._get_atr_percentage(signal.symbol)
@@ -325,21 +338,19 @@ class Coordinator:
             ):
                 reason = (
                     f"CONSENSUS_SELL_FORCED: {strategies_count} stratégies, "
-                    f"force {signal_force:.1f}, perte {current_loss_pct:.2f}% < seuil {loss_threshold:.2f}%"
-                )
+                    f"force {signal_force:.1f}, perte {current_loss_pct:.2f}% < seuil {loss_threshold:.2f}%")
                 return True, reason
 
             # Log des cas où consensus fort mais pas assez de perte
-            elif is_consensus and has_enough_strategies and has_enough_strength:
+            if is_consensus and has_enough_strategies and has_enough_strength:
                 logger.info(
                     f"📊 Consensus fort mais perte insuffisante {signal.symbol}: "
-                    f"{current_loss_pct:.2f}% > {loss_threshold:.2f}% - trailing continue"
-                )
+                    f"{current_loss_pct:.2f}% > {loss_threshold:.2f}% - trailing continue")
 
             return False, "Conditions consensus sell non remplies"
 
         except Exception as e:
-            logger.error(f"Erreur vérification consensus sell: {e}")
+            logger.exception("Erreur vérification consensus sell")
             return False, f"Erreur: {e}"
 
     def _mark_signal_as_processed(self, signal_id: int) -> bool:
@@ -369,15 +380,14 @@ class Coordinator:
                 if cursor.rowcount > 0:
                     logger.debug(f"Signal {signal_id} marqué comme traité")
                     return True
-                else:
-                    logger.warning(f"Signal {signal_id} non trouvé pour marquage")
-                    return False
+                logger.warning(f"Signal {signal_id} non trouvé pour marquage")
+                return False
 
-        except Exception as e:
-            logger.error(f"Erreur marquage signal {signal_id}: {e}")
+        except Exception:
+            logger.exception("Erreur marquage signal {signal_id}")
             return False
 
-    def process_signal(self, channel: str, data: Dict[str, Any]) -> None:
+    def process_signal(self, channel: str, data: dict[str, Any]) -> None:
         """
         Traite un signal reçu via Redis.
 
@@ -394,12 +404,12 @@ class Coordinator:
                     data["side"] = OrderSide(data["side"])
 
                 signal = StrategySignal(**data)
-            except ValueError as e:
-                logger.error(f"❌ Erreur parsing signal: {e}")
+            except ValueError:
+                logger.exception("❌ Erreur parsing signal")
                 self.stats["signals_rejected"] += 1
                 return
-            except Exception as e:
-                logger.error(f"❌ Erreur création signal: {e}")
+            except Exception:
+                logger.exception("❌ Erreur création signal")
                 self.stats["signals_rejected"] += 1
                 return
             logger.info(
@@ -407,18 +417,22 @@ class Coordinator:
             )
             logger.debug(f"🔍 Signal metadata: {signal.metadata}")
             if signal.metadata and "db_id" in signal.metadata:
-                logger.info(f"DB ID trouvé dans signal: {signal.metadata['db_id']}")
+                logger.info(
+                    f"DB ID trouvé dans signal: {signal.metadata['db_id']}")
             else:
-                logger.warning("Pas de db_id trouvé dans les métadonnées du signal")
+                logger.warning(
+                    "Pas de db_id trouvé dans les métadonnées du signal")
 
             # CONSENSUS BUY OVERRIDE: Vérifier AVANT la faisabilité pour permettre le bypass
-            # Cela permet d'ajouter à l'univers AVANT de vérifier si c'est tradable
+            # Cela permet d'ajouter à l'univers AVANT de vérifier si c'est
+            # tradable
             if signal.side == OrderSide.BUY:
                 signal_force, strategy_count, avg_confidence = (
                     self._calculate_unified_signal_strength(signal)
                 )
 
-                # Vérifier si on doit bypasser l'hystérésis pour un consensus fort
+                # Vérifier si on doit bypasser l'hystérésis pour un consensus
+                # fort
                 min_force = self.signal_strength_config["consensus_override"][
                     "min_force"
                 ]
@@ -434,7 +448,7 @@ class Coordinator:
                         f"   → {strategy_count} stratégies, force {signal_force:.2f}"
                     )
                     logger.warning(
-                        f"   → Ajout immédiat à l'univers tradable (bypass hystérésis)"
+                        "   → Ajout immédiat à l'univers tradable (bypass hystérésis)"
                     )
 
                     # Forcer l'ajout à l'univers tradable pour 45 minutes
@@ -442,7 +456,8 @@ class Coordinator:
                         signal.symbol, duration_minutes=45
                     )
 
-            # Vérifier la faisabilité (APRÈS le consensus override pour que l'univers soit à jour)
+            # Vérifier la faisabilité (APRÈS le consensus override pour que
+            # l'univers soit à jour)
             is_feasible, reason = self._check_feasibility(signal)
 
             if not is_feasible:
@@ -456,7 +471,8 @@ class Coordinator:
 
                 return
 
-            # Calculer la quantité à trader (la force a déjà été calculée si BUY)
+            # Calculer la quantité à trader (la force a déjà été calculée si
+            # BUY)
             quantity = self._calculate_quantity(signal)
             if not quantity or quantity <= 0:
                 logger.error("Impossible de calculer la quantité")
@@ -487,8 +503,10 @@ class Coordinator:
 
             # Préparer l'ordre pour le trader (MARKET pour exécution immédiate)
             side_value = (
-                signal.side.value if hasattr(signal.side, "value") else str(signal.side)
-            )
+                signal.side.value if hasattr(
+                    signal.side,
+                    "value") else str(
+                    signal.side))
             order_data = {
                 "symbol": signal.symbol,
                 "side": side_value,
@@ -521,13 +539,15 @@ class Coordinator:
                 if signal.metadata and "db_id" in signal.metadata:
                     db_id = signal.metadata["db_id"]
                     if self._mark_signal_as_processed(db_id):
-                        logger.debug(f"Signal {db_id} marqué comme traité en DB")
+                        logger.debug(
+                            f"Signal {db_id} marqué comme traité en DB")
                     else:
                         logger.warning(
                             f"Impossible de marquer le signal {db_id} comme traité"
                         )
                 else:
-                    logger.warning("Pas de db_id dans les métadonnées du signal")
+                    logger.warning(
+                        "Pas de db_id dans les métadonnées du signal")
             else:
                 logger.error("❌ Échec création ordre")
                 self.stats["errors"] += 1
@@ -537,8 +557,8 @@ class Coordinator:
                     db_id = signal.metadata["db_id"]
                     self._mark_signal_as_processed(db_id)
 
-        except Exception as e:
-            logger.error(f"❌ Erreur traitement signal: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur traitement signal")
             self.stats["errors"] += 1
 
     def _check_feasibility(self, signal: StrategySignal) -> tuple[bool, str]:
@@ -561,12 +581,11 @@ class Coordinator:
             base_asset = self._get_base_asset(signal.symbol)
 
             if signal.side == OrderSide.BUY:
-                # NOUVEAU: Vérifier si la paire fait partie de l'univers sélectionné
+                # NOUVEAU: Vérifier si la paire fait partie de l'univers
+                # sélectionné
                 if not self.universe_manager.is_pair_tradable(signal.symbol):
                     return (
-                        False,
-                        f"{signal.symbol} n'est pas dans l'univers tradable actuellement",
-                    )
+                        False, f"{signal.symbol} n'est pas dans l'univers tradable actuellement", )
 
                 # Pour un BUY, on a besoin d'USDC
                 if isinstance(balances, dict):
@@ -591,13 +610,13 @@ class Coordinator:
                 active_cycle = self._check_active_cycle(signal.symbol)
                 if active_cycle:
                     return (
-                        False,
-                        f"Cycle déjà actif pour {signal.symbol}: {active_cycle}",
-                    )
+                        False, f"Cycle déjà actif pour {signal.symbol}: {active_cycle}", )
 
             else:  # SELL
-                # FILTRE TRAILING SELL: Vérifier si on doit vendre maintenant (AVANT balance)
-                active_positions = self.service_client.get_active_cycles(signal.symbol)
+                # FILTRE TRAILING SELL: Vérifier si on doit vendre maintenant
+                # (AVANT balance)
+                active_positions = self.service_client.get_active_cycles(
+                    signal.symbol)
                 if active_positions:
                     position = active_positions[0]
                     entry_price = float(position.get("entry_price", 0))
@@ -608,8 +627,7 @@ class Coordinator:
 
                     # Vérifier si consensus SELL fort doit bypasser le trailing
                     force_sell, sell_reason = self._check_consensus_sell_override(
-                        signal, entry_price
-                    )
+                        signal, entry_price)
 
                     if not force_sell:
                         should_sell, trailing_reason = (
@@ -626,10 +644,9 @@ class Coordinator:
                                 f"📝 SELL refusé pour {signal.symbol} - Raison: {trailing_reason}"
                             )
                             return False, trailing_reason
-                        else:
-                            logger.info(
-                                f"✅ SELL autorisé par trailing pour {signal.symbol} - Raison: {trailing_reason}"
-                            )
+                        logger.info(
+                            f"✅ SELL autorisé par trailing pour {signal.symbol} - Raison: {trailing_reason}"
+                        )
                     else:
                         logger.warning(
                             f"🔥 {sell_reason}"
@@ -642,7 +659,8 @@ class Coordinator:
 
                 # Pour un SELL, on a besoin de la crypto
                 if isinstance(balances, dict):
-                    crypto_balance = balances.get(base_asset, {}).get("free", 0)
+                    crypto_balance = balances.get(
+                        base_asset, {}).get("free", 0)
                 else:
                     crypto_balance = next(
                         (
@@ -667,8 +685,8 @@ class Coordinator:
             return True, "OK"
 
         except Exception as e:
-            logger.error(f"Erreur vérification faisabilité: {str(e)}")
-            return False, f"Erreur: {str(e)}"
+            logger.exception("Erreur vérification faisabilité")
+            return False, f"Erreur: {e!s}"
 
     def _check_trade_efficiency(
         self, signal: StrategySignal, quantity: float
@@ -710,11 +728,11 @@ class Coordinator:
             )
             return True, "Trade valide"
 
-        except Exception as e:
-            logger.error(f"❌ Erreur vérification trade: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur vérification trade")
             return True, "Erreur technique - trade autorisé par défaut"
 
-    def _calculate_quantity(self, signal: StrategySignal) -> Optional[float]:
+    def _calculate_quantity(self, signal: StrategySignal) -> float | None:
         """
         Calcule la quantité à trader.
 
@@ -732,10 +750,11 @@ class Coordinator:
             base_asset = self._get_base_asset(signal.symbol)
 
             if signal.side == OrderSide.BUY:
-                # Pour un BUY, calculer combien on peut acheter (allocation dynamique)
+                # Pour un BUY, calculer combien on peut acheter (allocation
+                # dynamique)
                 if isinstance(balances, dict):
                     usdc_balance = balances.get("USDC", {}).get("free", 0)
-                    total_capital = sum(
+                    sum(
                         b.get("value_usdc", 0) for b in balances.values()
                     )
                 else:
@@ -747,14 +766,15 @@ class Coordinator:
                         ),
                         0,
                     )
-                    total_capital = sum(b.get("value_usdc", 0) for b in balances)
+                    sum(b.get("value_usdc", 0) for b in balances)
 
                 # ALLOCATION USDC : Utiliser le calcul de force unifié
                 # Réutiliser le calcul déjà fait si disponible dans metadata
                 if signal.metadata and "calculated_force" in signal.metadata:
                     # Force déjà calculée lors du consensus override
                     signal_force = signal.metadata["calculated_force"]
-                    strategies_count = signal.metadata.get("strategies_count", 1)
+                    strategies_count = signal.metadata.get(
+                        "strategies_count", 1)
                     avg_confidence = signal.metadata.get(
                         "avg_confidence", signal.confidence
                     )
@@ -764,12 +784,12 @@ class Coordinator:
                         self._calculate_unified_signal_strength(signal)
                     )
 
-                strength_category = self._categorize_signal_strength(signal_force)
+                strength_category = self._categorize_signal_strength(
+                    signal_force)
 
                 logger.info(
                     f"💪 Force calculée {signal.symbol}: {signal_force:.2f} → {strength_category} "
-                    f"(strategies:{strategies_count}, conf:{avg_confidence:.2f})"
-                )
+                    f"(strategies:{strategies_count}, conf:{avg_confidence:.2f})")
 
                 # Allocation selon la force calculée
                 if strength_category == "VERY_STRONG":
@@ -793,7 +813,8 @@ class Coordinator:
                 # Mais toujours respecter le minimum absolu Binance
                 trade_amount = max(self.min_absolute_trade_usdc, trade_amount)
 
-                # NOUVEAU: Si USDC insuffisant, essayer de libérer des fonds en vendant la pire position
+                # NOUVEAU: Si USDC insuffisant, essayer de libérer des fonds en
+                # vendant la pire position
                 if trade_amount > usdc_balance:
                     logger.warning(
                         f"💰 USDC insuffisant pour {signal.symbol}: besoin {trade_amount:.2f}, disponible {usdc_balance:.2f}"
@@ -807,9 +828,8 @@ class Coordinator:
                         updated_balances = self.service_client.get_all_balances()
                         if updated_balances:
                             if isinstance(updated_balances, dict):
-                                usdc_balance = updated_balances.get("USDC", {}).get(
-                                    "free", 0
-                                )
+                                usdc_balance = updated_balances.get(
+                                    "USDC", {}).get("free", 0)
                             else:
                                 usdc_balance = next(
                                     (
@@ -826,8 +846,7 @@ class Coordinator:
 
                         # Recalculer le montant de trade avec le nouvel USDC
                         trade_amount = min(
-                            trade_amount, usdc_balance * self.usdc_safety_margin
-                        )
+                            trade_amount, usdc_balance * self.usdc_safety_margin)
                     else:
                         logger.warning(
                             f"❌ Impossible de libérer assez d'USDC pour {signal.symbol}"
@@ -839,64 +858,57 @@ class Coordinator:
                 logger.info(
                     f"💰 {signal.symbol} - USDC dispo: {usdc_balance:.0f}€, "
                     f"allocation: {allocation_percent:.0f}% = {trade_amount:.0f}€ "
-                    f"(force: {strength_category}) [POSITIONS ×1.8 AUGMENTÉES]"
-                )
+                    f"(force: {strength_category}) [POSITIONS ×1.8 AUGMENTÉES]")
 
                 # Vérifier que le prix est valide avant division
                 if not signal.price or signal.price <= 0:
-                    logger.error(f"Prix invalide pour {signal.symbol}: {signal.price}")
+                    logger.error(
+                        f"Prix invalide pour {signal.symbol}: {signal.price}")
                     return None
 
                 # Convertir en quantité
                 quantity = trade_amount / signal.price
 
-            else:  # SELL
-                # Pour un SELL, vendre toute la position
-                if isinstance(balances, dict):
-                    quantity = balances.get(base_asset, {}).get("free", 0)
-                else:
-                    quantity = next(
-                        (
-                            b.get("free", 0)
-                            for b in balances
-                            if b.get("asset") == base_asset
-                        ),
-                        0,
-                    )
+            # Pour un SELL, vendre toute la position
+            elif isinstance(balances, dict):
+                quantity = balances.get(base_asset, {}).get("free", 0)
+            else:
+                quantity = next(
+                    (
+                        b.get("free", 0)
+                        for b in balances
+                        if b.get("asset") == base_asset
+                    ),
+                    0,
+                )
 
             return quantity
 
-        except Exception as e:
-            logger.error(f"Erreur calcul quantité: {str(e)}")
+        except Exception:
+            logger.exception("Erreur calcul quantité")
             return None
 
     def _get_base_asset(self, symbol: str) -> str:
         """Extrait l'asset de base du symbole."""
-        if symbol.endswith("USDC"):
+        if symbol.endswith(("USDC", "USDT")):
             return symbol[:-4]
-        elif symbol.endswith("USDT"):
-            return symbol[:-4]
-        elif symbol.endswith("BTC"):
+        if symbol.endswith(("BTC", "ETH")):
             return symbol[:-3]
-        elif symbol.endswith("ETH"):
-            return symbol[:-3]
-        else:
-            return symbol[:-4]  # Par défaut
+        return symbol[:-4]  # Par défaut
 
     def _get_quote_asset(self, symbol: str) -> str:
         """Extrait l'asset de quote du symbole."""
         if symbol.endswith("USDC"):
             return "USDC"
-        elif symbol.endswith("USDT"):
+        if symbol.endswith("USDT"):
             return "USDT"
-        elif symbol.endswith("BTC"):
+        if symbol.endswith("BTC"):
             return "BTC"
-        elif symbol.endswith("ETH"):
+        if symbol.endswith("ETH"):
             return "ETH"
-        else:
-            return "USDC"  # Par défaut
+        return "USDC"  # Par défaut
 
-    def _check_active_cycle(self, symbol: str) -> Optional[str]:
+    def _check_active_cycle(self, symbol: str) -> str | None:
         """
         Vérifie s'il y a un cycle actif pour ce symbole via le portfolio service.
 
@@ -918,10 +930,11 @@ class Coordinator:
             return None
 
         except Exception as e:
-            logger.warning(f"Erreur vérification cycle actif pour {symbol}: {str(e)}")
+            logger.warning(
+                f"Erreur vérification cycle actif pour {symbol}: {e!s}")
             return None
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Retourne les statistiques du coordinator."""
         return self.stats.copy()
 
@@ -929,8 +942,7 @@ class Coordinator:
         """Démarre le thread de monitoring stop-loss."""
         if not self.stop_loss_thread or not self.stop_loss_thread.is_alive():
             self.stop_loss_thread = threading.Thread(
-                target=self._stop_loss_monitor_loop, daemon=True, name="StopLossMonitor"
-            )
+                target=self._stop_loss_monitor_loop, daemon=True, name="StopLossMonitor")
             self.stop_loss_thread.start()
             logger.info("🛡️ Monitoring stop-loss démarré")
 
@@ -948,8 +960,7 @@ class Coordinator:
             or not self.universe_update_thread.is_alive()
         ):
             self.universe_update_thread = threading.Thread(
-                target=self._universe_update_loop, daemon=True, name="UniverseUpdate"
-            )
+                target=self._universe_update_loop, daemon=True, name="UniverseUpdate")
             self.universe_update_thread.start()
             logger.info("🌍 Mise à jour de l'univers démarrée")
 
@@ -971,8 +982,8 @@ class Coordinator:
             try:
                 time.sleep(self.universe_update_interval)
                 self._update_universe()
-            except Exception as e:
-                logger.error(f"❌ Erreur dans mise à jour univers: {e}")
+            except Exception:
+                logger.exception("❌ Erreur dans mise à jour univers")
                 time.sleep(self.universe_update_interval)
 
     def _update_universe(self) -> None:
@@ -981,7 +992,8 @@ class Coordinator:
             selected, scores = self.universe_manager.update_universe()
 
             # Log des paires sélectionnées
-            logger.info(f"🌍 Univers mis à jour: {len(selected)} paires sélectionnées")
+            logger.info(
+                f"🌍 Univers mis à jour: {len(selected)} paires sélectionnées")
             logger.info(f"📊 Core: {self.universe_manager.core_pairs}")
             satellites = selected - self.universe_manager.core_pairs
             if satellites:
@@ -1001,14 +1013,14 @@ class Coordinator:
                         status = "✅" if symbol in selected else "❌"
                         logger.info(f"  {status} {symbol}: {score:.2f}")
 
-            except Exception as e:
-                logger.error(f"❌ Erreur affichage scores: {e}")
+            except Exception:
+                logger.exception("❌ Erreur affichage scores")
                 logger.info(
                     f"Debug - selected: {selected}, scores count: {len(scores)}"
                 )
 
-        except Exception as e:
-            logger.error(f"❌ Erreur mise à jour univers: {e}")
+        except Exception:
+            logger.exception("❌ Erreur mise à jour univers")
 
     def _stop_loss_monitor_loop(self) -> None:
         """Boucle principale du monitoring stop-loss."""
@@ -1018,8 +1030,8 @@ class Coordinator:
             try:
                 self._check_all_positions_stop_loss()
                 time.sleep(self.price_check_interval)
-            except Exception as e:
-                logger.error(f"❌ Erreur dans monitoring stop-loss: {e}")
+            except Exception:
+                logger.exception("❌ Erreur dans monitoring stop-loss")
                 time.sleep(
                     self.price_check_interval * 2
                 )  # Attendre plus longtemps en cas d'erreur
@@ -1041,14 +1053,14 @@ class Coordinator:
                 try:
                     self._check_position_stop_loss(cycle)
                 except Exception as e:
-                    logger.error(
+                    logger.exception(
                         f"❌ Erreur vérification stop-loss pour cycle {cycle.get('id', 'unknown')}: {e}"
                     )
 
-        except Exception as e:
-            logger.error(f"❌ Erreur récupération positions actives: {e}")
+        except Exception:
+            logger.exception("❌ Erreur récupération positions actives")
 
-    def _check_position_stop_loss(self, cycle: Dict[str, Any]) -> None:
+    def _check_position_stop_loss(self, cycle: dict[str, Any]) -> None:
         """
         Vérifie une position spécifique et déclenche un stop-loss si nécessaire.
         Met aussi à jour la référence trailing automatiquement.
@@ -1079,7 +1091,8 @@ class Coordinator:
                 )
                 entry_time_epoch = entry_time_dt.timestamp()
             else:
-                entry_time_epoch = float(entry_time) if entry_time else time.time()
+                entry_time_epoch = float(
+                    entry_time) if entry_time else time.time()
 
             # Récupérer le prix actuel via TrailingSellManager
             current_price = self.trailing_manager.get_current_price(symbol)
@@ -1091,7 +1104,8 @@ class Coordinator:
 
             # Vérifier le hard risk en premier (forçage absolu)
             if self.universe_manager.check_hard_risk(symbol):
-                logger.warning(f"🚨 HARD RISK détecté pour {symbol} - vente forcée!")
+                logger.warning(
+                    f"🚨 HARD RISK détecté pour {symbol} - vente forcée!")
                 self._execute_emergency_sell(
                     symbol, current_price, position_id, "HARD_RISK"
                 )
@@ -1107,7 +1121,8 @@ class Coordinator:
             )
 
             if should_sell:
-                logger.warning(f"🚨 AUTO-SELL DÉCLENCHÉ pour {symbol}: {sell_reason}")
+                logger.warning(
+                    f"🚨 AUTO-SELL DÉCLENCHÉ pour {symbol}: {sell_reason}")
                 # Déclencher vente d'urgence
                 self._execute_emergency_sell(
                     symbol, current_price, position_id, sell_reason
@@ -1120,10 +1135,11 @@ class Coordinator:
                     symbol, current_price, position_id
                 )
 
-        except Exception as e:
-            logger.error(f"❌ Erreur vérification position {cycle_id}: {e}")
+        except Exception:
+            logger.exception("❌ Erreur vérification position {cycle_id}")
 
-    # _get_current_price SUPPRIMÉ - utiliser trailing_manager.get_current_price() à la place
+    # _get_current_price SUPPRIMÉ - utiliser
+    # trailing_manager.get_current_price() à la place
 
     def _execute_emergency_sell(
         self, symbol: str, current_price: float, cycle_id: str, reason: str
@@ -1202,8 +1218,8 @@ class Coordinator:
                 logger.error(f"❌ Échec création ordre stop-loss pour {symbol}")
                 self.stats["errors"] += 1
 
-        except Exception as e:
-            logger.error(f"❌ Erreur vente d'urgence {symbol}: {e}")
+        except Exception:
+            logger.exception("❌ Erreur vente d'urgence {symbol}")
             self.stats["errors"] += 1
 
     def shutdown(self) -> None:
@@ -1216,7 +1232,9 @@ class Coordinator:
             self.stop_universe_update()
 
             # Libérer la connexion dédiée du trailing manager
-            if hasattr(self, "trailing_db_connection") and self.trailing_db_connection:
+            if hasattr(
+                    self,
+                    "trailing_db_connection") and self.trailing_db_connection:
                 self.db_pool.release_connection(self.trailing_db_connection)
                 logger.info("Connexion DB TrailingSellManager libérée")
 
@@ -1232,10 +1250,11 @@ class Coordinator:
 
             logger.info("✅ Coordinator arrêté proprement")
 
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de l'arrêt du Coordinator: {e}")
+        except Exception:
+            logger.exception("❌ Erreur lors de l'arrêt du Coordinator")
 
-    def _free_usdc_by_selling_worst_position(self, usdc_needed: float) -> float:
+    def _free_usdc_by_selling_worst_position(
+            self, usdc_needed: float) -> float:
         """
         Libère de l'USDC en vendant la position avec la pire performance.
 
@@ -1249,7 +1268,8 @@ class Coordinator:
             # Récupérer toutes les positions actives
             active_cycles = self.service_client.get_all_active_cycles()
             if not active_cycles:
-                logger.warning("Aucune position active à vendre pour libérer de l'USDC")
+                logger.warning(
+                    "Aucune position active à vendre pour libérer de l'USDC")
                 return 0.0
 
             # Récupérer les balances actuelles
@@ -1273,7 +1293,8 @@ class Coordinator:
                         continue
 
                     # Récupérer le prix actuel
-                    current_price = self.trailing_manager.get_current_price(symbol)
+                    current_price = self.trailing_manager.get_current_price(
+                        symbol)
                     if not current_price:
                         continue
 
@@ -1322,8 +1343,8 @@ class Coordinator:
                             "current_price": current_price,
                         }
 
-                except Exception as e:
-                    logger.error(f"Erreur analyse position {cycle}: {e}")
+                except Exception:
+                    logger.exception("Erreur analyse position {cycle}")
                     continue
 
             # NOUVELLE LOGIQUE : Ne vendre que si il y a des positions en perte
@@ -1344,8 +1365,7 @@ class Coordinator:
             ):
                 logger.warning(
                     f"🔥 VENTE AUTO de la position en PERTE: {worst_position['symbol']} "
-                    f"({worst_position['performance_pct']:+.2f}%, {worst_position['value_usdc']:.2f} USDC)"
-                )
+                    f"({worst_position['performance_pct']:+.2f}%, {worst_position['value_usdc']:.2f} USDC)")
 
                 # Créer un ordre de vente d'urgence
                 order_data = {
@@ -1373,33 +1393,29 @@ class Coordinator:
                     time.sleep(2)
 
                     return worst_position["value_usdc"]
-                else:
-                    logger.error(
-                        f"❌ Échec ordre de liquidation pour {worst_position['symbol']}"
-                    )
-                    return 0.0
-            else:
-                if worst_position and worst_position["performance_pct"] >= 0:
-                    logger.info(
-                        f"💚 Pire position {worst_position['symbol']} est gagnante "
-                        f"({worst_position['performance_pct']:+.2f}%) - Pas de vente"
-                    )
-                elif worst_position:
-                    logger.warning(
-                        f"💔 Position en perte {worst_position['symbol']} trop petite "
-                        f"({worst_position['value_usdc']:.2f} USDC < {usdc_needed * 0.8:.2f} requis)"
-                    )
-                else:
-                    logger.warning("Aucune position éligible pour liquidation trouvée")
+                logger.error(
+                    f"❌ Échec ordre de liquidation pour {worst_position['symbol']}"
+                )
                 return 0.0
-
-        except Exception as e:
-            logger.error(f"Erreur libération USDC: {e}")
+            if worst_position and worst_position["performance_pct"] >= 0:
+                logger.info(
+                    f"💚 Pire position {worst_position['symbol']} est gagnante "
+                    f"({worst_position['performance_pct']:+.2f}%) - Pas de vente")
+            elif worst_position:
+                logger.warning(
+                    f"💔 Position en perte {worst_position['symbol']} trop petite "
+                    f"({worst_position['value_usdc']:.2f} USDC < {usdc_needed * 0.8:.2f} requis)")
+            else:
+                logger.warning(
+                    "Aucune position éligible pour liquidation trouvée")
             return 0.0
 
-    def get_universe_stats(self) -> Dict[str, Any]:
+        except Exception:
+            logger.exception("Erreur libération USDC")
+            return 0.0
+
+    def get_universe_stats(self) -> dict[str, Any]:
         """Retourne les statistiques de l'univers tradable"""
         if self.universe_manager:
             return self.universe_manager.get_universe_stats()
-        else:
-            return {"status": "universe_manager_not_initialized"}
+        return {"status": "universe_manager_not_initialized"}

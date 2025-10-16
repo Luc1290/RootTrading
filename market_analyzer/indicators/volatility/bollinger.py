@@ -9,10 +9,10 @@ This module provides Bollinger Bands calculation including:
 - %B (Percent B)
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Union, Tuple
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +26,11 @@ except ImportError:
 
 
 def calculate_bollinger_bands(
-    prices: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
     period: int = 20,
     std_dev: float = 2.0,
     ma_type: str = "sma",
-) -> Dict[str, Optional[float]]:
+) -> dict[str, float | None]:
     """
     Calculate Bollinger Bands.
 
@@ -93,17 +93,18 @@ def calculate_bollinger_bands(
                 "percent_b": float(percent_b) if percent_b is not None else None,
             }
         except Exception as e:
-            logger.warning(f"TA-Lib Bollinger Bands error: {e}, using fallback")
+            logger.warning(
+                f"TA-Lib Bollinger Bands error: {e}, using fallback")
 
     return _calculate_bollinger_manual(prices_array, period, std_dev, ma_type)
 
 
 def calculate_bollinger_bands_series(
-    prices: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
     period: int = 20,
     std_dev: float = 2.0,
     ma_type: str = "sma",
-) -> Dict[str, List[Optional[float]]]:
+) -> dict[str, list[float | None]]:
     """
     Calculate Bollinger Bands for entire price series.
 
@@ -154,17 +155,19 @@ def calculate_bollinger_bands_series(
                 "percent_b": [x if x is not None else 0.0 for x in percent_b_series],
             }
         except Exception as e:
-            logger.warning(f"TA-Lib Bollinger Bands series error: {e}, using fallback")
+            logger.warning(
+                f"TA-Lib Bollinger Bands series error: {e}, using fallback")
 
     # Manual calculation
-    return _calculate_bollinger_series_manual(prices_array, period, std_dev, ma_type)
+    return _calculate_bollinger_series_manual(
+        prices_array, period, std_dev, ma_type)
 
 
 def calculate_bollinger_width(
-    prices: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
     period: int = 20,
     std_dev: float = 2.0,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate Bollinger Band Width indicator.
 
@@ -191,11 +194,11 @@ def calculate_bollinger_width(
 
 
 def calculate_bollinger_squeeze(
-    prices: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
     period: int = 20,
     std_dev: float = 2.0,
     lookback: int = 120,
-) -> Dict[str, Optional[Union[float, bool]]]:
+) -> dict[str, float | bool | None]:
     """
     Detect Bollinger Band squeeze conditions.
 
@@ -232,14 +235,15 @@ def calculate_bollinger_squeeze(
 
     # Calculate statistics
     avg_width = np.mean(recent_widths)
-    min_width = np.min(recent_widths)
+    np.min(recent_widths)
 
     # Squeeze detection (width below 20th percentile)
     percentile_20 = np.percentile(recent_widths, 20)
     in_squeeze = current_width <= percentile_20
 
     # Calculate metrics
-    squeeze_percentage = (current_width / avg_width) * 100 if avg_width > 0 else None
+    squeeze_percentage = (current_width / avg_width) * \
+        100 if avg_width > 0 else None
     width_percentile = (
         np.sum(np.array(recent_widths) <= current_width) / len(recent_widths)
     ) * 100
@@ -247,14 +251,13 @@ def calculate_bollinger_squeeze(
     return {
         "in_squeeze": bool(in_squeeze),
         "squeeze_percentage": (
-            float(squeeze_percentage) if squeeze_percentage is not None else None
-        ),
+            float(squeeze_percentage) if squeeze_percentage is not None else None),
         "width_percentile": float(width_percentile),
     }
 
 
 def calculate_bollinger_expansion(
-    prices: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
     period: int = 20,
     std_dev: float = 2.0,
     lookback: int = 10,
@@ -310,7 +313,7 @@ def calculate_bollinger_expansion(
 
 
 def calculate_bollinger_breakout_direction(
-    prices: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
     period: int = 20,
     std_dev: float = 2.0,
     lookback: int = 3,
@@ -351,20 +354,19 @@ def calculate_bollinger_breakout_direction(
     # Determine breakout direction
     if current_price > upper_band and upper_breaks >= 2:
         return "UP"
-    elif current_price < lower_band and lower_breaks >= 2:
+    if current_price < lower_band and lower_breaks >= 2:
         return "DOWN"
-    else:
-        return "NONE"
+    return "NONE"
 
 
 def calculate_keltner_channels(
-    prices: Union[List[float], np.ndarray, pd.Series],
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
     period: int = 20,
     atr_period: int = 10,
     multiplier: float = 2.0,
-) -> Dict[str, Optional[float]]:
+) -> dict[str, float | None]:
     """
     Calculate Keltner Channels.
 
@@ -381,8 +383,8 @@ def calculate_keltner_channels(
     Returns:
         Dictionary with upper, middle, lower values
     """
-    from ..volatility.atr import calculate_atr
     from ..trend.moving_averages import calculate_ema
+    from ..volatility.atr import calculate_atr
 
     prices_array = _to_numpy_array(prices)
 
@@ -400,11 +402,14 @@ def calculate_keltner_channels(
     upper = middle + (atr * multiplier)
     lower = middle - (atr * multiplier)
 
-    return {"upper": float(upper), "middle": float(middle), "lower": float(lower)}
+    return {
+        "upper": float(upper),
+        "middle": float(middle),
+        "lower": float(lower)}
 
 
 def bollinger_band_signal(
-    prices: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
     period: int = 20,
     std_dev: float = 2.0,
 ) -> str:
@@ -427,12 +432,12 @@ def bollinger_band_signal(
         return "neutral"
 
     current_price = float(prices[-1])
-    prev_price = float(prices[-2])
+    float(prices[-2])
 
     # Check for band touches/breaks
     if current_price >= bands["upper"]:
         return "overbought"
-    elif current_price <= bands["lower"]:
+    if current_price <= bands["lower"]:
         return "oversold"
 
     # Check for squeeze
@@ -446,20 +451,20 @@ def bollinger_band_signal(
 # ============ Helper Functions ============
 
 
-def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
+def _to_numpy_array(data: list[float] | np.ndarray | pd.Series) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
         if hasattr(data.values, "values"):  # ExtensionArray
             return np.asarray(data.values, dtype=float)
         return np.asarray(data.values, dtype=float)
-    elif isinstance(data, list):
+    if isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
 
 
 def _calculate_bollinger_manual(
     prices: np.ndarray, period: int, std_dev: float, ma_type: str
-) -> Dict[str, Optional[float]]:
+) -> dict[str, float | None]:
     """Manual Bollinger Bands calculation."""
     if ma_type == "ema":
         from ..trend.moving_averages import calculate_ema
@@ -502,13 +507,13 @@ def _calculate_bollinger_manual(
 
 def _calculate_bollinger_series_manual(
     prices: np.ndarray, period: int, std_dev: float, ma_type: str
-) -> Dict[str, List[Optional[float]]]:
+) -> dict[str, list[float | None]]:
     """Manual Bollinger Bands series calculation."""
-    upper_series: List[Optional[float]] = []
-    middle_series: List[Optional[float]] = []
-    lower_series: List[Optional[float]] = []
-    bandwidth_series: List[Optional[float]] = []
-    percent_b_series: List[Optional[float]] = []
+    upper_series: list[float | None] = []
+    middle_series: list[float | None] = []
+    lower_series: list[float | None] = []
+    bandwidth_series: list[float | None] = []
+    percent_b_series: list[float | None] = []
 
     for i in range(len(prices)):
         if i < period - 1:
@@ -519,7 +524,7 @@ def _calculate_bollinger_series_manual(
             percent_b_series.append(None)
         else:
             # Calculate for window
-            window = prices[i - period + 1 : i + 1]
+            window = prices[i - period + 1: i + 1]
 
             if ma_type == "ema":
                 from ..trend.moving_averages import calculate_ema

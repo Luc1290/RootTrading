@@ -3,11 +3,12 @@ DataConverter - Conversion bidirectionnelle entre formats ROOT et Freqtrade.
 Gère la conversion des données OHLCV et indicateurs entre dict (ROOT) et DataFrame (Freqtrade).
 """
 
-import pandas as pd
-import numpy as np
-from typing import Dict, Any, List, Optional
-from datetime import datetime
 import logging
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +90,13 @@ class DataConverter:
         except Exception as e:
             logger.error(f"Erreur conversion ROOT → DataFrame: {e}")
             # Retourner DataFrame vide avec structure minimale
-            return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+            return pd.DataFrame(
+                columns=[
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume"])
 
     @staticmethod
     def dataframe_to_root(
@@ -178,10 +185,10 @@ class DataConverter:
                         else:
                             logger.warning(
                                 f"Longueur indicateur {indicator_name} ({len(value)}) "
-                                f"!= longueur données ({len(df)})"
-                            )
+                                f"!= longueur données ({len(df)})")
                     else:
-                        # Sinon valeur scalaire, répliquer sur toutes les lignes
+                        # Sinon valeur scalaire, répliquer sur toutes les
+                        # lignes
                         df[indicator_name] = value
 
             return df
@@ -220,7 +227,8 @@ class DataConverter:
         return True
 
     @staticmethod
-    def resample_dataframe(df: pd.DataFrame, timeframe: str = "5m") -> pd.DataFrame:
+    def resample_dataframe(df: pd.DataFrame,
+                           timeframe: str = "5m") -> pd.DataFrame:
         """
         Rééchantillonne un DataFrame vers une timeframe différente.
 

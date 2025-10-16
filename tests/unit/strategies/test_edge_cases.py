@@ -2,14 +2,14 @@
 Tests pour les cas limites et branches conditionnelles.
 """
 
-import pytest
-import sys
+from analyzer.strategies.RSI_Cross_Strategy import RSI_Cross_Strategy
+from analyzer.strategies.MACD_Crossover_Strategy import MACD_Crossover_Strategy
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-
-from analyzer.strategies.MACD_Crossover_Strategy import MACD_Crossover_Strategy
-from analyzer.strategies.RSI_Cross_Strategy import RSI_Cross_Strategy
 
 
 class TestEdgeCases:
@@ -90,7 +90,8 @@ class TestEdgeCases:
         data = {"close": [50000]}
 
         # Test valeurs limites de trend_alignment
-        alignment_values = [-0.8, -0.6, -0.4, -0.2, 0.0, 0.2, 0.4, 0.6, 0.8, None]
+        alignment_values = [-0.8, -0.6, -0.4, -
+                            0.2, 0.0, 0.2, 0.4, 0.6, 0.8, None]
 
         for alignment in alignment_values:
             indicators = base_indicators.copy()
@@ -140,7 +141,10 @@ class TestEdgeCases:
         data = {"close": [50000]}
 
         # MACD avec seulement les indicateurs essentiels
-        minimal_macd = {"macd_line": 50.0, "macd_signal": 45.0, "confluence_score": 70}
+        minimal_macd = {
+            "macd_line": 50.0,
+            "macd_signal": 45.0,
+            "confluence_score": 70}
 
         strategy = MACD_Crossover_Strategy("BTCUSDC", data, minimal_macd)
         result = strategy.generate_signal()

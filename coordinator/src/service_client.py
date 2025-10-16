@@ -4,11 +4,12 @@ Client centralisé pour les appels aux services externes.
 """
 
 import logging
-import requests  # type: ignore
 import time
-from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
+
+import requests  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class CircuitBreaker:
         self.failure_threshold = failure_threshold
         self.reset_timeout = reset_timeout
         self.failure_count = 0
-        self.last_failure_time: Optional[datetime] = None
+        self.last_failure_time: datetime | None = None
         self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
 
     def call_succeeded(self):
@@ -45,7 +46,8 @@ class CircuitBreaker:
 
         if self.failure_count >= self.failure_threshold:
             self.state = "OPEN"
-            logger.warning(f"Circuit breaker OPEN après {self.failure_count} échecs")
+            logger.warning(
+                f"Circuit breaker OPEN après {self.failure_count} échecs")
 
     def can_execute(self) -> bool:
         """Vérifie si on peut exécuter un appel."""
@@ -85,40 +87,40 @@ class ServiceClient:
             analyzer_url: URL du service Analyzer
         """
         self.endpoints = {
-            "trader": ServiceEndpoint("trader", trader_url, timeout=15.0),
-            "portfolio": ServiceEndpoint("portfolio", portfolio_url, timeout=15.0),
-            "analyzer": ServiceEndpoint("analyzer", analyzer_url, timeout=10.0),
-        }
+            "trader": ServiceEndpoint(
+                "trader", trader_url, timeout=15.0), "portfolio": ServiceEndpoint(
+                "portfolio", portfolio_url, timeout=15.0), "analyzer": ServiceEndpoint(
+                "analyzer", analyzer_url, timeout=10.0), }
 
         # Circuit breakers par service
         self.circuit_breakers = {
-            name: CircuitBreaker() for name in self.endpoints.keys()
+            name: CircuitBreaker() for name in self.endpoints
         }
 
         # Cache simple avec TTL
-        self._cache: Dict[str, Any] = {}
-        self._cache_ttl: Dict[str, float] = {}
+        self._cache: dict[str, Any] = {}
+        self._cache_ttl: dict[str, float] = {}
 
     def _make_request(
         self,
         service: str,
         endpoint: str,
         method: str = "GET",
-        json_data: Optional[Dict[str, Any]] = None,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
+        json_data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | list[Any] | None:
         """
         Effectue une requête HTTP avec retry et circuit breaker.
 
         Args:
             service: Nom du service (trader, portfolio, analyzer)
-            endpoint: Endpoint à appeler (ex: /cycles)
+            endpoint: Endpoint à appeller (ex: /cycles)
             method: Méthode HTTP
             json_data: Données JSON à envoyer
             params: Paramètres de requête
 
         Returns:
-            Réponse JSON ou None si échec
+            Réponse JSON (Dict ou List) ou None si échec
         """
         if service not in self.endpoints:
             logger.error(f"Service inconnu: {service}")
@@ -126,7 +128,8 @@ class ServiceClient:
 
         circuit_breaker = self.circuit_breakers[service]
         if not circuit_breaker.can_execute():
-            logger.warning(f"Circuit breaker OPEN pour {service}, requête bloquée")
+            logger.warning(
+                f"Circuit breaker OPEN pour {service}, requête bloquée")
             return None
 
         service_config = self.endpoints[service]
@@ -152,8 +155,8 @@ class ServiceClient:
                 )
                 time.sleep(0.5 * (attempt + 1))
 
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Erreur appelant {service}{endpoint}: {str(e)}")
+            except requests.exceptions.RequestException:
+                logger.exception("Erreur appelant {service}{endpoint}")
                 if attempt == service_config.max_retries - 1:
                     circuit_breaker.call_failed()
                 time.sleep(0.5 * (attempt + 1))
@@ -162,7 +165,8 @@ class ServiceClient:
 
     # === API Trader ===
 
-    def get_active_cycles(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_active_cycles(self, symbol: str |
+                          None = None) -> list[dict[str, Any]]:
         """
         Récupère les positions actives depuis le portfolio service.
 
@@ -176,20 +180,20 @@ class ServiceClient:
             # Appeler le service portfolio pour récupérer les positions actives
             response = self._make_request("portfolio", "/positions/active")
 
-            if response:
-                if isinstance(response, list):
-                    # Filtrer par symbole si spécifié
-                    if symbol:
-                        return [pos for pos in response if pos.get("symbol") == symbol]
-                    return response
+            if response and isinstance(response, list):
+                # Filtrer par symbole si spécifié
+                if symbol:
+                    return [
+                        pos for pos in response if pos.get("symbol") == symbol]
+                return response
 
             return []
 
         except Exception as e:
-            logger.warning(f"Erreur récupération positions actives: {str(e)}")
+            logger.warning(f"Erreur récupération positions actives: {e!s}")
             return []
 
-    def get_all_active_cycles(self) -> List[Dict[str, Any]]:
+    def get_all_active_cycles(self) -> list[dict[str, Any]]:
         """
         Récupère toutes les positions actives depuis le portfolio service.
 
@@ -198,7 +202,7 @@ class ServiceClient:
         """
         return self.get_active_cycles(symbol=None)
 
-    def create_order(self, order_data: Dict[str, Any]) -> Optional[str]:
+    def create_order(self, order_data: dict[str, Any]) -> str | None:
         """
         Crée un nouvel ordre via le trader.
 
@@ -231,9 +235,9 @@ class ServiceClient:
         symbol: str,
         side: str,
         quantity: float,
-        price: Optional[float] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        price: float | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
         Renforce un cycle existant via DCA.
 
@@ -267,12 +271,11 @@ class ServiceClient:
 
         if response:
             return response
-        else:
-            return {"success": False, "error": "Service indisponible"}
+        return {"success": False, "error": "Service indisponible"}
 
     def close_cycle(
-        self, cycle_id: str, close_data: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, cycle_id: str, close_data: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """
         Ferme un cycle existant via le trader.
 
@@ -291,12 +294,11 @@ class ServiceClient:
 
         if response:
             return response
-        else:
-            return {"success": False, "error": "Service indisponible"}
+        return {"success": False, "error": "Service indisponible"}
 
     def close_cycle_accounting(
         self, cycle_id: str, price: float, reason: str = "Fermeture comptable"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Ferme un cycle de manière comptable sans ordre réel.
 
@@ -317,10 +319,9 @@ class ServiceClient:
 
         if response:
             return response
-        else:
-            return {"success": False, "error": "Service indisponible"}
+        return {"success": False, "error": "Service indisponible"}
 
-    def get_current_prices(self, symbols: List[str]) -> Dict[str, float]:
+    def get_current_prices(self, symbols: list[str]) -> dict[str, float]:
         """
         Récupère les prix actuels depuis le trader.
 
@@ -335,7 +336,7 @@ class ServiceClient:
         )
         return response.get("prices", {}) if response else {}
 
-    def get_current_price(self, symbol: str) -> Optional[float]:
+    def get_current_price(self, symbol: str) -> float | None:
         """
         Récupère le prix actuel d'un symbole.
 
@@ -350,7 +351,7 @@ class ServiceClient:
 
     # === API Portfolio ===
 
-    def get_portfolio_balance(self, asset: str) -> Optional[float]:
+    def get_portfolio_balance(self, asset: str) -> float | None:
         """
         Récupère le solde d'un actif depuis le portfolio.
 
@@ -367,7 +368,7 @@ class ServiceClient:
 
         return None
 
-    def get_portfolio_summary(self) -> Dict[str, Any]:
+    def get_portfolio_summary(self) -> dict[str, Any]:
         """
         Récupère le résumé du portfolio.
 
@@ -378,21 +379,22 @@ class ServiceClient:
 
         # Cache de 5 secondes pour le résumé
         if cache_key in self._cache:
-            if datetime.now().timestamp() - self._cache_ttl[cache_key] < 5.0:
+            if datetime.now(timezone.utc).timestamp() - \
+                    self._cache_ttl[cache_key] < 5.0:
                 return self._cache[cache_key]
 
         response = self._make_request("portfolio", "/summary")
 
         if response:
             self._cache[cache_key] = response
-            self._cache_ttl[cache_key] = datetime.now().timestamp()
+            self._cache_ttl[cache_key] = datetime.now(timezone.utc).timestamp()
             return response
 
         return {}
 
     def check_balance_for_trade(
         self, symbol: str, side: str, amount: float
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Vérifie si les balances sont suffisantes pour un trade.
         Utilise les endpoints existants du portfolio pour vérifier.
@@ -425,7 +427,8 @@ class ServiceClient:
                 required_amount = amount
 
             # Vérifier la balance disponible
-            available_balance = all_balances.get(required_asset, {}).get("free", 0.0)
+            available_balance = all_balances.get(
+                required_asset, {}).get("free", 0.0)
 
             can_trade = available_balance >= required_amount
 
@@ -442,10 +445,10 @@ class ServiceClient:
             }
 
         except Exception as e:
-            logger.error(f"Erreur lors de la vérification de balance: {str(e)}")
-            return {"can_trade": False, "reason": f"Erreur: {str(e)}"}
+            logger.exception("Erreur lors de la vérification de balance")
+            return {"can_trade": False, "reason": f"Erreur: {e!s}"}
 
-    def get_all_balances(self) -> Dict[str, Dict[str, float]]:
+    def get_all_balances(self) -> dict[str, dict[str, float]]:
         """
         Récupère toutes les balances depuis le portfolio.
 
@@ -457,7 +460,7 @@ class ServiceClient:
         if response:
             # Response is a list of balance objects, convert to dict
             if isinstance(response, list):
-                balances: Dict[str, Dict[str, float]] = {}
+                balances: dict[str, dict[str, float]] = {}
                 for balance in response:
                     if isinstance(balance, dict) and "asset" in balance:
                         asset = balance["asset"]
@@ -466,16 +469,17 @@ class ServiceClient:
                             "value_usdc": balance.get("value_usdc", 0.0),
                         }
                 return balances
-            elif isinstance(response, dict):
+            if isinstance(response, dict):
                 return response
 
         return {}
 
-    # get_positions() supprimée - le coordinator n'a plus besoin de vérifier les positions
+    # get_positions() supprimée - le coordinator n'a plus besoin de vérifier
+    # les positions
 
     # === Méthodes utilitaires ===
 
-    def invalidate_cache(self, pattern: Optional[str] = None):
+    def invalidate_cache(self, pattern: str | None = None):
         """
         Invalide le cache.
 
@@ -486,12 +490,12 @@ class ServiceClient:
             self._cache.clear()
             self._cache_ttl.clear()
         else:
-            keys_to_remove = [k for k in self._cache.keys() if pattern in k]
+            keys_to_remove = [k for k in self._cache if pattern in k]
             for key in keys_to_remove:
                 del self._cache[key]
                 del self._cache_ttl[key]
 
-    def get_service_health(self) -> Dict[str, bool]:
+    def get_service_health(self) -> dict[str, bool]:
         """
         Vérifie l'état de santé de tous les services.
 
@@ -500,7 +504,7 @@ class ServiceClient:
         """
         health_status = {}
 
-        for service_name in self.endpoints.keys():
+        for service_name in self.endpoints:
             response = self._make_request(service_name, "/health")
             health_status[service_name] = response is not None
 

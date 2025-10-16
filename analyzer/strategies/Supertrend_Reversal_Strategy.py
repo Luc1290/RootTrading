@@ -3,9 +3,10 @@ Supertrend_Reversal_Strategy - Version ULTRA SIMPLIFIÉE pour crypto.
 Détecte les reversals de tendance avec logique adaptée spot crypto intraday.
 """
 
-from typing import Dict, Any, Optional
-from .base_strategy import BaseStrategy
 import logging
+from typing import Any
+
+from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -25,15 +26,18 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
     - SELL: Reversal baissier détecté + confirmations
     """
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
 
         # Paramètres basés sur données DB réelles (momentum médiane=50.02)
-        self.min_momentum_threshold = 50.5  # BUY si momentum > 50.5 (18% des cas)
-        self.max_momentum_threshold = 49.5  # SELL si momentum < 49.5 (18% des cas)
+        # BUY si momentum > 50.5 (18% des cas)
+        self.min_momentum_threshold = 50.5
+        # SELL si momentum < 49.5 (18% des cas)
+        self.max_momentum_threshold = 49.5
         self.base_confidence = 0.55  # Base réduite pour accessibilité
 
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """Version ULTRA SIMPLIFIÉE pour crypto spot intraday."""
 
         # Validation minimale
@@ -54,7 +58,8 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         momentum_score = values.get("momentum_score")
 
         try:
-            momentum_val = float(momentum_score) if momentum_score is not None else 50.0
+            momentum_val = float(
+                momentum_score) if momentum_score is not None else 50.0
         except (ValueError, TypeError):
             momentum_val = 50.0
 
@@ -103,7 +108,8 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Pas de direction claire (momentum {momentum_val:.0f})",
-                "metadata": {"strategy": self.name},
+                "metadata": {
+                    "strategy": self.name},
             }
 
         # Bonus simples crypto
@@ -111,7 +117,8 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         # Volume durci
         volume_ratio = values.get("volume_ratio")
         try:
-            vol_ratio = float(volume_ratio) if volume_ratio is not None else 1.0
+            vol_ratio = float(
+                volume_ratio) if volume_ratio is not None else 1.0
             if vol_ratio >= 2.0:
                 confidence_boost += 0.15
                 reason += f" + volume exceptionnel ({vol_ratio:.1f}x)"
@@ -126,7 +133,8 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         trend_strength = values.get("trend_strength")
         confluence_score = values.get("confluence_score")
         try:
-            conf_val = float(confluence_score) if confluence_score is not None else 0.0
+            conf_val = float(
+                confluence_score) if confluence_score is not None else 0.0
         except (ValueError, TypeError):
             conf_val = 0.0
 
@@ -146,9 +154,11 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Rejet Supertrend: confluence critique ({conf_val})",
-                "metadata": {"strategy": self.name, "confluence_score": conf_val},
+                "metadata": {
+                    "strategy": self.name,
+                    "confluence_score": conf_val},
             }
-        elif conf_val < 35:  # Pénalité pour confluence très faible
+        if conf_val < 35:  # Pénalité pour confluence très faible
             confidence_boost -= 0.12
             reason += f" - confluence très faible ({conf_val:.0f})"
         elif conf_val >= 60:  # Assoupli de 70 à 60 pour bonus
@@ -169,7 +179,8 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
             confidence_boost += 0.15  # Reversals excellents en ranging
             reason += " + ranging"
         elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
-            confidence_boost += 0.05  # Bonus réduit (après rejet contradictions)
+            # Bonus réduit (après rejet contradictions)
+            confidence_boost += 0.05
             reason += " + trending"
 
         # RSI pour timing reversal - plus sélectif
@@ -232,7 +243,7 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
             },
         }
 
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _get_current_values(self) -> dict[str, float | None]:
         """Récupère seulement les indicateurs essentiels."""
         return {
             "directional_bias": self.indicators.get("directional_bias"),

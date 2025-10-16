@@ -3,21 +3,24 @@ BatchConverter - Conversion en masse de stratégies ROOT ↔ Freqtrade.
 Permet de convertir toutes les stratégies d'un dossier en une seule opération.
 """
 
-import os
-import sys
-import importlib
-import inspect
-from pathlib import Path
-from typing import List, Dict, Any, Optional
-import logging
-
-# Ajouter le path pour imports ROOT
-analyzer_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
-sys.path.append(analyzer_root)
-
-from strategies.base_strategy import BaseStrategy
 from .root_to_freqtrade import RootToFreqtradeAdapter
 from .freqtrade_to_root import FreqtradeToRootAdapter
+from strategies.base_strategy import BaseStrategy
+import importlib
+import inspect
+import logging
+import os
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+# Ajouter le path pour imports ROOT
+analyzer_root = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "../../"))
+sys.path.append(analyzer_root)
+
 
 # Import conditionnel Freqtrade
 try:
@@ -41,14 +44,20 @@ class BatchConverter:
         """Initialise le convertisseur batch."""
         self.strategies_path = Path(analyzer_root) / "strategies"
         self.output_path = (
-            Path(analyzer_root) / "freqtrade_integration" / "converted_strategies"
-        )
+            Path(analyzer_root) /
+            "freqtrade_integration" /
+            "converted_strategies")
 
         # Créer dossier de sortie si nécessaire
         self.output_path.mkdir(parents=True, exist_ok=True)
 
         # Stats de conversion
-        self.stats = {"total": 0, "success": 0, "failed": 0, "skipped": 0, "errors": []}
+        self.stats = {
+            "total": 0,
+            "success": 0,
+            "failed": 0,
+            "skipped": 0,
+            "errors": []}
 
     def convert_all_root_to_freqtrade(
         self,
@@ -70,7 +79,12 @@ class BatchConverter:
             return {"error": "Freqtrade not installed"}
 
         # Réinitialiser stats
-        self.stats = {"total": 0, "success": 0, "failed": 0, "skipped": 0, "errors": []}
+        self.stats = {
+            "total": 0,
+            "success": 0,
+            "failed": 0,
+            "skipped": 0,
+            "errors": []}
 
         # Définir dossier de sortie
         if output_dir:
@@ -119,7 +133,8 @@ class BatchConverter:
                 adapter.export_to_file(str(output_file))
 
                 self.stats["success"] += 1
-                logger.info(f"✓ Converti: {strategy_name} → {output_file.name}")
+                logger.info(
+                    f"✓ Converti: {strategy_name} → {output_file.name}")
 
             except Exception as e:
                 self.stats["failed"] += 1
@@ -164,7 +179,12 @@ class BatchConverter:
             return {"error": "Freqtrade not installed"}
 
         # Réinitialiser stats
-        self.stats = {"total": 0, "success": 0, "failed": 0, "skipped": 0, "errors": []}
+        self.stats = {
+            "total": 0,
+            "success": 0,
+            "failed": 0,
+            "skipped": 0,
+            "errors": []}
 
         # Définir dossier de sortie
         if output_dir:
@@ -223,7 +243,8 @@ class BatchConverter:
                 adapter.export_to_file(str(output_file))
 
                 self.stats["success"] += 1
-                logger.info(f"✓ Converti: {strategy_name} → {output_file.name}")
+                logger.info(
+                    f"✓ Converti: {strategy_name} → {output_file.name}")
 
             except Exception as e:
                 self.stats["failed"] += 1
@@ -270,11 +291,13 @@ class BatchConverter:
                 ):
                     return obj
 
-            logger.warning(f"Aucune classe BaseStrategy trouvée dans {strategy_name}")
+            logger.warning(
+                f"Aucune classe BaseStrategy trouvée dans {strategy_name}")
             return None
 
         except Exception as e:
-            logger.error(f"Erreur chargement stratégie ROOT {strategy_name}: {e}")
+            logger.error(
+                f"Erreur chargement stratégie ROOT {strategy_name}: {e}")
             return None
 
     def _load_freqtrade_strategy(self, strategy_file: Path) -> Optional[type]:
@@ -307,7 +330,8 @@ class BatchConverter:
                 ):
                     return obj
 
-            logger.warning(f"Aucune classe IStrategy trouvée dans {strategy_file.name}")
+            logger.warning(
+                f"Aucune classe IStrategy trouvée dans {strategy_file.name}")
             return None
 
         except Exception as e:
@@ -316,7 +340,9 @@ class BatchConverter:
             )
             return None
 
-    def generate_report(self, output_file: str = "conversion_report.txt") -> None:
+    def generate_report(
+            self,
+            output_file: str = "conversion_report.txt") -> None:
         """
         Génère un rapport de conversion détaillé.
 
@@ -354,13 +380,16 @@ def main():
     """Point d'entrée pour conversion en ligne de commande."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="Convertisseur batch ROOT ↔ Freqtrade")
+    parser = argparse.ArgumentParser(
+        description="Convertisseur batch ROOT ↔ Freqtrade")
     parser.add_argument(
         "direction",
         choices=["root2ft", "ft2root"],
         help="Direction de conversion (root2ft ou ft2root)",
     )
-    parser.add_argument("--input", help="Dossier d'entrée (requis pour ft2root)")
+    parser.add_argument(
+        "--input",
+        help="Dossier d'entrée (requis pour ft2root)")
     parser.add_argument("--output", help="Dossier de sortie (optionnel)")
     parser.add_argument(
         "--report", action="store_true", help="Générer rapport de conversion"

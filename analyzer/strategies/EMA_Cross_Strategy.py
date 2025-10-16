@@ -2,9 +2,10 @@
 EMA_Cross_Strategy - Stratégie basée sur les croisements d'EMA.
 """
 
-from typing import Dict, Any, Optional
-from .base_strategy import BaseStrategy
 import logging
+from typing import Any
+
+from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,8 @@ class EMA_Cross_Strategy(BaseStrategy):
     - SELL: EMA rapide croise en-dessous EMA lente + confirmations baissières
     """
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Configuration des EMA - OPTIMISÉES
         self.ema_fast_period = 12  # EMA rapide (info seulement)
@@ -27,7 +29,8 @@ class EMA_Cross_Strategy(BaseStrategy):
             50  # EMA filtre pour tendance générale (info seulement)
         )
         # Note: utilise directement ema_12, ema_26, ema_50 de la DB
-        self.min_separation_pct = 0.25  # Séparation minimum 0.25% (filtre bruit crypto)
+        # Séparation minimum 0.25% (filtre bruit crypto)
+        self.min_separation_pct = 0.25
         self.strong_separation_pct = 1.0  # Séparation forte 1.0%
 
     def _format_percentage(self, value: float) -> str:
@@ -37,12 +40,11 @@ class EMA_Cross_Strategy(BaseStrategy):
         """
         if abs(value) >= 1.0:
             return f"{value:.2f}%"
-        elif abs(value) >= 0.1:
+        if abs(value) >= 0.1:
             return f"{value:.3f}%"
-        elif abs(value) >= 0.01:
+        if abs(value) >= 0.01:
             return f"{value:.4f}%"
-        else:
-            return f"{value:.5f}%"
+        return f"{value:.5f}%"
 
     def _format_price(self, price: float) -> str:
         """
@@ -50,12 +52,11 @@ class EMA_Cross_Strategy(BaseStrategy):
         """
         if price >= 1.0:
             return f"{price:.4f}"
-        elif price >= 0.001:
+        if price >= 0.001:
             return f"{price:.6f}"
-        else:
-            return f"{price:.8f}"
+        return f"{price:.8f}"
 
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs EMA."""
         return {
             # EMA disponibles
@@ -87,7 +88,7 @@ class EMA_Cross_Strategy(BaseStrategy):
             "confluence_score": self.indicators.get("confluence_score"),
         }
 
-    def _get_current_price(self) -> Optional[float]:
+    def _get_current_price(self) -> float | None:
         """Récupère le prix actuel depuis les données OHLCV."""
         try:
             if self.data and "close" in self.data and self.data["close"]:
@@ -96,7 +97,7 @@ class EMA_Cross_Strategy(BaseStrategy):
             pass
         return None
 
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """
         Génère un signal basé sur les croisements d'EMA.
         """
@@ -114,9 +115,12 @@ class EMA_Cross_Strategy(BaseStrategy):
 
         # Vérification des EMA essentielles (12 et 26 pour logique classique)
         try:
-            ema_12 = float(values["ema_12"]) if values["ema_12"] is not None else None
-            ema_26 = float(values["ema_26"]) if values["ema_26"] is not None else None
-            ema_50 = float(values["ema_50"]) if values["ema_50"] is not None else None
+            ema_12 = float(
+                values["ema_12"]) if values["ema_12"] is not None else None
+            ema_26 = float(
+                values["ema_26"]) if values["ema_26"] is not None else None
+            ema_50 = float(
+                values["ema_50"]) if values["ema_50"] is not None else None
         except (ValueError, TypeError) as e:
             return {
                 "side": None,
@@ -139,7 +143,8 @@ class EMA_Cross_Strategy(BaseStrategy):
         ema_fast_above_slow = ema_12 > ema_26
         ema_distance_pct = abs(ema_12 - ema_26) / ema_26 * 100
 
-        # Vérification que les EMA ne sont pas trop proches (éviter faux signaux)
+        # Vérification que les EMA ne sont pas trop proches (éviter faux
+        # signaux)
         if ema_distance_pct < self.min_separation_pct:
             return {
                 "side": None,
@@ -242,7 +247,7 @@ class EMA_Cross_Strategy(BaseStrategy):
                             "rejected": "contra_trend_lt",
                         },
                     }
-                elif (
+                if (
                     signal_side == "SELL" and current_price > ema99_val * 1.02
                 ):  # 2% au-dessus EMA99
                     return {
@@ -262,14 +267,14 @@ class EMA_Cross_Strategy(BaseStrategy):
                 # Confirmations EMA99
                 if signal_side == "BUY" and current_price > ema99_val:
                     confidence_boost += 0.08
-                    reason += f" + tendance LT haussière"
+                    reason += " + tendance LT haussière"
                 elif signal_side == "SELL" and current_price < ema99_val:
                     confidence_boost += 0.08
-                    reason += f" + tendance LT baissière"
+                    reason += " + tendance LT baissière"
                 else:
                     # Léger malus mais pas rejet (cas limites)
                     confidence_boost -= 0.05
-                    reason += f" mais neutre LT"
+                    reason += " mais neutre LT"
             except (ValueError, TypeError):
                 pass
 
@@ -402,7 +407,8 @@ class EMA_Cross_Strategy(BaseStrategy):
 
         for indicator in required:
             if indicator not in self.indicators:
-                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
+                logger.warning(
+                    f"{self.name}: Indicateur manquant: {indicator}")
                 return False
             if self.indicators[indicator] is None:
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")

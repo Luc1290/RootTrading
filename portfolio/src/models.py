@@ -3,22 +3,27 @@ Modèles de données pour le service Portfolio.
 Définit les structures de données et les interactions avec la base de données.
 """
 
+from shared.src.schemas import AssetBalance, PortfolioSummary
+from shared.src.config import get_db_url
+import contextlib
 import logging
+import os
+# Importer les modules partagés
+import sys
 import time
-from typing import Dict, List, Any, Optional, Union, Tuple
 from datetime import datetime
+from typing import Any
+
 import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor, execute_values
 
-# Importer les modules partagés
-import sys
-import os
+sys.path.append(
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "../../")))
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
-
-from shared.src.config import get_db_url
-from shared.src.schemas import AssetBalance, PortfolioSummary
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
@@ -53,12 +58,12 @@ class DBManager:
                     minconn=5, maxconn=20, dsn=db_url
                 )
                 logger.info("✅ Pool de connexions DB initialisé")
-            except Exception as e:
-                logger.error(f"❌ Erreur lors de la création du pool DB: {str(e)}")
+            except Exception:
+                logger.exception("❌ Erreur lors de la création du pool DB")
                 raise
         return cls._pool
 
-    def __init__(self, db_url: Optional[str] = None):
+    def __init__(self, db_url: str | None = None):
         """
         Initialise le gestionnaire de base de données.
 
@@ -76,8 +81,8 @@ class DBManager:
             logger.debug(
                 "✅ Connexion obtenue depuis le pool DB"
             )  # Changé de INFO à DEBUG
-        except Exception as e:
-            logger.error(f"❌ Impossible d'obtenir une connexion du pool: {str(e)}")
+        except Exception:
+            logger.exception("❌ Impossible d'obtenir une connexion du pool")
             # Fallback: connexion directe
             self._connect()
 
@@ -92,8 +97,8 @@ class DBManager:
             self.conn = psycopg2.connect(self.db_url)
             logger.info("✅ Connexion directe à la base de données établie")
         except Exception as e:
-            logger.error(
-                f"❌ Erreur lors de la connexion à la base de données: {str(e)}"
+            logger.exception(
+                f"❌ Erreur lors de la connexion à la base de données: {e!s}"
             )
             self.conn = None
 
@@ -111,8 +116,8 @@ class DBManager:
                     self.conn = self.pool.getconn()
                     return True
                 except Exception as e:
-                    logger.error(
-                        f"❌ Impossible d'obtenir une connexion du pool: {str(e)}"
+                    logger.exception(
+                        f"❌ Impossible d'obtenir une connexion du pool: {e!s}"
                     )
                     # Fallback: connexion directe
                     self._connect()
@@ -128,16 +133,14 @@ class DBManager:
                 return True
         except Exception as e:
             # Reconnexion si nécessaire
-            logger.warning(f"⚠️ Connexion à la base de données perdue: {str(e)}")
+            logger.warning(f"⚠️ Connexion à la base de données perdue: {e!s}")
             try:
                 if self.pool and self.conn:
                     # Marquer la connexion comme défectueuse dans le pool
                     self.pool.putconn(self.conn, close=True)
                 else:
-                    try:
+                    with contextlib.suppress(Exception):
                         self.conn.close()
-                    except Exception:
-                        pass
             except Exception:
                 pass
 
@@ -149,8 +152,8 @@ class DBManager:
                     self.conn = self.pool.getconn()
                     return True
                 except Exception as e:
-                    logger.error(
-                        f"❌ Impossible d'obtenir une nouvelle connexion: {str(e)}"
+                    logger.exception(
+                        f"❌ Impossible d'obtenir une nouvelle connexion: {e!s}"
                     )
                     # Fallback: connexion directe
                     self._connect()
@@ -162,12 +165,12 @@ class DBManager:
     def execute_query(
         self,
         query: str,
-        params: Optional[Tuple[Any, ...]] = None,
+        params: tuple[Any, ...] | None = None,
         fetch_one: bool = False,
         fetch_all: bool = False,
         commit: bool = False,
         retry: int = 1,
-    ) -> Union[List[Dict[str, Any]], Dict[str, Any], bool, None]:
+    ) -> list[dict[str, Any]] | dict[str, Any] | bool | None:
         """
         Exécute une requête SQL avec retry.
 
@@ -210,7 +213,8 @@ class DBManager:
                         elif fetch_all:
                             result = cursor.fetchall()
                         else:
-                            # Pour les requêtes UPDATE/INSERT/DELETE, retourner True au lieu de None
+                            # Pour les requêtes UPDATE/INSERT/DELETE, retourner
+                            # True au lieu de None
                             result = True
 
                         if commit and self.conn:
@@ -225,7 +229,7 @@ class DBManager:
                 current_retry += 1
                 last_error = e
                 logger.warning(
-                    f"⚠️ Erreur de connexion DB (tentative {current_retry}/{max_retries}): {str(e)}"
+                    f"⚠️ Erreur de connexion DB (tentative {current_retry}/{max_retries}): {e!s}"
                 )
 
                 # Marquer la connexion comme défectueuse
@@ -248,17 +252,17 @@ class DBManager:
                     retry_delay = 2**current_retry  # Backoff exponentiel
                     time.sleep(retry_delay)
 
-            except Exception as e:
+            except Exception:
                 # Autres erreurs, rollback et log
-                logger.error(f"❌ Erreur lors de l'exécution de la requête: {str(e)}")
+                logger.exception("❌ Erreur lors de l'exécution de la requête")
                 if len(query) > 200:
-                    logger.error(f"Query: {query[:200]}...")
+                    logger.exception(f"Query: {query[:200]}...")
                 else:
-                    logger.error(f"Query: {query}")
-                logger.error(f"Params: {params}")
+                    logger.exception(f"Query: {query}")
+                logger.exception(f"Params: {params}")
                 import traceback
 
-                logger.error(traceback.format_exc())
+                logger.exception(traceback.format_exc())
                 try:
                     if self.conn:
                         self.conn.rollback()
@@ -267,13 +271,14 @@ class DBManager:
                 return None
 
         if last_error:
-            logger.error(f"❌ Échec après {max_retries} tentatives: {str(last_error)}")
+            logger.error(
+                f"❌ Échec après {max_retries} tentatives: {last_error!s}")
         return None
 
     def execute_batch(
         self,
         query: str,
-        params_list: List[tuple],
+        params_list: list[tuple],
         page_size: int = 100,
         commit: bool = True,
     ) -> bool:
@@ -300,7 +305,8 @@ class DBManager:
             if self.conn:
                 with self.conn.cursor() as cursor:
                     # Utiliser execute_values pour les performances
-                    execute_values(cursor, query, params_list, page_size=page_size)
+                    execute_values(
+                        cursor, query, params_list, page_size=page_size)
 
                     if commit and self.conn:
                         self.conn.commit()
@@ -309,8 +315,8 @@ class DBManager:
             else:
                 return False
 
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de l'exécution par lots: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur lors de l'exécution par lots")
             try:
                 if self.conn:
                     self.conn.rollback()
@@ -319,7 +325,7 @@ class DBManager:
             return False
 
     def execute_many(
-        self, query: str, params_list: List[tuple], commit: bool = True
+        self, query: str, params_list: list[tuple], commit: bool = True
     ) -> bool:
         """
         Exécute une requête SQL avec plusieurs ensembles de paramètres.
@@ -353,8 +359,8 @@ class DBManager:
                 else:
                     return False
 
-            except Exception as e:
-                logger.error(f"❌ Erreur lors de l'exécution multiple: {str(e)}")
+            except Exception:
+                logger.exception("❌ Erreur lors de l'exécution multiple")
                 try:
                     if self.conn:
                         self.conn.rollback()
@@ -381,8 +387,8 @@ class DBManager:
                     self.conn.close()
                     logger.debug("✅ Connexion à la base de données fermée")
             except Exception as e:
-                logger.error(
-                    f"❌ Erreur lors de la fermeture de la connexion: {str(e)}"
+                logger.exception(
+                    f"❌ Erreur lors de la fermeture de la connexion: {e!s}"
                 )
             finally:
                 self.conn = None
@@ -392,8 +398,8 @@ class DBManager:
 class SharedCache:
     """Cache à mémoire partagée pour stocker des résultats fréquemment demandés."""
 
-    _cache: Dict[str, Tuple[float, Any]] = {}
-    _locks: Dict[str, Any] = {}
+    _cache: dict[str, tuple[float, Any]] = {}
+    _locks: dict[str, Any] = {}
 
     @classmethod
     def get(cls, key: str, max_age: int = 5):
@@ -429,7 +435,7 @@ class SharedCache:
         cls._cache[key] = (current_time, data)
 
     @classmethod
-    def clear(cls, prefix: Optional[str] = None):
+    def clear(cls, prefix: str | None = None):
         """
         Efface le cache ou une partie du cache.
 
@@ -438,7 +444,7 @@ class SharedCache:
         """
         if prefix:
             # Effacer les clés commençant par le préfixe
-            keys_to_remove = [k for k in cls._cache.keys() if k.startswith(prefix)]
+            keys_to_remove = [k for k in cls._cache if k.startswith(prefix)]
             for k in keys_to_remove:
                 del cls._cache[k]
         else:
@@ -452,7 +458,7 @@ class PortfolioModel:
     Fournit des méthodes pour accéder et manipuler les données du portefeuille.
     """
 
-    def __init__(self, db_manager: Optional[DBManager] = None):
+    def __init__(self, db_manager: DBManager | None = None):
         """
         Initialise le modèle de portefeuille.
 
@@ -463,7 +469,7 @@ class PortfolioModel:
 
         logger.info("✅ PortfolioModel initialisé")
 
-    def get_latest_balances(self) -> List[AssetBalance]:
+    def get_latest_balances(self) -> list[AssetBalance]:
         """
         Récupère les derniers soldes du portefeuille.
         Utilise un cache partagé pour améliorer les performances.
@@ -481,25 +487,25 @@ class PortfolioModel:
         # Si pas en cache, exécuter la requête
         query = """
         WITH latest_balances AS (
-            SELECT 
+            SELECT
                 asset,
                 MAX(timestamp) as latest_timestamp
-            FROM 
+            FROM
                 portfolio_balances
-            GROUP BY 
+            GROUP BY
                 asset
         )
-        SELECT 
+        SELECT
             pb.asset,
             pb.free,
             pb.locked,
             pb.total,
             pb.value_usdc
-        FROM 
+        FROM
             portfolio_balances pb
-        JOIN 
+        JOIN
             latest_balances lb ON pb.asset = lb.asset AND pb.timestamp = lb.latest_timestamp
-        ORDER BY 
+        ORDER BY
             pb.value_usdc DESC NULLS LAST,
             pb.total DESC
         """
@@ -588,19 +594,21 @@ class PortfolioModel:
             return summary
 
         except Exception as e:
-            logger.error(
-                f"❌ Erreur lors de la récupération du résumé du portefeuille: {str(e)}"
+            logger.exception(
+                f"❌ Erreur lors de la récupération du résumé du portefeuille: {e!s}"
             )
             import traceback
 
-            logger.error(traceback.format_exc())
+            logger.exception(traceback.format_exc())
 
             # Retourner un résumé vide en cas d'erreur
             return PortfolioSummary(
-                balances=[], total_value=0, active_trades=0, timestamp=datetime.utcnow()
-            )
+                balances=[],
+                total_value=0,
+                active_trades=0,
+                timestamp=datetime.utcnow())
 
-    def update_balances(self, balances: List[Union[AssetBalance, Dict]]) -> bool:
+    def update_balances(self, balances: list[AssetBalance | dict]) -> bool:
         """
         Met à jour les soldes du portefeuille.
 
@@ -638,17 +646,20 @@ class PortfolioModel:
             assets_from_binance.add(asset)
             values.append((asset, free, locked, total, value_usdc, now))
 
-        # NOUVEAU: Récupérer tous les actifs connus (ayant eu une balance > 0 récemment)
+        # NOUVEAU: Récupérer tous les actifs connus (ayant eu une balance > 0
+        # récemment)
         known_assets_query = """
-        SELECT DISTINCT asset 
-        FROM portfolio_balances 
-        WHERE total > 0 
+        SELECT DISTINCT asset
+        FROM portfolio_balances
+        WHERE total > 0
         AND timestamp > NOW() - INTERVAL '7 days'
         """
-        known_assets_result = self.db.execute_query(known_assets_query, fetch_all=True)
+        known_assets_result = self.db.execute_query(
+            known_assets_query, fetch_all=True)
 
         if known_assets_result and isinstance(known_assets_result, list):
-            # Pour chaque actif connu mais absent de Binance, ajouter une entrée à 0
+            # Pour chaque actif connu mais absent de Binance, ajouter une
+            # entrée à 0
             for row in known_assets_result:
                 asset = row["asset"]
                 if asset not in assets_from_binance:
@@ -670,7 +681,8 @@ class PortfolioModel:
             SharedCache.clear("latest_balances")
             SharedCache.clear("portfolio_summary")
 
-        # Nettoyer les anciens enregistrements (garder seulement les 24 dernières heures)
+        # Nettoyer les anciens enregistrements (garder seulement les 24
+        # dernières heures)
         self._cleanup_old_records()
 
         return success
@@ -679,11 +691,11 @@ class PortfolioModel:
         self,
         limit: int = 50,
         offset: int = 0,
-        symbol: Optional[str] = None,
-        strategy: Optional[str] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-    ) -> List[Dict[str, Any]]:
+        symbol: str | None = None,
+        strategy: str | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Récupère l'historique des trades.
 
@@ -700,7 +712,7 @@ class PortfolioModel:
         """
         # Construire la requête avec les filtres
         query = """
-        SELECT 
+        SELECT
             tc.id,
             tc.symbol,
             tc.strategy,
@@ -713,12 +725,12 @@ class PortfolioModel:
             tc.created_at,
             tc.completed_at,
             tc.demo
-        FROM 
+        FROM
             trade_cycles tc
         WHERE 1=1
         """
 
-        params: List[Any] = []
+        params: list[Any] = []
 
         # Ajouter les filtres si spécifiés
         if symbol:
@@ -748,7 +760,7 @@ class PortfolioModel:
 
     def get_performance_stats(
         self, period: str = "daily", limit: int = 30
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Récupère les statistiques de performance.
 
@@ -769,7 +781,7 @@ class PortfolioModel:
             return cached_data
 
         query = """
-        SELECT 
+        SELECT
             symbol,
             strategy,
             period,
@@ -781,11 +793,11 @@ class PortfolioModel:
             break_even_trades,
             profit_loss,
             profit_loss_percent
-        FROM 
+        FROM
             performance_stats
-        WHERE 
+        WHERE
             period = %s
-        ORDER BY 
+        ORDER BY
             start_date DESC
         LIMIT %s
         """
@@ -797,7 +809,7 @@ class PortfolioModel:
 
         return result if isinstance(result, list) else []
 
-    def get_strategy_performance(self) -> List[Dict[str, Any]]:
+    def get_strategy_performance(self) -> list[dict[str, Any]]:
         """
         Récupère les performances par stratégie.
 
@@ -822,7 +834,7 @@ class PortfolioModel:
 
         return result if isinstance(result, list) else []
 
-    def get_symbol_performance(self) -> List[Dict[str, Any]]:
+    def get_symbol_performance(self) -> list[dict[str, Any]]:
         """
         Récupère les performances par symbole.
 
@@ -857,11 +869,11 @@ class PortfolioModel:
             # Compter d'abord combien d'enregistrements vont être supprimés
             count_query = """
             SELECT COUNT(*) as count_to_delete
-            FROM portfolio_balances 
+            FROM portfolio_balances
             WHERE timestamp < NOW() - INTERVAL '24 hours'
             AND (asset, timestamp) NOT IN (
-                SELECT asset, MAX(timestamp) 
-                FROM portfolio_balances 
+                SELECT asset, MAX(timestamp)
+                FROM portfolio_balances
                 GROUP BY asset
             )
             """
@@ -875,11 +887,11 @@ class PortfolioModel:
             if count_to_delete > 0:
                 # Maintenant supprimer les enregistrements
                 cleanup_query = """
-                DELETE FROM portfolio_balances 
+                DELETE FROM portfolio_balances
                 WHERE timestamp < NOW() - INTERVAL '24 hours'
                 AND (asset, timestamp) NOT IN (
-                    SELECT asset, MAX(timestamp) 
-                    FROM portfolio_balances 
+                    SELECT asset, MAX(timestamp)
+                    FROM portfolio_balances
                     GROUP BY asset
                 )
                 """
@@ -895,7 +907,8 @@ class PortfolioModel:
                 f"⚠️ Erreur lors du nettoyage des anciens enregistrements: {e}"
             )
 
-    def get_strategy_configs(self, name: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_strategy_configs(
+            self, name: str | None = None) -> list[dict[str, Any]]:
         """
         Récupère les configurations de stratégie.
 
@@ -910,7 +923,7 @@ class PortfolioModel:
         FROM strategy_configs
         WHERE 1=1
         """
-        params: List[Any] = []
+        params: list[Any] = []
 
         if name:
             query += " AND name = %s"

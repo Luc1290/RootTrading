@@ -5,10 +5,10 @@ This module provides CCI calculation for momentum analysis.
 CCI measures the deviation of price from its statistical average.
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
-from typing import List, Optional, Union
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +22,11 @@ except ImportError:
 
 
 def calculate_cci(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 20,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate Commodity Channel Index (CCI).
 
@@ -70,7 +70,8 @@ def calculate_cci(
             cci_values = talib.CCI(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return float(cci_values[-1]) if not np.isnan(cci_values[-1]) else None
+            return float(
+                cci_values[-1]) if not np.isnan(cci_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib CCI error: {e}, using fallback")
 
@@ -78,11 +79,11 @@ def calculate_cci(
 
 
 def calculate_cci_series(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 20,
-) -> List[Optional[float]]:
+) -> list[float | None]:
     """
     Calculate CCI for entire price series.
 
@@ -110,16 +111,18 @@ def calculate_cci_series(
             cci_values = talib.CCI(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return [float(val) if not np.isnan(val) else None for val in cci_values]
+            return [float(val) if not np.isnan(
+                val) else None for val in cci_values]
         except Exception as e:
             logger.warning(f"TA-Lib CCI series error: {e}, using fallback")
 
     # Manual calculation
-    return _calculate_cci_series_manual(highs_array, lows_array, closes_array, period)
+    return _calculate_cci_series_manual(
+        highs_array, lows_array, closes_array, period)
 
 
 def cci_signal(
-    current_value: Optional[float], previous_value: Optional[float] = None
+    current_value: float | None, previous_value: float | None = None
 ) -> str:
     """
     Generate trading signal based on CCI levels and movements.
@@ -137,7 +140,7 @@ def cci_signal(
     # Basic overbought/oversold levels
     if current_value > 100:
         return "overbought"
-    elif current_value < -100:
+    if current_value < -100:
         return "oversold"
 
     # Check for zero line crossovers if previous value is provided
@@ -154,9 +157,9 @@ def cci_signal(
 
 
 def calculate_cci_with_bands(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 20,
     overbought_level: float = 100,
     oversold_level: float = -100,
@@ -193,9 +196,9 @@ def calculate_cci_with_bands(
 
 
 def calculate_cci_divergence(
-    prices: Union[List[float], np.ndarray, pd.Series],
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
     lookback: int = 20,
 ) -> str:
     """
@@ -296,7 +299,7 @@ def calculate_cci_divergence(
     return "none"
 
 
-def cci_trend_direction(values: List[Optional[float]], period: int = 10) -> str:
+def cci_trend_direction(values: list[float | None], period: int = 10) -> str:
     """
     Determine trend direction based on CCI values.
 
@@ -326,23 +329,22 @@ def cci_trend_direction(values: List[Optional[float]], period: int = 10) -> str:
     # Determine trend strength
     if strong_bullish / total > 0.6:
         return "strong_uptrend"
-    elif (strong_bullish + moderate_bullish) / total > 0.7:
+    if (strong_bullish + moderate_bullish) / total > 0.7:
         return "moderate_uptrend"
-    elif strong_bearish / total > 0.6:
+    if strong_bearish / total > 0.6:
         return "strong_downtrend"
-    elif (strong_bearish + moderate_bearish) / total > 0.7:
+    if (strong_bearish + moderate_bearish) / total > 0.7:
         return "moderate_downtrend"
-    else:
-        return "sideways"
+    return "sideways"
 
 
 def calculate_cci_volatility(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 20,
     volatility_period: int = 14,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate CCI-based volatility measure.
 
@@ -372,11 +374,11 @@ def calculate_cci_volatility(
 # ============ Helper Functions ============
 
 
-def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
+def _to_numpy_array(data: list[float] | np.ndarray | pd.Series) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
         return np.asarray(data.values, dtype=float)
-    elif isinstance(data, list):
+    if isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
 
@@ -395,7 +397,7 @@ def _calculate_mean_deviation(
     mean_deviations = np.zeros_like(typical_prices)
 
     for i in range(period - 1, len(typical_prices)):
-        window = typical_prices[i - period + 1 : i + 1]
+        window = typical_prices[i - period + 1: i + 1]
         sma = sma_typical[i]
 
         # Calculate mean absolute deviation
@@ -408,7 +410,7 @@ def _calculate_mean_deviation(
 
 def _calculate_cci_manual(
     highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int
-) -> Optional[float]:
+) -> float | None:
     """Manual CCI calculation."""
     if len(highs) < period:
         return None
@@ -437,9 +439,9 @@ def _calculate_cci_manual(
 
 def _calculate_cci_series_manual(
     highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int
-) -> List[Optional[float]]:
+) -> list[float | None]:
     """Manual CCI series calculation."""
-    cci_series: List[Optional[float]] = []
+    cci_series: list[float | None] = []
 
     # Calculate typical price series
     typical_prices = _calculate_typical_price(highs, lows, closes)
@@ -449,7 +451,7 @@ def _calculate_cci_series_manual(
             cci_series.append(None)
         else:
             # Get window for calculation
-            window = typical_prices[i - period + 1 : i + 1]
+            window = typical_prices[i - period + 1: i + 1]
 
             # Calculate SMA of typical price
             sma_typical = np.mean(window)
@@ -462,7 +464,8 @@ def _calculate_cci_series_manual(
             else:
                 # Calculate CCI
                 current_typical = typical_prices[i]
-                cci = (current_typical - sma_typical) / (0.015 * mean_deviation)
+                cci = (current_typical - sma_typical) / \
+                    (0.015 * mean_deviation)
 
             cci_series.append(float(cci))
 

@@ -3,24 +3,27 @@ Point d'entrée principal pour le microservice Dispatcher.
 Reçoit les messages Kafka et les route vers les bons destinataires.
 """
 
+from shared.src.redis_client import RedisClient
+from shared.src.kafka_client import KafkaClient
+from shared.src.config import KAFKA_BROKER, KAFKA_GROUP_ID, LOG_LEVEL, SYMBOLS
+from dispatcher.src.message_router import MessageRouter
+import json
 import logging
+import os
 import signal
 import sys
-import time
-import os
 import threading
-from typing import Dict, Any
-import json
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any
 
 # Ajouter le répertoire parent au path pour les imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+sys.path.append(
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "../../")))
 
-from shared.src.config import KAFKA_BROKER, KAFKA_GROUP_ID, SYMBOLS, LOG_LEVEL
-from shared.src.kafka_client import KafkaClient
-from shared.src.redis_client import RedisClient
-
-from dispatcher.src.message_router import MessageRouter
 
 # Configuration du logging
 log_level = getattr(logging, LOG_LEVEL.upper(), logging.INFO)
@@ -57,10 +60,10 @@ class HealthHandler(BaseHTTPRequestHandler):
 
             health_info = {
                 "status": (
-                    "healthy" if self.server.dispatcher_service.running else "stopping"
-                ),
+                    "healthy" if self.server.dispatcher_service.running else "stopping"),
                 "timestamp": time.time(),
-                "uptime": time.time() - self.server.dispatcher_service.start_time,
+                "uptime": time.time() -
+                self.server.dispatcher_service.start_time,
                 "stats": router_stats,
             }
 
@@ -135,7 +138,8 @@ class DispatcherService:
         self.topics = []
         self.http_server = None
 
-    def handle_kafka_message(self, topic: str, message: Dict[str, Any]) -> None:
+    def handle_kafka_message(
+            self, topic: str, message: dict[str, Any]) -> None:
         """
         Callback pour traiter les messages Kafka.
 
@@ -144,7 +148,8 @@ class DispatcherService:
             message: Message reçu
         """
         if not self.router or not self.running:
-            logger.warning("Router non initialisé ou service arrêté, message ignoré")
+            logger.warning(
+                "Router non initialisé ou service arrêté, message ignoré")
             return
 
         try:
@@ -156,8 +161,8 @@ class DispatcherService:
             else:
                 logger.warning(f"Échec du routage pour le message de {topic}")
 
-        except Exception as e:
-            logger.error(f"Erreur lors du traitement du message Kafka: {str(e)}")
+        except Exception:
+            logger.exception("Erreur lors du traitement du message Kafka")
 
     def start_http_server(self, port=5004):
         """
@@ -167,7 +172,8 @@ class DispatcherService:
             port: Port pour le serveur HTTP
         """
         try:
-            self.http_server = DispatcherHTTPServer(("0.0.0.0", port), HealthHandler)
+            self.http_server = DispatcherHTTPServer(
+                ("0.0.0.0", port), HealthHandler)
             self.http_server.dispatcher_service = self
 
             # Démarrer dans un thread séparé pour ne pas bloquer
@@ -177,8 +183,8 @@ class DispatcherService:
             self.http_thread.start()
 
             logger.info(f"✅ Serveur HTTP démarré sur le port {port}")
-        except Exception as e:
-            logger.error(f"❌ Erreur lors du démarrage du serveur HTTP: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur lors du démarrage du serveur HTTP")
 
     def setup_signal_handlers(self):
         """Configure les gestionnaires de signaux pour l'arrêt propre."""
@@ -257,9 +263,11 @@ class DispatcherService:
                 self.topics.append(f"market.data.{symbol.lower()}")
 
             # Autres topics à suivre
-            self.topics.extend(["signals", "executions", "orders", "analyzer.signals"])
+            self.topics.extend(
+                ["signals", "executions", "orders", "analyzer.signals"])
 
-            logger.info(f"Abonnement aux topics Kafka: {', '.join(self.topics)}")
+            logger.info(
+                f"Abonnement aux topics Kafka: {', '.join(self.topics)}")
 
             # Démarrer le serveur HTTP pour les endpoints de santé
             self.start_http_server()
@@ -273,8 +281,8 @@ class DispatcherService:
 
         except KeyboardInterrupt:
             logger.info("Programme interrompu par l'utilisateur")
-        except Exception as e:
-            logger.error(f"❌ Erreur critique dans le service Dispatcher: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur critique dans le service Dispatcher")
             self.running = False
         finally:
             # Nettoyage et arrêt propre

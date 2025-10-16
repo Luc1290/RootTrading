@@ -3,21 +3,25 @@ Point d'entrée principal pour le microservice Trader.
 Démarre le gestionnaire d'ordres et expose une API REST.
 """
 
+from trader.src.utils.logging_config import setup_logging
+from trader.src.trading.order_manager import OrderManager
+from trader.src.api.rest_server import RestApiServer
+from shared.src.config import LOG_LEVEL, SYMBOLS
 import argparse
 import logging
+import os
 import signal
 import sys
 import time
-import os
 
 # Ajouter le répertoire parent au path pour les imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+sys.path.append(
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "../../")))
 
 # Maintenant que le chemin est configuré, importer les modules nécessaires
-from shared.src.config import SYMBOLS, LOG_LEVEL
-from trader.src.trading.order_manager import OrderManager
-from trader.src.api.rest_server import RestApiServer
-from trader.src.utils.logging_config import setup_logging
 
 # Configuration du logging
 logger = logging.getLogger("trader")
@@ -44,7 +48,8 @@ class TraderService:
         self.running = False
         self.start_time = time.time()
 
-        logger.info(f"✅ TraderService initialisé pour {len(self.symbols)} symboles")
+        logger.info(
+            f"✅ TraderService initialisé pour {len(self.symbols)} symboles")
 
     def start(self):
         """
@@ -68,8 +73,8 @@ class TraderService:
 
             logger.info("✅ Service Trader démarré")
 
-        except Exception as e:
-            logger.error(f"❌ Erreur critique lors du démarrage: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur critique lors du démarrage")
             self.running = False
             raise
 
@@ -98,14 +103,21 @@ class TraderService:
 def parse_arguments():
     """Parse les arguments de ligne de commande."""
     parser = argparse.ArgumentParser(description="Trader RootTrading")
-    parser.add_argument("--port", type=int, default=5002, help="Port pour l'API REST")
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=5002,
+        help="Port pour l'API REST")
     parser.add_argument(
         "--symbols",
         type=str,
         default=None,
         help="Liste de symboles séparés par des virgules (ex: BTCUSDC,ETHUSDC)",
     )
-    parser.add_argument("--no-api", action="store_true", help="Désactive l'API REST")
+    parser.add_argument(
+        "--no-api",
+        action="store_true",
+        help="Désactive l'API REST")
     parser.add_argument(
         "--log-level",
         type=str,
@@ -160,8 +172,8 @@ def main():
 
     except KeyboardInterrupt:
         logger.info("Programme interrompu par l'utilisateur")
-    except Exception as e:
-        logger.error(f"❌ Erreur critique dans le service Trader: {str(e)}")
+    except Exception:
+        logger.exception("❌ Erreur critique dans le service Trader")
     finally:
         # Arrêter le service
         trader_service.stop()

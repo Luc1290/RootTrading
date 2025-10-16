@@ -1,11 +1,12 @@
 import asyncio
-import aioredis
-import asyncpg
 import json
 import logging
-from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta, timezone
 import os
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+import aioredis
+import asyncpg
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +19,7 @@ def format_timestamp(dt):
     # Si le timestamp a déjà un timezone, ne pas ajouter Z
     if "+" in iso_str or "Z" in iso_str:
         return iso_str
-    else:
-        return iso_str + "Z"
+    return iso_str + "Z"
 
 
 class DataManager:
@@ -51,8 +51,8 @@ class DataManager:
                 f"redis://{self.redis_host}:{self.redis_port}", encoding="utf-8"
             )
             logger.info("Redis connection established")
-        except Exception as e:
-            logger.error(f"Failed to connect to Redis: {e}")
+        except Exception:
+            logger.exception("Failed to connect to Redis")
 
     async def _init_postgres(self):
         """Initialize PostgreSQL connection pool"""
@@ -67,8 +67,8 @@ class DataManager:
                 max_size=10,
             )
             logger.info("PostgreSQL connection pool established")
-        except Exception as e:
-            logger.error(f"Failed to connect to PostgreSQL: {e}")
+        except Exception:
+            logger.exception("Failed to connect to PostgreSQL")
 
     async def close(self):
         """Close all connections"""
@@ -92,9 +92,9 @@ class DataManager:
         symbol: str,
         interval: str,
         limit: int = 10000,  # Augmenté pour garder plus d'historique
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-    ) -> List[Dict[str, Any]]:
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> list[dict[str, Any]]:
         """Fetch market data from PostgreSQL"""
         if not self.postgres_pool:
             return []
@@ -114,9 +114,10 @@ class DataManager:
         use_native = interval in native_timeframes
 
         if use_native:
-            # Requête directe pour timeframes natifs - JOIN entre market_data et analyzer_data
+            # Requête directe pour timeframes natifs - JOIN entre market_data
+            # et analyzer_data
             query = """
-                SELECT 
+                SELECT
                     md.time as timestamp,
                     md.open,
                     md.high,
@@ -170,12 +171,13 @@ class DataManager:
                 WHERE md.symbol = $1 AND md.timeframe = $2
             """
         else:
-            # Requête avec agrégation pour les autres intervalles - JOIN avec analyzer_data
+            # Requête avec agrégation pour les autres intervalles - JOIN avec
+            # analyzer_data
             query = f"""
                 WITH aggregated AS (
-                    SELECT 
-                        date_trunc('hour', md.time) + 
-                        INTERVAL '{interval_minutes} minutes' * 
+                    SELECT
+                        date_trunc('hour', md.time) +
+                        INTERVAL '{interval_minutes} minutes' *
                         FLOOR(EXTRACT(MINUTE FROM md.time) / {interval_minutes}) as period,
                         (array_agg(md.open ORDER BY md.time))[1] as open,
                         MAX(md.high) as high,
@@ -228,7 +230,7 @@ class DataManager:
                     WHERE md.symbol = $1 AND md.timeframe = $2
                     GROUP BY period
                 )
-                SELECT 
+                SELECT
                     period as timestamp,
                     open, high, low, close, volume,
                     rsi_14, rsi_21, ema_7, ema_12, ema_26, ema_50, ema_99, sma_20, sma_50,
@@ -255,8 +257,8 @@ class DataManager:
         if end_time:
             query += f" AND md.time <= ${len(params) + 1}"
             params.append(
-                end_time.isoformat() if isinstance(end_time, datetime) else end_time
-            )
+                end_time.isoformat() if isinstance(
+                    end_time, datetime) else end_time)
 
         if use_native:
             query += " ORDER BY md.time DESC"
@@ -271,14 +273,15 @@ class DataManager:
             async with self.postgres_pool.acquire() as conn:
                 rows = await conn.fetch(query, *params)
 
-                # Pour les intervalles agrégés SEULEMENT, ajouter la bougie courante
+                # Pour les intervalles agrégés SEULEMENT, ajouter la bougie
+                # courante
                 if not use_native and rows:
                     current_candle = await self._build_current_candle(
                         conn, symbol, interval_minutes
                     )
                     if current_candle:
                         # Insérer la bougie courante au début (plus récente)
-                        rows = [current_candle] + list(rows)
+                        rows = [current_candle, *list(rows)]
 
                 result_data = []
                 for row in rows:
@@ -287,7 +290,8 @@ class DataManager:
                         data_point = row.copy()
                         if not isinstance(data_point["timestamp"], str):
                             iso_str = data_point["timestamp"].isoformat()
-                            # Si le timestamp a déjà un timezone, ne pas ajouter Z
+                            # Si le timestamp a déjà un timezone, ne pas
+                            # ajouter Z
                             if "+" in iso_str or "Z" in iso_str:
                                 data_point["timestamp"] = iso_str
                             else:
@@ -446,7 +450,8 @@ class DataManager:
                             ),
                             # Volume
                             "obv": (
-                                float(row["obv"]) if row["obv"] is not None else None
+                                float(
+                                    row["obv"]) if row["obv"] is not None else None
                             ),
                             "vwap_10": (
                                 float(row["vwap_10"])
@@ -527,23 +532,23 @@ class DataManager:
                 result_data.sort(key=lambda x: x["timestamp"])
                 return result_data
 
-        except Exception as e:
-            logger.error(f"Error fetching market data: {e}")
+        except Exception:
+            logger.exception("Error fetching market data")
             return []
 
     async def get_trading_signals(
         self,
         symbol: str,
-        strategy: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-    ) -> List[Dict[str, Any]]:
+        strategy: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> list[dict[str, Any]]:
         """Fetch trading signals from PostgreSQL"""
         if not self.postgres_pool:
             return []
 
         query = """
-            SELECT 
+            SELECT
                 timestamp,
                 strategy,
                 side as signal_type,
@@ -571,8 +576,8 @@ class DataManager:
         if end_time:
             query += f" AND timestamp <= ${len(params) + 1}"
             params.append(
-                end_time.isoformat() if isinstance(end_time, datetime) else end_time
-            )
+                end_time.isoformat() if isinstance(
+                    end_time, datetime) else end_time)
 
         query += " ORDER BY timestamp DESC LIMIT $" + str(len(params) + 1)
         params.append(10000)  # Plus de signaux historiques
@@ -599,11 +604,15 @@ class DataManager:
                     for row in rows
                 ][::-1]
 
-        except Exception as e:
-            logger.error(f"Error fetching trading signals: {e}")
+        except Exception:
+            logger.exception("Error fetching trading signals")
             return []
 
-    async def _build_current_candle(self, conn, symbol: str, interval_minutes: int):
+    async def _build_current_candle(
+            self,
+            conn,
+            symbol: str,
+            interval_minutes: int):
         """Construit la bougie courante en temps réel pour les intervalles > 1m"""
         from datetime import datetime, timezone
 
@@ -637,10 +646,11 @@ class DataManager:
             # Convertir en timezone-naive pour PostgreSQL
             period_start_naive = period_start.replace(tzinfo=None)
 
-            # Récupérer toutes les données 1m depuis le début de la période avec JOIN
+            # Récupérer toutes les données 1m depuis le début de la période
+            # avec JOIN
             query = """
                 SELECT md.time, md.open, md.high, md.low, md.close, md.volume,
-                       ad.rsi_14, ad.rsi_21, ad.ema_7, ad.ema_12, ad.ema_26, ad.ema_50, ad.ema_99, 
+                       ad.rsi_14, ad.rsi_21, ad.ema_7, ad.ema_12, ad.ema_26, ad.ema_50, ad.ema_99,
                        ad.sma_20, ad.sma_50, ad.macd_line, ad.macd_signal, ad.macd_histogram,
                        ad.bb_upper, ad.bb_middle, ad.bb_lower, ad.bb_position, ad.bb_width,
                        ad.atr_14, ad.adx_14, ad.stoch_k, ad.stoch_d, ad.williams_r, ad.cci_20,
@@ -650,7 +660,7 @@ class DataManager:
                        ad.volume_context, ad.volume_pattern, ad.pattern_detected, ad.data_quality
                 FROM market_data md
                 LEFT JOIN analyzer_data ad ON (md.time = ad.time AND md.symbol = ad.symbol AND md.timeframe = ad.timeframe)
-                WHERE md.symbol = $1 AND md.time >= $2 
+                WHERE md.symbol = $1 AND md.time >= $2
                 ORDER BY md.time ASC
             """
 
@@ -682,7 +692,8 @@ class DataManager:
                     else None
                 ),
                 "ema_7": (
-                    float(last_row["ema_7"]) if last_row["ema_7"] is not None else None
+                    float(
+                        last_row["ema_7"]) if last_row["ema_7"] is not None else None
                 ),
                 "ema_12": (
                     float(last_row["ema_12"])
@@ -877,11 +888,12 @@ class DataManager:
             )
             return current_candle
 
-        except Exception as e:
-            logger.error(f"❌ Erreur construction bougie courante: {e}")
+        except Exception:
+            logger.exception("❌ Erreur construction bougie courante")
             return None
 
-    async def get_portfolio_performance(self, period: str = "24h") -> Dict[str, Any]:
+    async def get_portfolio_performance(
+            self, period: str = "24h") -> dict[str, Any]:
         """Fetch portfolio performance data"""
         if not self.postgres_pool:
             return {}
@@ -897,7 +909,7 @@ class DataManager:
         start_time = datetime.now(timezone.utc).replace(tzinfo=None) - delta
 
         query = """
-            SELECT 
+            SELECT
                 created_at as timestamp,
                 profit_loss as pnl_usdt,
                 profit_loss_percent as pnl_percentage
@@ -919,7 +931,8 @@ class DataManager:
                     pnl_cumsum = float(
                         pnl_cumsum + (float(row["pnl_usdt"]) if row["pnl_usdt"] else 0)
                     )
-                    balances.append(1000 + pnl_cumsum)  # Starting balance assumption
+                    # Starting balance assumption
+                    balances.append(1000 + pnl_cumsum)
                     pnl_values.append(pnl_cumsum)
                     pnl_percentages.append(
                         float(row["pnl_percentage"]) if row["pnl_percentage"] else 0
@@ -934,11 +947,11 @@ class DataManager:
                     "sharpe_ratio": [0] * len(rows),  # Placeholder
                 }
 
-        except Exception as e:
-            logger.error(f"Error fetching portfolio performance: {e}")
+        except Exception:
+            logger.exception("Error fetching portfolio performance")
             return {}
 
-    async def get_latest_price(self, symbol: str) -> Optional[float]:
+    async def get_latest_price(self, symbol: str) -> float | None:
         """Get latest price from Redis"""
         if not self.redis_client:
             return None
@@ -949,8 +962,8 @@ class DataManager:
             if data:
                 ticker = json.loads(data)
                 return float(ticker.get("price", 0))
-        except Exception as e:
-            logger.error(f"Error getting latest price: {e}")
+        except Exception:
+            logger.exception("Error getting latest price")
 
         return None
 
@@ -962,15 +975,16 @@ class DataManager:
         try:
             if channel not in self.subscriptions:
                 ch = await self.redis_client.subscribe(channel)
-                self.subscriptions[channel] = {"channel": ch[0], "callbacks": []}
+                self.subscriptions[channel] = {
+                    "channel": ch[0], "callbacks": []}
 
                 # Start listening to the channel
                 asyncio.create_task(self._listen_to_channel(channel))
 
             self.subscriptions[channel]["callbacks"].append(callback)
 
-        except Exception as e:
-            logger.error(f"Error subscribing to channel {channel}: {e}")
+        except Exception:
+            logger.exception("Error subscribing to channel {channel}")
 
     async def _listen_to_channel(self, channel_name: str):
         """Listen to a Redis channel and call callbacks"""
@@ -988,13 +1002,13 @@ class DataManager:
                     for callback in callbacks:
                         try:
                             await callback(data)
-                        except Exception as e:
-                            logger.error(f"Error in callback: {e}")
+                        except Exception:
+                            logger.exception("Error in callback")
 
-        except Exception as e:
-            logger.error(f"Error listening to channel {channel_name}: {e}")
+        except Exception:
+            logger.exception("Error listening to channel {channel_name}")
 
-    async def execute_query(self, query: str, *args) -> List[Dict[str, Any]]:
+    async def execute_query(self, query: str, *args) -> list[dict[str, Any]]:
         """
         Execute a PostgreSQL query and return results.
 
@@ -1012,19 +1026,19 @@ class DataManager:
             async with self.postgres_pool.acquire() as conn:
                 rows = await conn.fetch(query, *args)
                 return [dict(row) for row in rows]
-        except Exception as e:
-            logger.error(f"Error executing query: {e}")
+        except Exception:
+            logger.exception("Error executing query")
             raise
 
-    async def get_available_symbols(self) -> List[str]:
+    async def get_available_symbols(self) -> list[str]:
         """Get list of available trading symbols"""
         if not self.postgres_pool:
             # Return default symbols if no database connection
             return ["XRPUSDC", "SOLUSDC", "BTCUSDT", "ETHUSDT", "ADAUSDT"]
 
         query = """
-            SELECT DISTINCT symbol 
-            FROM market_data 
+            SELECT DISTINCT symbol
+            FROM market_data
             ORDER BY symbol
         """
 
@@ -1035,27 +1049,32 @@ class DataManager:
 
                 # If no symbols in database, return default ones
                 if not symbols:
-                    return ["XRPUSDC", "SOLUSDC", "BTCUSDT", "ETHUSDT", "ADAUSDT"]
+                    return [
+                        "XRPUSDC",
+                        "SOLUSDC",
+                        "BTCUSDT",
+                        "ETHUSDT",
+                        "ADAUSDT"]
 
                 return symbols
 
-        except Exception as e:
-            logger.error(f"Error fetching available symbols: {e}")
+        except Exception:
+            logger.exception("Error fetching available symbols")
             # Return default symbols on error
             return ["XRPUSDC", "SOLUSDC", "BTCUSDT", "ETHUSDT", "ADAUSDT"]
 
     async def get_trade_cycles(
         self,
-        symbol: Optional[str] = None,
-        status: Optional[str] = None,
+        symbol: str | None = None,
+        status: str | None = None,
         limit: int = 100,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get trade cycles from database"""
         if not self.postgres_pool:
             return []
 
         query = """
-            SELECT 
+            SELECT
                 id,
                 symbol,
                 strategy,
@@ -1075,7 +1094,7 @@ class DataManager:
             WHERE 1=1
         """
 
-        params: List[str] = []
+        params: list[str] = []
 
         if symbol:
             query += f" AND symbol = ${len(params) + 1}"
@@ -1130,6 +1149,6 @@ class DataManager:
                     for row in rows
                 ]
 
-        except Exception as e:
-            logger.error(f"Error fetching trade cycles: {e}")
+        except Exception:
+            logger.exception("Error fetching trade cycles")
             return []

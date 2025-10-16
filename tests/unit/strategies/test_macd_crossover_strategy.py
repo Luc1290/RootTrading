@@ -2,14 +2,14 @@
 Tests pour MACD_Crossover_Strategy.
 """
 
-import pytest
-import sys
+from analyzer.strategies.MACD_Crossover_Strategy import MACD_Crossover_Strategy
 import os
+import sys
+
+import pytest
 
 # Ajouter le chemin racine pour les imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-
-from analyzer.strategies.MACD_Crossover_Strategy import MACD_Crossover_Strategy
 
 
 class TestMACDCrossoverStrategy:
@@ -18,8 +18,9 @@ class TestMACDCrossoverStrategy:
     def test_init(self, mock_strategy_data):
         """Test d'initialisation de la stratégie MACD."""
         strategy = MACD_Crossover_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], mock_strategy_data["indicators"]
-        )
+            "BTCUSDC",
+            mock_strategy_data["data"],
+            mock_strategy_data["indicators"])
 
         assert strategy.symbol == "BTCUSDC"
         assert strategy.name == "MACD_Crossover_Strategy"
@@ -236,7 +237,8 @@ class TestMACDCrossoverStrategy:
         assert result["confidence"] == 0.0
         assert "Histogram négatif contredit signal BUY" in result["reason"]
 
-    def test_generate_signal_insufficient_strong_conditions(self, mock_strategy_data):
+    def test_generate_signal_insufficient_strong_conditions(
+            self, mock_strategy_data):
         """Test signal rejeté pour manque de conditions fortes."""
         indicators = mock_strategy_data["indicators"].copy()
         indicators.update(
@@ -279,7 +281,8 @@ class TestMACDCrossoverStrategy:
         )
         result = strategy.generate_signal()
 
-        # Signal peut être généré même avec faible confluence - vérifier que la logique fonctionne
+        # Signal peut être généré même avec faible confluence - vérifier que la
+        # logique fonctionne
         assert result["side"] in [None, "BUY", "SELL"]
         if result["side"] is None:
             assert result["confidence"] == 0.0
@@ -290,7 +293,8 @@ class TestMACDCrossoverStrategy:
         indicators.update(
             {
                 "macd_line": 50.0,
-                "macd_signal": 48.0,  # Forte séparation (2.0 > strong_separation_threshold)
+                # Forte séparation (2.0 > strong_separation_threshold)
+                "macd_signal": 48.0,
                 "macd_histogram": 2.0,
                 "confluence_score": 70,
                 "market_regime": "TRENDING_BULL",
@@ -313,8 +317,9 @@ class TestMACDCrossoverStrategy:
     def test_get_current_values_structure(self, mock_strategy_data):
         """Test que _get_current_values retourne la structure attendue."""
         strategy = MACD_Crossover_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], mock_strategy_data["indicators"]
-        )
+            "BTCUSDC",
+            mock_strategy_data["data"],
+            mock_strategy_data["indicators"])
         values = strategy._get_current_values()
 
         # Vérifier que les clés essentielles sont présentes
@@ -375,14 +380,13 @@ class TestMACDCrossoverStrategy:
             {
                 "macd_line": macd_line,
                 "macd_signal": macd_signal,
-                "macd_histogram": macd_line - macd_signal,
+                "macd_histogram": macd_line -
+                macd_signal,
                 "confluence_score": 70,
                 "market_regime": (
-                    "TRENDING_BULL" if expected_side == "BUY" else "TRENDING_BEAR"
-                ),
+                    "TRENDING_BULL" if expected_side == "BUY" else "TRENDING_BEAR"),
                 "directional_bias": "BULLISH" if expected_side == "BUY" else "BEARISH",
-            }
-        )
+            })
 
         strategy = MACD_Crossover_Strategy(
             "BTCUSDC", mock_strategy_data["data"], indicators
@@ -392,6 +396,7 @@ class TestMACDCrossoverStrategy:
         if expected_side is None:
             assert result["side"] is None
         else:
-            # Peut être rejeté pour d'autres raisons, mais si accepté, doit être correct
+            # Peut être rejeté pour d'autres raisons, mais si accepté, doit
+            # être correct
             if result["side"] is not None:
                 assert result["side"] == expected_side

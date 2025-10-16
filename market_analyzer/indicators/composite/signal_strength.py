@@ -6,12 +6,11 @@ pour un timeframe donné (mono-timeframe).
 """
 
 import logging
-from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 
-def calculate_signal_strength(indicators: Dict) -> str:
+def calculate_signal_strength(indicators: dict) -> str:
     """
     Calcule la force du signal basée sur la confluence des indicateurs.
 
@@ -67,14 +66,13 @@ def calculate_signal_strength(indicators: Dict) -> str:
         # Convertir en catégories
         if final_score >= 0.8:
             return "VERY_STRONG"
-        elif final_score >= 0.65:
+        if final_score >= 0.65:
             return "STRONG"
-        elif final_score >= 0.45:
+        if final_score >= 0.45:
             return "MODERATE"
-        elif final_score >= 0.25:
+        if final_score >= 0.25:
             return "WEAK"
-        else:
-            return "VERY_WEAK"
+        return "VERY_WEAK"
 
     except Exception as e:
         logger.warning(f"❌ Erreur calcul signal_strength: {e}")

@@ -3,9 +3,9 @@ Module de conversion des champs de la base de données.
 Gère la conversion des valeurs string en valeurs numériques pour les validators.
 """
 
-from typing import Any, Optional, Dict
-from decimal import Decimal
 import logging
+from decimal import Decimal
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,8 @@ class FieldConverter:
         "SPIKE": "spike",
     }
 
-    # Mapping des noms de champs de la DB vers les noms attendus par les validators
+    # Mapping des noms de champs de la DB vers les noms attendus par les
+    # validators
     FIELD_NAME_MAPPING = {
         # DÉSACTIVÉ : Pivot points - les validators utilisent maintenant directement les noms DB
         # 'nearest_support': 'pivot_support',
@@ -100,7 +101,7 @@ class FieldConverter:
     }
 
     @classmethod
-    def convert_indicators(cls, indicators: Dict[str, Any]) -> Dict[str, Any]:
+    def convert_indicators(cls, indicators: dict[str, Any]) -> dict[str, Any]:
         """
         Convertit tous les indicateurs en types appropriés pour les validators.
 
@@ -110,10 +111,11 @@ class FieldConverter:
         Returns:
             Dict des indicateurs convertis
         """
-        converted: Dict[str, Any] = {}
+        converted: dict[str, Any] = {}
 
         # Log pour debug
-        logger.debug(f"FieldConverter: Conversion de {len(indicators)} indicateurs")
+        logger.debug(
+            f"FieldConverter: Conversion de {len(indicators)} indicateurs")
 
         # Étape 1: Appliquer le mapping de noms de champs (bidirectionnel)
         mapped_indicators = {}
@@ -133,7 +135,7 @@ class FieldConverter:
         ):
             mapped_indicators["vol_quality"] = mapped_indicators["volume_quality_score"]
             logger.debug(
-                f"FieldConverter: Added reverse mapping volume_quality_score -> vol_quality"
+                "FieldConverter: Added reverse mapping volume_quality_score -> vol_quality"
             )
         elif (
             "vol_quality" in mapped_indicators
@@ -141,7 +143,7 @@ class FieldConverter:
         ):
             mapped_indicators["volume_quality_score"] = mapped_indicators["vol_quality"]
             logger.debug(
-                f"FieldConverter: Added reverse mapping vol_quality -> volume_quality_score"
+                "FieldConverter: Added reverse mapping vol_quality -> volume_quality_score"
             )
 
         # Étape 2: Création de Z-Scores synthétiques
@@ -166,8 +168,9 @@ class FieldConverter:
                     converted[key] = cls._convert_volume_context(value)
                 elif key == "volume_pattern":
                     converted[key] = cls._convert_volume_pattern(value)
-                elif key == "regime_conf" or key == "pattern_conf":
-                    # Ces champs sont déjà numériques mais peuvent nécessiter /100
+                elif key in {"regime_conf", "pattern_conf"}:
+                    # Ces champs sont déjà numériques mais peuvent nécessiter
+                    # /100
                     converted[key] = (
                         cls._ensure_float(value) / 100.0
                         if cls._ensure_float(value) > 1
@@ -182,12 +185,13 @@ class FieldConverter:
                     "momentum_score",
                     "volume_quality_score",
                 ]:
-                    # Score sur 100 - GARDER le format 0-100 pour les validators
+                    # Score sur 100 - GARDER le format 0-100 pour les
+                    # validators
                     converted[key] = cls._ensure_float(value)
                 elif key == "atr_percentile":
                     # Percentile ATR - garder tel quel
                     converted[key] = cls._ensure_float(value)
-                elif isinstance(value, (int, float, Decimal)):
+                elif isinstance(value, int | float | Decimal):
                     # Valeur déjà numérique (incluant Decimal de PostgreSQL)
                     converted[key] = float(value)
                 elif (
@@ -207,7 +211,8 @@ class FieldConverter:
         # Étape 4: Ajout de champs calculés si nécessaire
         cls._add_calculated_fields(converted, indicators)
 
-        # Étape 5: Ajout de champs Z-Score spécialisés pour validators spécifiques
+        # Étape 5: Ajout de champs Z-Score spécialisés pour validators
+        # spécifiques
         cls._add_specialized_zscore_fields(converted)
 
         # Étape 6: Ajout de champs volume spike spécialisés
@@ -220,7 +225,7 @@ class FieldConverter:
         """Convertit une force (string) en score numérique."""
         if value is None:
             return 0.5
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             return float(value)
         if isinstance(value, str):
             # Convertir en majuscules pour la recherche case-insensitive
@@ -275,7 +280,7 @@ class FieldConverter:
 
     @classmethod
     def _add_calculated_fields(
-        cls, converted: Dict[str, Any], original: Dict[str, Any]
+        cls, converted: dict[str, Any], original: dict[str, Any]
     ):
         """Ajoute des champs calculés nécessaires aux validators."""
 
@@ -313,7 +318,7 @@ class FieldConverter:
                 else:
                     converted["volume_trend"] = "stable"
                     converted["volume_trend_numeric"] = vol_trend_num
-            except:
+            except BaseException:
                 # Si ce n'est pas un nombre, garder tel quel
                 pass
 
@@ -347,7 +352,7 @@ class FieldConverter:
                 converted[key] = default_value
 
     @classmethod
-    def _add_synthetic_zscores(cls, indicators: Dict[str, Any]) -> None:
+    def _add_synthetic_zscores(cls, indicators: dict[str, Any]) -> None:
         """
         Ajoute des Z-Scores synthétiques basés sur les oscillateurs disponibles.
         Utilise la même logique que ZScore_Extreme_Reversal_Strategy.
@@ -361,7 +366,8 @@ class FieldConverter:
                     # Convertir position BB (0-1) vers Z-Score (-3 à +3)
                     zscore_bb = (bb_pos - 0.5) * 6
                     indicators["zscore_20"] = zscore_bb
-                    indicators["zscore_50"] = zscore_bb * 0.8  # Version atténuée
+                    indicators["zscore_50"] = zscore_bb * \
+                        0.8  # Version atténuée
                     logger.debug(
                         f"FieldConverter: Created zscore_20={zscore_bb:.2f} from bb_position={bb_pos:.3f}"
                     )
@@ -374,7 +380,8 @@ class FieldConverter:
                 try:
                     rsi_val = float(rsi_14)
                     # RSI 0-100 vers Z-Score -3 à +3
-                    # RSI 50 = Z-Score 0, RSI 100 = Z-Score +3, RSI 0 = Z-Score -3
+                    # RSI 50 = Z-Score 0, RSI 100 = Z-Score +3, RSI 0 = Z-Score
+                    # -3
                     zscore_rsi = (rsi_val - 50) / 50 * 3
                     indicators["zscore_rsi"] = zscore_rsi
                     logger.debug(
@@ -402,8 +409,10 @@ class FieldConverter:
             if cci_20 is not None:
                 try:
                     cci_val = float(cci_20)
-                    # CCI normalement entre -200 et +200, normaliser vers Z-Score -3 à +3
-                    zscore_cci = max(-3, min(3, cci_val / 66.67))  # 200/3 = 66.67
+                    # CCI normalement entre -200 et +200, normaliser vers
+                    # Z-Score -3 à +3
+                    # 200/3 = 66.67
+                    zscore_cci = max(-3, min(3, cci_val / 66.67))
                     indicators["zscore_cci"] = zscore_cci
                     logger.debug(
                         f"FieldConverter: Created zscore_cci={zscore_cci:.2f} from cci_20={cci_val:.1f}"
@@ -445,8 +454,9 @@ class FieldConverter:
                 if zscore_key not in indicators:
                     indicators[zscore_key] = default_val
 
-        except Exception as e:
-            logger.error(f"FieldConverter: Erreur création Z-Scores synthétiques: {e}")
+        except Exception:
+            logger.exception(
+                "FieldConverter: Erreur création Z-Scores synthétiques")
             # En cas d'erreur, ajouter des valeurs par défaut
             for zscore_key in [
                 "zscore_20",
@@ -462,13 +472,15 @@ class FieldConverter:
                     indicators[zscore_key] = 0.0
 
     @classmethod
-    def _add_specialized_zscore_fields(cls, indicators: Dict[str, Any]) -> None:
+    def _add_specialized_zscore_fields(
+            cls, indicators: dict[str, Any]) -> None:
         """
         Ajoute des champs Z-Score spécialisés requis par certains validators.
         Utilise les indicateurs existants comme proxies.
         """
         try:
-            # 1. price_zscore - utiliser zscore_20 comme proxy ou créer depuis BB position
+            # 1. price_zscore - utiliser zscore_20 comme proxy ou créer depuis
+            # BB position
             if "price_zscore" not in indicators or indicators["price_zscore"] is None:
                 if "zscore_20" in indicators and indicators["zscore_20"] is not None:
                     indicators["price_zscore"] = indicators["zscore_20"]
@@ -495,7 +507,8 @@ class FieldConverter:
                     try:
                         rel_vol = float(indicators["relative_volume"])
                         # Normaliser relative_volume (1.0 = normal) vers Z-Score
-                        # rel_vol > 1 = Z-Score positif, rel_vol < 1 = Z-Score négatif
+                        # rel_vol > 1 = Z-Score positif, rel_vol < 1 = Z-Score
+                        # négatif
                         indicators["volume_zscore"] = max(
                             -3, min(3, (rel_vol - 1.0) * 3)
                         )
@@ -527,8 +540,10 @@ class FieldConverter:
                     try:
                         momentum = float(indicators["momentum_score"])
                         # momentum_score est entre 0-100 (50 = neutre), convertir vers Z-Score
-                        # Normaliser : (momentum - 50) / 50 * 3 pour obtenir Z-Score -3 à +3
-                        indicators["returns_zscore"] = (momentum - 50.0) / 50.0 * 3.0
+                        # Normaliser : (momentum - 50) / 50 * 3 pour obtenir
+                        # Z-Score -3 à +3
+                        indicators["returns_zscore"] = (
+                            momentum - 50.0) / 50.0 * 3.0
                     except (ValueError, TypeError):
                         indicators["returns_zscore"] = 0.0
                 elif "roc_10" in indicators and indicators["roc_10"] is not None:
@@ -582,7 +597,8 @@ class FieldConverter:
 
             if "zscore_stability" not in indicators:
                 # Approximer stabilité avec régime confidence
-                regime_conf = indicators.get("regime_confidence", 50.0)  # Format 0-100
+                regime_conf = indicators.get(
+                    "regime_confidence", 50.0)  # Format 0-100
                 try:
                     regime_conf_val = float(regime_conf)
                     # Convertir 0-100 vers 0-1 pour zscore_stability
@@ -594,11 +610,10 @@ class FieldConverter:
                 f"FieldConverter: Added specialized Z-Score fields - "
                 f"price_zscore: {indicators.get('price_zscore', 'N/A'):.2f}, "
                 f"volume_zscore: {indicators.get('volume_zscore', 'N/A'):.2f}, "
-                f"returns_zscore: {indicators.get('returns_zscore', 'N/A'):.2f}"
-            )
+                f"returns_zscore: {indicators.get('returns_zscore', 'N/A'):.2f}")
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"FieldConverter: Erreur ajout champs Z-Score spécialisés: {e}"
             )
             # Valeurs par défaut en cas d'erreur
@@ -615,13 +630,15 @@ class FieldConverter:
                     indicators[field] = default_val
 
     @classmethod
-    def _add_specialized_volume_spike_fields(cls, indicators: Dict[str, Any]) -> None:
+    def _add_specialized_volume_spike_fields(
+            cls, indicators: dict[str, Any]) -> None:
         """
         Ajoute des champs volume spike spécialisés requis par Volume_Spike_Validator.
         Utilise les indicateurs volume existants comme proxies.
         """
         try:
-            # 1. current_volume_spike - utiliser volume_spike_multiplier si disponible
+            # 1. current_volume_spike - utiliser volume_spike_multiplier si
+            # disponible
             if "current_volume_spike" not in indicators:
                 if (
                     "volume_spike_multiplier" in indicators
@@ -638,7 +655,8 @@ class FieldConverter:
                 else:
                     indicators["current_volume_spike"] = 1.0
 
-            # 2. spike_quality_score - créer depuis volume_quality_score ou relative_volume
+            # 2. spike_quality_score - créer depuis volume_quality_score ou
+            # relative_volume
             if "spike_quality_score" not in indicators:
                 if (
                     "volume_quality_score" in indicators
@@ -656,7 +674,8 @@ class FieldConverter:
                 ):
                     try:
                         rel_vol = float(indicators["relative_volume"])
-                        # Si relative_volume > 1.5, considérer comme bonne qualité
+                        # Si relative_volume > 1.5, considérer comme bonne
+                        # qualité
                         if rel_vol >= 2.0:
                             indicators["spike_quality_score"] = 0.8
                         elif rel_vol >= 1.5:
@@ -687,22 +706,26 @@ class FieldConverter:
 
             # 4. time_since_spike - approximer avec 0 (spike actuel)
             if "time_since_spike" not in indicators:
-                indicators["time_since_spike"] = 0  # Considérer spike comme actuel
+                # Considérer spike comme actuel
+                indicators["time_since_spike"] = 0
 
-            # 5. relative_spike_strength - utiliser volume_spike_multiplier normalisé
+            # 5. relative_spike_strength - utiliser volume_spike_multiplier
+            # normalisé
             if "relative_spike_strength" not in indicators:
                 volume_spike = indicators.get("volume_spike_multiplier", 1.0)
                 try:
                     spike_val = float(volume_spike)
                     # Normaliser vers 0-1 (1.0=pas de spike, 2.0+=spike fort)
                     if spike_val >= 4.0:
-                        indicators["relative_spike_strength"] = 1.0  # Spike maximal
+                        # Spike maximal
+                        indicators["relative_spike_strength"] = 1.0
                     elif spike_val >= 2.0:
                         indicators["relative_spike_strength"] = (
                             spike_val - 1.0
                         ) / 3.0  # Normalisation
                     else:
-                        indicators["relative_spike_strength"] = 0.0  # Pas de spike
+                        # Pas de spike
+                        indicators["relative_spike_strength"] = 0.0
                 except (ValueError, TypeError):
                     indicators["relative_spike_strength"] = 0.0
 
@@ -710,11 +733,11 @@ class FieldConverter:
                 f"FieldConverter: Added volume spike fields - "
                 f"current_volume_spike: {indicators.get('current_volume_spike', 'N/A'):.2f}, "
                 f"spike_quality_score: {indicators.get('spike_quality_score', 'N/A'):.2f}, "
-                f"relative_spike_strength: {indicators.get('relative_spike_strength', 'N/A'):.2f}"
-            )
+                f"relative_spike_strength: {indicators.get('relative_spike_strength', 'N/A'):.2f}")
 
-        except Exception as e:
-            logger.error(f"FieldConverter: Erreur ajout champs volume spike: {e}")
+        except Exception:
+            logger.exception(
+                "FieldConverter: Erreur ajout champs volume spike")
             # Valeurs par défaut en cas d'erreur
             default_spike_fields = {
                 "current_volume_spike": 1.0,

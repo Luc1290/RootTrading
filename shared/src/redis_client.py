@@ -5,18 +5,19 @@ Optimisé pour les performances et la résilience.
 
 import json
 import logging
-from typing import Any, Dict, Callable, Optional, List, Union
+import random
 import threading
 import time
-import random
-from queue import Queue, Empty
+from collections.abc import Callable
+from decimal import Decimal
+from queue import Empty, Queue
+from typing import Any
 
-from redis import Redis, ConnectionPool
+import numpy as np
+from redis import ConnectionPool, Redis
 from redis.exceptions import ConnectionError, TimeoutError
 
-from .config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
-import numpy as np
-from decimal import Decimal
+from .config import REDIS_DB, REDIS_HOST, REDIS_PASSWORD, REDIS_PORT
 
 
 class NumpyEncoder(json.JSONEncoder):
@@ -26,9 +27,9 @@ class NumpyEncoder(json.JSONEncoder):
     """
 
     def default(self, obj):
-        if isinstance(obj, (np.integer,)):
+        if isinstance(obj, np.integer):
             return int(obj)
-        if isinstance(obj, (np.floating,)):
+        if isinstance(obj, np.floating):
             return float(obj)
         if isinstance(obj, np.bool_):
             return bool(obj)
@@ -78,10 +79,11 @@ class RedisMetrics:
         with self.lock:
             self.reconnections += 1
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Retourne les statistiques d'utilisation."""
         with self.lock:
-            avg_time = sum(self.operation_times) / max(len(self.operation_times), 1)
+            avg_time = sum(self.operation_times) / \
+                max(len(self.operation_times), 1)
             return {
                 "operations": self.operations,
                 "publishes": self.publish_count,
@@ -137,15 +139,16 @@ class RedisClientPool:
         self.redis = Redis(connection_pool=self.connection_pool)
 
         # Pour stocker les abonnements PubSub actifs et leurs messages
-        self.pubsub_connections: Dict[str, Any] = {}
-        self.pubsub_threads: Dict[str, threading.Thread] = {}
-        self.pubsub_callbacks: Dict[str, Callable] = {}
-        self.pubsub_channels: Dict[str, List[str]] = {}
-        self.pubsub_stop_events: Dict[str, threading.Event] = {}
+        self.pubsub_connections: dict[str, Any] = {}
+        self.pubsub_threads: dict[str, threading.Thread] = {}
+        self.pubsub_callbacks: dict[str, Callable] = {}
+        self.pubsub_channels: dict[str, list[str]] = {}
+        self.pubsub_stop_events: dict[str, threading.Event] = {}
 
-        # Message queue pour chaque PubSub (évite les blocages lors des callbacks)
-        self.message_queues: Dict[str, Queue] = {}
-        self.processor_threads: Dict[str, threading.Thread] = {}
+        # Message queue pour chaque PubSub (évite les blocages lors des
+        # callbacks)
+        self.message_queues: dict[str, Queue] = {}
+        self.processor_threads: dict[str, threading.Thread] = {}
 
         # Verrou pour les opérations pubsub
         self.pubsub_lock = threading.RLock()
@@ -184,8 +187,9 @@ class RedisClientPool:
             )
             return pool
 
-        except (ConnectionError, TimeoutError) as e:
-            logger.error(f"❌ Erreur de création du pool de connexions Redis: {str(e)}")
+        except (ConnectionError, TimeoutError):
+            logger.exception(
+                "❌ Erreur de création du pool de connexions Redis")
             raise
 
     def decrbyfloat(self, key: str, value: float) -> float:
@@ -200,8 +204,10 @@ class RedisClientPool:
         Returns:
             Nouvelle valeur de la clé après décrémentation
         """
-        # Redis n'a pas de commande native DECRBYFLOAT, nous utilisons INCRBYFLOAT avec une valeur négative
-        return self._retry_operation(self.redis.incrbyfloat, key, -abs(float(value)))
+        # Redis n'a pas de commande native DECRBYFLOAT, nous utilisons
+        # INCRBYFLOAT avec une valeur négative
+        return self._retry_operation(
+            self.redis.incrbyfloat, key, -abs(float(value)))
 
     def _retry_operation(self, operation_func, *args, max_retries=3, **kwargs):
         """
@@ -235,30 +241,32 @@ class RedisClientPool:
                 last_error = e
                 self.metrics.record_error()
 
-                # Pause exponentielle avec jitter pour éviter la tempête de reconnexions
+                # Pause exponentielle avec jitter pour éviter la tempête de
+                # reconnexions
                 if retry_count <= max_retries:
-                    wait_time = (0.1 * (2**retry_count)) + (random.random() * 0.1)
+                    wait_time = (0.1 * (2**retry_count)) + \
+                        (random.random() * 0.1)
                     logger.warning(
                         f"⚠️ Erreur Redis (tentative {retry_count}/{max_retries}), "
-                        f"nouvelle tentative dans {wait_time:.2f}s: {str(e)}"
-                    )
+                        f"nouvelle tentative dans {wait_time:.2f}s: {e!s}")
                     time.sleep(wait_time)
 
                     # Tenter une reconnexion
                     try:
                         self._reconnect()
                     except Exception as reconnect_error:
-                        logger.error(f"❌ Échec de reconnexion: {str(reconnect_error)}")
+                        logger.exception(
+                            f"❌ Échec de reconnexion: {reconnect_error!s}")
                 else:
-                    logger.error(
+                    logger.exception(
                         f"❌ Échec de l'opération Redis après {max_retries} tentatives"
                     )
                     raise last_error
 
-            except Exception as e:
+            except Exception:
                 # Autres erreurs non liées à la connexion
                 self.metrics.record_error()
-                logger.error(f"❌ Erreur Redis: {str(e)}")
+                logger.exception("❌ Erreur Redis")
                 raise
 
         # Si on arrive ici, c'est que l'erreur persiste
@@ -306,8 +314,8 @@ class RedisClientPool:
                             f"✅ Réabonnement aux canaux pour client {client_id}: {channels}"
                         )
 
-        except Exception as e:
-            logger.error(f"❌ Échec de la reconnexion Redis: {str(e)}")
+        except Exception:
+            logger.exception("❌ Échec de la reconnexion Redis")
             raise
 
     def _format_value(self, value: Any) -> Any:
@@ -320,9 +328,9 @@ class RedisClientPool:
         Returns:
             Valeur formatée pour Redis
         """
-        if isinstance(value, (dict, list)):
+        if isinstance(value, dict | list):
             return json.dumps(value, cls=NumpyEncoder)
-        elif not isinstance(value, (str, int, float, bool, bytes, bytearray)):
+        if not isinstance(value, str | int | float | bool | bytes | bytearray):
             return str(value)
         return value
 
@@ -339,7 +347,7 @@ class RedisClientPool:
         if not value:
             return value
 
-        if isinstance(value, str) and (value.startswith("{") or value.startswith("[")):
+        if isinstance(value, str) and (value.startswith(("{", "["))):
             try:
                 return json.loads(value)
             except json.JSONDecodeError:
@@ -347,7 +355,7 @@ class RedisClientPool:
         return value
 
     def _subscribe_internal(
-        self, client_id: str, channels: List[str], callback: Callable
+        self, client_id: str, channels: list[str], callback: Callable
     ):
         """
         Implémentation interne de l'abonnement aux canaux.
@@ -393,8 +401,11 @@ class RedisClientPool:
         processor_thread.start()
 
     def _listen_for_messages(
-        self, client_id: str, pubsub, message_queue: Queue, stop_event: threading.Event
-    ):
+            self,
+            client_id: str,
+            pubsub,
+            message_queue: Queue,
+            stop_event: threading.Event):
         """
         Écoute les messages sur un pubsub et les met dans une queue.
 
@@ -428,7 +439,7 @@ class RedisClientPool:
                 retry_count += 1
 
                 if retry_count > max_retries:
-                    logger.error(
+                    logger.exception(
                         f"❌ Trop d'erreurs de connexion dans le thread PubSub {client_id}, arrêt"
                     )
                     stop_event.set()
@@ -436,8 +447,7 @@ class RedisClientPool:
 
                 logger.warning(
                     f"⚠️ Erreur de connexion dans le thread PubSub {client_id} "
-                    f"(tentative {retry_count}/{max_retries}): {str(e)}"
-                )
+                    f"(tentative {retry_count}/{max_retries}): {e!s}")
 
                 # Backoff exponentiel
                 time.sleep(delay)
@@ -446,7 +456,8 @@ class RedisClientPool:
                 # Tenter une reconnexion à Redis
                 try:
                     # Créer une nouvelle connexion PubSub
-                    new_pubsub = self.redis.pubsub(ignore_subscribe_messages=True)
+                    new_pubsub = self.redis.pubsub(
+                        ignore_subscribe_messages=True)
 
                     # S'abonner aux mêmes canaux
                     channels = self.pubsub_channels.get(client_id, [])
@@ -460,10 +471,11 @@ class RedisClientPool:
                     # Remplacer le pubsub local
                     pubsub = new_pubsub
 
-                    logger.info(f"✅ Reconnexion PubSub réussie pour {client_id}")
+                    logger.info(
+                        f"✅ Reconnexion PubSub réussie pour {client_id}")
                 except Exception as reconnect_error:
-                    logger.error(
-                        f"❌ Échec de reconnexion PubSub pour {client_id}: {str(reconnect_error)}"
+                    logger.exception(
+                        f"❌ Échec de reconnexion PubSub pour {client_id}: {reconnect_error!s}"
                     )
 
             except Exception as e:
@@ -474,8 +486,8 @@ class RedisClientPool:
                     )
                     break
 
-                logger.error(
-                    f"❌ Erreur dans le thread d'écoute PubSub {client_id}: {str(e)}"
+                logger.exception(
+                    f"❌ Erreur dans le thread d'écoute PubSub {client_id}: {e!s}"
                 )
                 time.sleep(1)  # Pause pour éviter de consommer trop de CPU
 
@@ -510,18 +522,19 @@ class RedisClientPool:
                 try:
                     callback(channel, data)
                 except Exception as e:
-                    logger.error(
-                        f"❌ Erreur dans le callback PubSub pour {client_id}: {str(e)}"
+                    logger.exception(
+                        f"❌ Erreur dans le callback PubSub pour {client_id}: {e!s}"
                     )
 
                 # Indiquer que le traitement est terminé
                 message_queue.task_done()
 
             except Exception as e:
-                logger.error(
-                    f"❌ Erreur dans le thread de traitement PubSub {client_id}: {str(e)}"
+                logger.exception(
+                    f"❌ Erreur dans le thread de traitement PubSub {client_id}: {e!s}"
                 )
-                time.sleep(0.1)  # Courte pause pour éviter de consommer trop de CPU
+                # Courte pause pour éviter de consommer trop de CPU
+                time.sleep(0.1)
 
     # === API PUBLIQUE ===
 
@@ -540,7 +553,8 @@ class RedisClientPool:
         formatted_message = self._format_value(message)
 
         # Publier avec retry
-        result = self._retry_operation(self.redis.publish, channel, formatted_message)
+        result = self._retry_operation(
+            self.redis.publish, channel, formatted_message)
 
         # Enregistrer la métrique
         self.metrics.record_publish()
@@ -548,7 +562,7 @@ class RedisClientPool:
         return result
 
     def subscribe(
-        self, channels: Union[str, List[str]], callback: Callable[[str, Any], None]
+        self, channels: str | list[str], callback: Callable[[str, Any], None]
     ) -> str:
         """
         S'abonne à un ou plusieurs canaux Redis.
@@ -595,7 +609,7 @@ class RedisClientPool:
                     pubsub.close()
                 except Exception as e:
                     logger.warning(
-                        f"⚠️ Erreur lors de la fermeture PubSub {client_id}: {str(e)}"
+                        f"⚠️ Erreur lors de la fermeture PubSub {client_id}: {e!s}"
                     )
 
             # Attendre la fin des threads
@@ -641,7 +655,7 @@ class RedisClientPool:
         value = self._retry_operation(self.redis.get, key)
         return self._parse_value(value)
 
-    def set(self, key: str, value: Any, expiration: Optional[int] = None) -> bool:
+    def set(self, key: str, value: Any, expiration: int | None = None) -> bool:
         """
         Stocke une valeur dans Redis.
 
@@ -659,8 +673,7 @@ class RedisClientPool:
             return self._retry_operation(
                 self.redis.setex, key, expiration, formatted_value
             )
-        else:
-            return self._retry_operation(self.redis.set, key, formatted_value)
+        return self._retry_operation(self.redis.set, key, formatted_value)
 
     def delete(self, key: str) -> int:
         """
@@ -687,7 +700,8 @@ class RedisClientPool:
             1 si nouveau champ, 0 si mise à jour
         """
         formatted_value = self._format_value(value)
-        return self._retry_operation(self.redis.hset, name, key, formatted_value)
+        return self._retry_operation(
+            self.redis.hset, name, key, formatted_value)
 
     def hget(self, name: str, key: str) -> Any:
         """
@@ -703,7 +717,7 @@ class RedisClientPool:
         value = self._retry_operation(self.redis.hget, name, key)
         return self._parse_value(value)
 
-    def hmset(self, key: str, mapping: Dict[str, Any]) -> bool:
+    def hmset(self, key: str, mapping: dict[str, Any]) -> bool:
         """
         Stocke plusieurs champs dans une table de hachage.
 
@@ -715,10 +729,13 @@ class RedisClientPool:
             True si réussi
         """
         # Formater chaque valeur
-        formatted_mapping = {k: self._format_value(v) for k, v in mapping.items()}
-        return self._retry_operation(self.redis.hset, key, mapping=formatted_mapping)
+        formatted_mapping = {
+            k: self._format_value(v) for k,
+            v in mapping.items()}
+        return self._retry_operation(
+            self.redis.hset, key, mapping=formatted_mapping)
 
-    def hgetall(self, name: str) -> Dict[str, Any]:
+    def hgetall(self, name: str) -> dict[str, Any]:
         """
         Récupère tous les champs d'une table de hachage.
 
@@ -731,7 +748,8 @@ class RedisClientPool:
         result = self._retry_operation(self.redis.hgetall, name)
 
         # Parser chaque valeur
-        return {k: self._parse_value(v) for k, v in result.items()} if result else {}
+        return {k: self._parse_value(v) for k,
+                v in result.items()} if result else {}
 
     def hdel(self, name: str, *keys) -> int:
         """
@@ -774,7 +792,7 @@ class RedisClientPool:
         formatted_values = [self._format_value(v) for v in values]
         return self._retry_operation(self.redis.srem, key, *formatted_values)
 
-    def smembers(self, key: str) -> List[Any]:
+    def smembers(self, key: str) -> list[Any]:
         """
         Récupère tous les membres d'un set.
 
@@ -822,7 +840,7 @@ class RedisClientPool:
 
         logger.info("✅ Toutes les connexions Redis fermées")
 
-    def get_metrics(self) -> Dict[str, Any]:
+    def get_metrics(self) -> dict[str, Any]:
         """
         Récupère les métriques d'utilisation Redis.
 
@@ -883,7 +901,7 @@ class RedisPipeline:
                 # Formater les arguments
                 formatted_args = []
                 for arg in args:
-                    if isinstance(arg, (dict, list, tuple)) and name not in (
+                    if isinstance(arg, dict | list | tuple) and name not in (
                         "hmset",
                         "hset",
                     ):
@@ -900,8 +918,8 @@ class RedisPipeline:
                     if key == "mapping" and name in ("hmset", "hset"):
                         # Pour hmset/hset avec mapping, formater chaque valeur
                         formatted_mapping = {
-                            k: self.client._format_value(v) for k, v in value.items()
-                        }
+                            k: self.client._format_value(v) for k,
+                            v in value.items()}
                         formatted_kwargs[key] = formatted_mapping
                     else:
                         formatted_kwargs[key] = value

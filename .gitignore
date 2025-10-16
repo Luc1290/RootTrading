@@ -11,6 +11,6 @@ __pycache__/
 /dcv/
 /opcode/
 /node_modules/
-nul
 /.venv/
 /journal/
+/.pytest_cache/

@@ -7,16 +7,16 @@ AUCUN calcul d'indicateur - transmission pure vers le dispatcher.
 import asyncio
 import logging
 import signal
-import sys
-import os
 import time
-from aiohttp import web
-from typing import Callable
+from collections.abc import Callable
 
-from .simple_data_fetcher import SimpleDataFetcher
-from .simple_binance_ws import SimpleBinanceWebSocket
+from aiohttp import web
+
+from shared.src.config import SYMBOLS
+
 from .gap_detector import GapDetector
-from shared.src.config import SYMBOLS, INTERVAL
+from .simple_binance_ws import SimpleBinanceWebSocket
+from .simple_data_fetcher import SimpleDataFetcher
 
 # Configuration du logging
 logging.basicConfig(
@@ -60,25 +60,29 @@ class SmartDataFetcher:
             )
 
             if total_gaps == 0:
-                logger.info("✅ Aucun gap détecté - Base de données synchronisée")
+                logger.info(
+                    "✅ Aucun gap détecté - Base de données synchronisée")
                 logger.info("🎯 Mode: WebSocket temps réel uniquement")
                 return  # Pas besoin de fetch, on est sync
 
-            logger.warning(f"📊 {total_gaps} gaps détectés - Remplissage nécessaire")
+            logger.warning(
+                f"📊 {total_gaps} gaps détectés - Remplissage nécessaire")
 
             # 4. Générer un plan de remplissage optimisé
-            filling_plan = self.gap_detector.generate_gap_filling_plan(all_gaps)
+            filling_plan = self.gap_detector.generate_gap_filling_plan(
+                all_gaps)
             estimated_time = self.gap_detector.estimate_fill_time(filling_plan)
 
-            logger.info(f"⏱️ Temps estimé pour synchronisation: {estimated_time:.1f}s")
+            logger.info(
+                f"⏱️ Temps estimé pour synchronisation: {estimated_time:.1f}s")
 
             # 5. Exécuter le remplissage intelligent
             await self._execute_smart_fill(filling_plan)
 
             logger.info("✅ Synchronisation terminée - Passage en mode live")
 
-        except Exception as e:
-            logger.error(f"❌ Erreur SmartDataFetcher: {e}")
+        except Exception:
+            logger.exception("❌ Erreur SmartDataFetcher")
             # Fallback: utiliser le fetcher classique
             logger.info("🔄 Fallback vers fetcher classique")
             await self.simple_fetcher.start()
@@ -92,7 +96,8 @@ class SmartDataFetcher:
         )
         completed = 0
 
-        logger.info(f"🚀 Début du remplissage intelligent ({total_requests} requêtes)")
+        logger.info(
+            f"🚀 Début du remplissage intelligent ({total_requests} requêtes)")
 
         for symbol, timeframe_plan in filling_plan.items():
             for timeframe, periods in timeframe_plan.items():
@@ -113,8 +118,9 @@ class SmartDataFetcher:
                         # Respecter les rate limits
                         await asyncio.sleep(0.1)
 
-                    except Exception as e:
-                        logger.error(f"❌ Erreur remplissage {symbol} {timeframe}: {e}")
+                    except Exception:
+                        logger.exception(
+                            "❌ Erreur remplissage {symbol} {timeframe}")
 
         logger.info(
             f"✅ Remplissage terminé: {completed}/{total_requests} requêtes réussies"
@@ -216,11 +222,17 @@ async def shutdown(signal_type, loop):
 
         if ws_client is not None:
             logger.info("Arrêt WebSocket client...")
-            shutdown_tasks.append(asyncio.wait_for(ws_client.stop(), timeout=5.0))
+            shutdown_tasks.append(
+                asyncio.wait_for(
+                    ws_client.stop(),
+                    timeout=5.0))
 
         if data_fetcher is not None:
             logger.info("Arrêt Data fetcher...")
-            shutdown_tasks.append(asyncio.wait_for(data_fetcher.stop(), timeout=5.0))
+            shutdown_tasks.append(
+                asyncio.wait_for(
+                    data_fetcher.stop(),
+                    timeout=5.0))
 
         if shutdown_tasks:
             await asyncio.gather(*shutdown_tasks, return_exceptions=True)
@@ -229,10 +241,11 @@ async def shutdown(signal_type, loop):
 
     except asyncio.TimeoutError:
         logger.warning("Timeout lors de l'arrêt des services - arrêt forcé")
-    except Exception as e:
-        logger.error(f"Erreur lors de l'arrêt des services: {e}")
+    except Exception:
+        logger.exception("Erreur lors de l'arrêt des services")
     finally:
-        # Ne pas appeler loop.stop() ici - laissons le main loop se terminer naturellement
+        # Ne pas appeler loop.stop() ici - laissons le main loop se terminer
+        # naturellement
         logger.info("Shutdown terminé")
 
 
@@ -242,7 +255,8 @@ async def main():
     """
     global data_fetcher, ws_client
 
-    logger.info("🚀 Démarrage du service Gateway SIMPLE (données brutes uniquement)...")
+    logger.info(
+        "🚀 Démarrage du service Gateway SIMPLE (données brutes uniquement)...")
     logger.info(
         f"Configuration: {', '.join(SYMBOLS)} @ ['1m', '3m', '5m', '15m', '1h', '1d']"
     )
@@ -267,7 +281,8 @@ async def main():
 
         # 2. Ensuite démarrer le WebSocket temps réel en mode continu
         logger.info("🚀 Phase 2: Démarrage WebSocket temps réel...")
-        # Note: WebSocket fonctionne en continu, pas de synchronisation nécessaire
+        # Note: WebSocket fonctionne en continu, pas de synchronisation
+        # nécessaire
         await ws_client.start()
 
         # 3. Attendre le signal d'arrêt
@@ -277,8 +292,8 @@ async def main():
 
         logger.info("📟 Signal d'arrêt reçu - fermeture en cours...")
 
-    except Exception as e:
-        logger.error(f"❌ Erreur critique dans le Gateway: {str(e)}")
+    except Exception:
+        logger.exception("❌ Erreur critique dans le Gateway")
     finally:
         if ws_client:
             await ws_client.stop()
@@ -298,7 +313,8 @@ if __name__ == "__main__":
     # Configurer les gestionnaires de signaux pour l'arrêt propre
     for sig in (signal.SIGINT, signal.SIGTERM):
 
-        def make_signal_handler(signal_type: signal.Signals) -> Callable[[], None]:
+        def make_signal_handler(
+                signal_type: signal.Signals) -> Callable[[], None]:
             def handler() -> None:
                 asyncio.create_task(shutdown(signal_type, loop))
 
@@ -311,8 +327,8 @@ if __name__ == "__main__":
         loop.run_until_complete(main())
     except KeyboardInterrupt:
         logger.info("Interruption clavier détectée")
-    except Exception as e:
-        logger.error(f"Erreur lors de l'exécution: {e}")
+    except Exception:
+        logger.exception("Erreur lors de l'exécution")
     finally:
         # Arrêt propre de toutes les tâches
         try:
@@ -321,7 +337,8 @@ if __name__ == "__main__":
                 task for task in asyncio.all_tasks(loop) if not task.done()
             ]
             if pending_tasks:
-                logger.info(f"Annulation de {len(pending_tasks)} tâches en cours...")
+                logger.info(
+                    f"Annulation de {len(pending_tasks)} tâches en cours...")
                 for task in pending_tasks:
                     task.cancel()
 

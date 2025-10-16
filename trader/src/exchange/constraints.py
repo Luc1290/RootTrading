@@ -5,8 +5,9 @@ Fournit des informations sur les limites de trading par symbole.
 """
 import logging
 import math
-from typing import Dict, Any, Optional
-from decimal import Decimal, getcontext, ROUND_DOWN
+from decimal import ROUND_DOWN, Decimal, getcontext
+from typing import Any
+
 from .symbol_cache import SymbolConstraintsCache
 
 # Configuration de la précision décimale
@@ -24,7 +25,7 @@ class BinanceSymbolConstraints:
 
     def __init__(
         self,
-        symbol_info: Optional[Dict[str, Dict[str, Any]]] = None,
+        symbol_info: dict[str, dict[str, Any]] | None = None,
         cache_ttl: int = 600,
     ):
         """
@@ -37,7 +38,8 @@ class BinanceSymbolConstraints:
         self.symbol_info = symbol_info or {}
         self.cache = SymbolConstraintsCache(ttl_seconds=cache_ttl)
 
-        # Quantité minimale par défaut pour les symboles (fallback si pas de données en temps réel)
+        # Quantité minimale par défaut pour les symboles (fallback si pas de
+        # données en temps réel)
         self.default_min_quantities = {
             "BTCUSDC": 0.00001,  # minQty selon Binance
             "ETHUSDC": 0.0001,  # minQty selon Binance
@@ -77,7 +79,7 @@ class BinanceSymbolConstraints:
             f"✅ Contraintes de symbole initialisées avec {len(self.symbol_info)} symboles en temps réel et cache TTL {cache_ttl}s"
         )
 
-    def _get_cached_or_fetch_constraints(self, symbol: str) -> Dict[str, Any]:
+    def _get_cached_or_fetch_constraints(self, symbol: str) -> dict[str, Any]:
         """
         Récupère les contraintes depuis le cache ou les calcule et les met en cache.
 
@@ -95,7 +97,8 @@ class BinanceSymbolConstraints:
         # Pas en cache, calculer les contraintes
         constraints = {}
 
-        # Récupérer depuis symbol_info si disponible, sinon utiliser les defaults
+        # Récupérer depuis symbol_info si disponible, sinon utiliser les
+        # defaults
         if symbol in self.symbol_info:
             symbol_data = self.symbol_info[symbol]
             constraints["min_qty"] = symbol_data.get(
@@ -110,15 +113,18 @@ class BinanceSymbolConstraints:
             constraints["tick_size"] = symbol_data.get("tick_size")
         else:
             # Utiliser les valeurs par défaut
-            constraints["min_qty"] = self.default_min_quantities.get(symbol, 0.001)
-            constraints["step_size"] = self.default_step_sizes.get(symbol, 0.0001)
-            constraints["min_notional"] = self.default_min_notionals.get(symbol, 10.0)
+            constraints["min_qty"] = self.default_min_quantities.get(
+                symbol, 0.001)
+            constraints["step_size"] = self.default_step_sizes.get(
+                symbol, 0.0001)
+            constraints["min_notional"] = self.default_min_notionals.get(
+                symbol, 10.0)
             constraints["tick_size"] = None
 
         # Calculer la précision des prix
         if constraints["tick_size"] and constraints["tick_size"] > 0:
             constraints["price_precision"] = max(
-                0, -int(math.floor(math.log10(constraints["tick_size"])))
+                0, -math.floor(math.log10(constraints["tick_size"]))
             )
         else:
             constraints["price_precision"] = self.default_price_precisions.get(
@@ -215,15 +221,16 @@ class BinanceSymbolConstraints:
             )
             truncated = Decimal(str(self.get_min_qty(symbol)))
 
-        # Convertir en float mais s'assurer qu'il n'y a pas de notation scientifique
+        # Convertir en float mais s'assurer qu'il n'y a pas de notation
+        # scientifique
         result = float(truncated)
 
-        # Si le résultat est très petit, le formater explicitement pour éviter la notation scientifique
+        # Si le résultat est très petit, le formater explicitement pour éviter
+        # la notation scientifique
         if result < 0.0001:
             # Calculer le nombre de décimales nécessaires selon le step_size
-            step_decimals = (
-                len(str(step_dec).split(".")[-1]) if "." in str(step_dec) else 0
-            )
+            step_decimals = (len(str(step_dec).split(
+                ".")[-1]) if "." in str(step_dec) else 0)
             # Formater avec suffisamment de décimales et reconvertir en float
             formatted = f"{result:.{step_decimals}f}"
             logger.debug(
@@ -266,7 +273,11 @@ class BinanceSymbolConstraints:
         min_qty = self.get_min_qty(symbol)
         return quantity >= min_qty
 
-    def is_notional_valid(self, symbol: str, quantity: float, price: float) -> bool:
+    def is_notional_valid(
+            self,
+            symbol: str,
+            quantity: float,
+            price: float) -> bool:
         """
         Vérifie si la valeur totale (quantité * prix) est valide selon les règles de Binance.
 
@@ -337,7 +348,7 @@ class BinanceSymbolConstraints:
         """Vide complètement le cache des contraintes."""
         self.cache.clear()
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         """
         Retourne les statistiques du cache.
 

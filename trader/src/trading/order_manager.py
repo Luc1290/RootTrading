@@ -5,11 +5,10 @@ Rôle : Recevoir ordres du coordinator → Exécuter via OrderExecutor → Monit
 
 import logging
 import time
-from typing import Dict, List, Any, Optional
+from typing import Any
 
-from shared.src.config import SYMBOLS, TRADING_MODE
-from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY
-
+from shared.src.config import (BINANCE_API_KEY, BINANCE_SECRET_KEY, SYMBOLS,
+                               TRADING_MODE)
 from trader.src.exchange.binance_executor import BinanceExecutor
 from trader.src.trading.order_executor import OrderExecutor
 from trader.src.trading.price_monitor import PriceMonitor
@@ -23,7 +22,7 @@ class OrderManager:
     Plus de cycles complexes : juste exécuter les ordres du coordinator.
     """
 
-    def __init__(self, symbols: Optional[List[str]] = None):
+    def __init__(self, symbols: list[str] | None = None):
         """
         Initialise le gestionnaire d'ordres.
 
@@ -36,19 +35,20 @@ class OrderManager:
         # Initialiser les composants
         demo_mode = TRADING_MODE is not None and TRADING_MODE.lower() == "demo"
         self.binance_executor = BinanceExecutor(
-            api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY, demo_mode=demo_mode
-        )
+            api_key=BINANCE_API_KEY,
+            api_secret=BINANCE_SECRET_KEY,
+            demo_mode=demo_mode)
 
         # Exécuteur d'ordres simplifié
         self.order_executor = OrderExecutor(self.binance_executor)
 
         # Moniteur de prix pour les données de marché
         self.price_monitor = PriceMonitor(
-            symbols=self.symbols, price_update_callback=self.handle_price_update
-        )
+            symbols=self.symbols,
+            price_update_callback=self.handle_price_update)
 
         # Cache des derniers prix
-        self.last_prices: Dict[str, float] = {}
+        self.last_prices: dict[str, float] = {}
         self.last_price_update = time.time()
 
         # Configuration pour les pauses de trading
@@ -60,7 +60,10 @@ class OrderManager:
             f"✅ OrderManager initialisé (mode simplifié) pour {len(self.symbols)} symboles"
         )
 
-    def is_trading_paused(self, symbol: str, strategy: Optional[str] = None) -> bool:
+    def is_trading_paused(
+            self,
+            symbol: str,
+            strategy: str | None = None) -> bool:
         """
         Vérifie si le trading est en pause.
 
@@ -77,10 +80,7 @@ class OrderManager:
         if symbol in self.paused_symbols:
             return True
 
-        if strategy and strategy in self.paused_strategies:
-            return True
-
-        return False
+        return bool(strategy and strategy in self.paused_strategies)
 
     def pause_symbol(self, symbol: str) -> None:
         """Met en pause le trading pour un symbole."""
@@ -125,7 +125,7 @@ class OrderManager:
         self.last_prices[symbol] = price
         self.last_price_update = time.time()
 
-    def create_order(self, order_data: Dict[str, Any]) -> Optional[str]:
+    def create_order(self, order_data: dict[str, Any]) -> str | None:
         """
         Crée un ordre.
 
@@ -152,11 +152,11 @@ class OrderManager:
             # Déléguer à l'exécuteur
             return self.order_executor.execute_order(order_data)
 
-        except Exception as e:
-            logger.error(f"❌ Erreur création ordre: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur création ordre")
             return None
 
-    def get_order_history(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_order_history(self, limit: int = 50) -> list[dict[str, Any]]:
         """
         Récupère l'historique des ordres.
 
@@ -168,7 +168,7 @@ class OrderManager:
         """
         return self.order_executor.get_order_history(limit)
 
-    def get_order_status(self, order_id: str) -> Optional[Dict[str, Any]]:
+    def get_order_status(self, order_id: str) -> dict[str, Any] | None:
         """
         Récupère le statut d'un ordre.
 
@@ -180,7 +180,7 @@ class OrderManager:
         """
         return self.order_executor.get_order_status(order_id)
 
-    def get_current_prices(self) -> Dict[str, float]:
+    def get_current_prices(self) -> dict[str, float]:
         """
         Récupère les prix actuels.
 
@@ -189,7 +189,7 @@ class OrderManager:
         """
         return self.last_prices.copy()
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Récupère les statistiques du gestionnaire.
 

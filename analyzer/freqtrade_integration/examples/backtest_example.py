@@ -12,22 +12,25 @@ Prérequis:
 - freqtrade setup pour télécharger données historiques
 """
 
-import sys
-import os
-from pathlib import Path
+from analyzer.strategies.EMA_Cross_Strategy import EMA_Cross_Strategy
+from analyzer.freqtrade_integration import RootToFreqtradeAdapter
 import logging
+import os
+import sys
+from pathlib import Path
 
 # Ajouter les paths nécessaires
-analyzer_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
+analyzer_root = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "../../../"))
 sys.path.insert(0, analyzer_root)
 
-from analyzer.freqtrade_integration import RootToFreqtradeAdapter
-from analyzer.strategies.EMA_Cross_Strategy import EMA_Cross_Strategy
 
 # Configurer logging
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 

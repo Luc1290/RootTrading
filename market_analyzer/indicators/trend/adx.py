@@ -10,10 +10,10 @@ Includes:
 - Trend Angle (slope of price movement)
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Union, Tuple
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +27,11 @@ except ImportError:
 
 
 def calculate_adx(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 14,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate Average Directional Index (ADX).
 
@@ -71,7 +71,8 @@ def calculate_adx(
             adx_values = talib.ADX(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return float(adx_values[-1]) if not np.isnan(adx_values[-1]) else None
+            return float(
+                adx_values[-1]) if not np.isnan(adx_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib ADX error: {e}, using fallback")
 
@@ -79,11 +80,11 @@ def calculate_adx(
 
 
 def calculate_adx_full(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 14,
-) -> Dict[str, Optional[float]]:
+) -> dict[str, float | None]:
     """
     Calculate full ADX indicator set including +DI and -DI.
 
@@ -122,15 +123,27 @@ def calculate_adx_full(
 
     if TALIB_AVAILABLE:
         try:
-            adx = talib.ADX(highs_array, lows_array, closes_array, timeperiod=period)
+            adx = talib.ADX(
+                highs_array,
+                lows_array,
+                closes_array,
+                timeperiod=period)
             plus_di = talib.PLUS_DI(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
             minus_di = talib.MINUS_DI(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            dx = talib.DX(highs_array, lows_array, closes_array, timeperiod=period)
-            adxr = talib.ADXR(highs_array, lows_array, closes_array, timeperiod=period)
+            dx = talib.DX(
+                highs_array,
+                lows_array,
+                closes_array,
+                timeperiod=period)
+            adxr = talib.ADXR(
+                highs_array,
+                lows_array,
+                closes_array,
+                timeperiod=period)
 
             return {
                 "adx": float(adx[-1]) if not np.isnan(adx[-1]) else None,
@@ -142,15 +155,16 @@ def calculate_adx_full(
         except Exception as e:
             logger.warning(f"TA-Lib ADX full error: {e}, using fallback")
 
-    return _calculate_adx_full_manual(highs_array, lows_array, closes_array, period)
+    return _calculate_adx_full_manual(
+        highs_array, lows_array, closes_array, period)
 
 
 def calculate_dmi(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 14,
-) -> Dict[str, Optional[float]]:
+) -> dict[str, float | None]:
     """
     Calculate Directional Movement Indicators (+DI and -DI).
 
@@ -170,11 +184,11 @@ def calculate_dmi(
 
 
 def calculate_adx_series(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 14,
-) -> Dict[str, List[Optional[float]]]:
+) -> dict[str, list[float | None]]:
     """
     Calculate ADX indicator series for entire price history.
 
@@ -199,7 +213,11 @@ def calculate_adx_series(
 
     if TALIB_AVAILABLE:
         try:
-            adx = talib.ADX(highs_array, lows_array, closes_array, timeperiod=period)
+            adx = talib.ADX(
+                highs_array,
+                lows_array,
+                closes_array,
+                timeperiod=period)
             plus_di = talib.PLUS_DI(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
@@ -220,10 +238,11 @@ def calculate_adx_series(
             logger.warning(f"TA-Lib ADX series error: {e}, using fallback")
 
     # Manual calculation
-    return _calculate_adx_series_manual(highs_array, lows_array, closes_array, period)
+    return _calculate_adx_series_manual(
+        highs_array, lows_array, closes_array, period)
 
 
-def adx_trend_strength(adx_value: Optional[float]) -> str:
+def adx_trend_strength(adx_value: float | None) -> str:
     """
     Interpret ADX value for trend strength.
 
@@ -238,18 +257,17 @@ def adx_trend_strength(adx_value: Optional[float]) -> str:
 
     if adx_value < 20:
         return "absent"
-    elif adx_value < 25:
+    if adx_value < 25:
         return "weak"
-    elif adx_value < 50:
+    if adx_value < 50:
         return "strong"
-    elif adx_value < 75:
+    if adx_value < 75:
         return "very_strong"
-    else:
-        return "extreme"
+    return "extreme"
 
 
 def dmi_signal(
-    plus_di: Optional[float], minus_di: Optional[float], adx: Optional[float] = None
+    plus_di: float | None, minus_di: float | None, adx: float | None = None
 ) -> str:
     """
     Generate trading signal based on DMI crossovers.
@@ -271,14 +289,14 @@ def dmi_signal(
 
     if plus_di > minus_di:
         return "bullish"
-    elif minus_di > plus_di:
+    if minus_di > plus_di:
         return "bearish"
 
     return "neutral"
 
 
 def calculate_directional_bias(
-    plus_di: Optional[float], minus_di: Optional[float], adx: Optional[float] = None
+    plus_di: float | None, minus_di: float | None, adx: float | None = None
 ) -> str:
     """
     Calculate directional bias for market analysis.
@@ -298,11 +316,11 @@ def calculate_directional_bias(
 
 
 def calculate_adxr(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 14,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate Average Directional Movement Index Rating (ADXR).
 
@@ -326,7 +344,8 @@ def calculate_adxr(
             adxr_values = talib.ADXR(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return float(adxr_values[-1]) if not np.isnan(adxr_values[-1]) else None
+            return float(
+                adxr_values[-1]) if not np.isnan(adxr_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib ADXR error: {e}, using fallback")
 
@@ -346,20 +365,20 @@ def calculate_adxr(
 # ============ Helper Functions ============
 
 
-def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
+def _to_numpy_array(data: list[float] | np.ndarray | pd.Series) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
         if hasattr(data.values, "values"):  # ExtensionArray
             return np.asarray(data.values, dtype=float)
         return np.asarray(data.values, dtype=float)
-    elif isinstance(data, list):
+    if isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
 
 
 def _calculate_directional_movement(
     highs: np.ndarray, lows: np.ndarray
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Calculate +DM and -DM arrays."""
     high_diff = np.diff(highs)
     low_diff = -np.diff(lows)
@@ -372,7 +391,7 @@ def _calculate_directional_movement(
 
 def _calculate_adx_manual(
     highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int
-) -> Optional[float]:
+) -> float | None:
     """Manual ADX calculation."""
     if len(highs) < period * 2:
         return None
@@ -381,13 +400,13 @@ def _calculate_adx_manual(
     plus_dm, minus_dm = _calculate_directional_movement(highs, lows)
 
     # Calculate True Range
-    from ..volatility.atr import calculate_atr_series
 
     tr_series = []
     for i in range(1, len(highs)):
         from ..volatility.atr import calculate_true_range
 
-        tr = calculate_true_range(float(highs[i]), float(lows[i]), float(closes[i - 1]))
+        tr = calculate_true_range(
+            float(highs[i]), float(lows[i]), float(closes[i - 1]))
         tr_series.append(tr)
 
     if len(tr_series) < period:
@@ -431,7 +450,7 @@ def _calculate_adx_manual(
 
 def _calculate_adx_full_manual(
     highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int
-) -> Dict[str, Optional[float]]:
+) -> dict[str, float | None]:
     """
     Manual calculation of full ADX indicators.
 
@@ -458,7 +477,8 @@ def _calculate_adx_full_manual(
     for i in range(1, len(highs)):
         from ..volatility.atr import calculate_true_range
 
-        tr = calculate_true_range(float(highs[i]), float(lows[i]), float(closes[i - 1]))
+        tr = calculate_true_range(
+            float(highs[i]), float(lows[i]), float(closes[i - 1]))
         tr_series.append(tr)
 
     if len(tr_series) < period:
@@ -487,10 +507,7 @@ def _calculate_adx_full_manual(
 
     # Calculate DX
     di_sum = plus_di + minus_di
-    if di_sum != 0:
-        dx = (abs(plus_di - minus_di) / di_sum) * 100
-    else:
-        dx = 0
+    dx = abs(plus_di - minus_di) / di_sum * 100 if di_sum != 0 else 0
 
     # Calculate ADX (would need more history for accurate ADX)
     adx = _calculate_adx_manual(highs, lows, closes, period)
@@ -509,7 +526,7 @@ def _calculate_adx_full_manual(
 
 def _calculate_adx_series_manual(
     highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int
-) -> Dict[str, List[Optional[float]]]:
+) -> dict[str, list[float | None]]:
     """
     Manual ADX series calculation.
 
@@ -519,9 +536,9 @@ def _calculate_adx_series_manual(
     backtests, this creates a bottleneck.
 
     """
-    adx_series: List[Optional[float]] = []
-    plus_di_series: List[Optional[float]] = []
-    minus_di_series: List[Optional[float]] = []
+    adx_series: list[float | None] = []
+    plus_di_series: list[float | None] = []
+    minus_di_series: list[float | None] = []
 
     # Need minimum data
     min_required = period * 2
@@ -546,12 +563,15 @@ def _calculate_adx_series_manual(
             plus_di_series.append(result["plus_di"])
             minus_di_series.append(result["minus_di"])
 
-    return {"adx": adx_series, "plus_di": plus_di_series, "minus_di": minus_di_series}
+    return {
+        "adx": adx_series,
+        "plus_di": plus_di_series,
+        "minus_di": minus_di_series}
 
 
 def calculate_trend_angle(
-    closes: Union[List[float], np.ndarray, pd.Series], period: int = 14
-) -> Optional[float]:
+    closes: list[float] | np.ndarray | pd.Series, period: int = 14
+) -> float | None:
     """
     Calculate trend angle as the slope of linear regression line.
 

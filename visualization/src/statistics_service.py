@@ -3,13 +3,11 @@ Service de statistiques avancées pour RootTrading.
 Calcule et agrège les métriques de trading, performance et activité.
 """
 
-from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta
-from decimal import Decimal
 import asyncio
 import logging
-import asyncpg
-from collections import defaultdict
+from datetime import datetime, timedelta
+from decimal import Decimal
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +28,7 @@ class StatisticsService:
         self.cache = {}
         self.cache_ttl = 60  # Cache TTL en secondes
 
-    async def get_global_statistics(self) -> Dict[str, Any]:
+    async def get_global_statistics(self) -> dict[str, Any]:
         """
         Récupère les statistiques globales du système.
 
@@ -49,14 +47,20 @@ class StatisticsService:
                 return_exceptions=True,
             )
 
-            portfolio = results[0] if not isinstance(results[0], Exception) else {}
-            activity = results[1] if not isinstance(results[1], Exception) else {}
-            performance = results[2] if not isinstance(results[2], Exception) else {}
-            unrealized = results[3] if not isinstance(results[3], Exception) else {}
-            cycles = results[4] if not isinstance(results[4], Exception) else {}
-            signals = results[5] if not isinstance(results[5], Exception) else {}
+            portfolio = results[0] if not isinstance(
+                results[0], Exception) else {}
+            activity = results[1] if not isinstance(
+                results[1], Exception) else {}
+            performance = results[2] if not isinstance(
+                results[2], Exception) else {}
+            unrealized = results[3] if not isinstance(
+                results[3], Exception) else {}
+            cycles = results[4] if not isinstance(
+                results[4], Exception) else {}
+            results[5] if not isinstance(results[5], Exception) else {}
 
-            # PnL total = réalisé (trades complétés 24h) + non réalisé (positions actives)
+            # PnL total = réalisé (trades complétés 24h) + non réalisé
+            # (positions actives)
             realized_pnl_24h = performance.get("pnl_24h", 0)
             unrealized_pnl = unrealized.get("total_unrealized_pnl", 0)
             total_pnl = realized_pnl_24h + unrealized_pnl
@@ -82,10 +86,12 @@ class StatisticsService:
             }
 
         except Exception as e:
-            logger.error(f"Error getting global statistics: {e}")
-            return {"error": str(e), "timestamp": datetime.utcnow().isoformat()}
+            logger.exception("Error getting global statistics")
+            return {
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()}
 
-    async def get_all_symbols_statistics(self) -> Dict[str, Any]:
+    async def get_all_symbols_statistics(self) -> dict[str, Any]:
         """
         Récupère les statistiques détaillées pour TOUS les symboles.
 
@@ -93,7 +99,8 @@ class StatisticsService:
             Dict contenant les métriques de tous les symboles
         """
         try:
-            # Requête pour récupérer tous les symboles actifs avec des cycles complétés
+            # Requête pour récupérer tous les symboles actifs avec des cycles
+            # complétés
             symbols_query = """
                 SELECT DISTINCT symbol
                 FROM trade_cycles
@@ -103,17 +110,19 @@ class StatisticsService:
             """
 
             symbols_result = await self.data_manager.execute_query(symbols_query)
-            symbols = (
-                [row["symbol"] for row in symbols_result] if symbols_result else []
-            )
+            symbols = ([row["symbol"]
+                        for row in symbols_result] if symbols_result else [])
 
             if not symbols:
-                return {"symbols": [], "timestamp": datetime.utcnow().isoformat()}
+                return {
+                    "symbols": [],
+                    "timestamp": datetime.utcnow().isoformat()}
 
-            # Requête principale pour récupérer toutes les statistiques en une fois
+            # Requête principale pour récupérer toutes les statistiques en une
+            # fois
             main_query = f"""
                 WITH symbol_performance AS (
-                    SELECT 
+                    SELECT
                         symbol,
                         COUNT(*) as trades_count,
                         SUM(quantity * price) as total_volume,
@@ -122,14 +131,14 @@ class StatisticsService:
                         SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_trades,
                         AVG(quantity * price) as avg_trade_size
                     FROM (
-                        SELECT 
+                        SELECT
                             tc.symbol,
                             tc.profit_loss,
                             tc.profit_loss_percent,
                             COALESCE(te.quantity, 100) as quantity,
                             COALESCE(te.price, 1) as price
                         FROM trade_cycles tc
-                        LEFT JOIN trade_executions te ON tc.symbol = te.symbol 
+                        LEFT JOIN trade_executions te ON tc.symbol = te.symbol
                             AND te.timestamp BETWEEN tc.created_at - INTERVAL '5 minutes' AND tc.completed_at + INTERVAL '5 minutes'
                         WHERE tc.status = 'completed'
                             AND tc.completed_at >= NOW() - INTERVAL '30 days'
@@ -147,20 +156,20 @@ class StatisticsService:
                         AND time >= NOW() - INTERVAL '25 hours'
                     ORDER BY symbol, time DESC
                 )
-                SELECT 
+                SELECT
                     sp.symbol,
                     sp.trades_count,
                     sp.total_volume,
                     sp.total_pnl,
-                    CASE 
+                    CASE
                         WHEN sp.trades_count > 0 THEN (sp.winning_trades::float / sp.trades_count * 100)
-                        ELSE 0 
+                        ELSE 0
                     END as win_rate,
                     sp.avg_trade_size,
                     COALESCE(pd.current_price, 0) as current_price,
-                    CASE 
+                    CASE
                         WHEN pd.price_24h_ago > 0 THEN ((pd.current_price - pd.price_24h_ago) / pd.price_24h_ago * 100)
-                        ELSE 0 
+                        ELSE 0
                     END as price_change_24h
                 FROM symbol_performance sp
                 LEFT JOIN price_data pd ON sp.symbol = pd.symbol
@@ -186,13 +195,16 @@ class StatisticsService:
                     }
                 )
 
-            return {"symbols": symbol_stats, "timestamp": datetime.utcnow().isoformat()}
+            return {"symbols": symbol_stats,
+                    "timestamp": datetime.utcnow().isoformat()}
 
         except Exception as e:
-            logger.error(f"Error getting all symbols statistics: {e}")
-            return {"error": str(e), "timestamp": datetime.utcnow().isoformat()}
+            logger.exception("Error getting all symbols statistics")
+            return {
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()}
 
-    async def get_symbol_statistics(self, symbol: str) -> Dict[str, Any]:
+    async def get_symbol_statistics(self, symbol: str) -> dict[str, Any]:
         """
         Récupère les statistiques détaillées pour un symbole.
 
@@ -213,16 +225,18 @@ class StatisticsService:
                 return_exceptions=True,
             )
 
-            performance = results[0] if not isinstance(results[0], Exception) else {}
-            activity = results[1] if not isinstance(results[1], Exception) else {}
-            accuracy = results[2] if not isinstance(results[2], Exception) else {}
-            cycles = results[3] if not isinstance(results[3], Exception) else {}
-            market = results[4] if not isinstance(results[4], Exception) else {}
+            performance = results[0] if not isinstance(
+                results[0], Exception) else {}
+            activity = results[1] if not isinstance(
+                results[1], Exception) else {}
+            results[2] if not isinstance(results[2], Exception) else {}
+            results[3] if not isinstance(results[3], Exception) else {}
+            results[4] if not isinstance(results[4], Exception) else {}
 
             # Récupérer les vrais prix depuis market_data
             price_query = f"""
                 WITH price_data AS (
-                    SELECT 
+                    SELECT
                         close,
                         time,
                         ROW_NUMBER() OVER (ORDER BY time DESC) as rn
@@ -237,10 +251,10 @@ class StatisticsService:
                 price_24h_ago AS (
                     SELECT close as old_price FROM price_data WHERE rn = 24
                 )
-                SELECT 
+                SELECT
                     lp.current_price,
                     COALESCE(p24.old_price, lp.current_price) as price_24h_ago,
-                    CASE 
+                    CASE
                         WHEN p24.old_price > 0 THEN ((lp.current_price - p24.old_price) / p24.old_price * 100)
                         ELSE 0.0
                     END as price_change_24h
@@ -253,12 +267,13 @@ class StatisticsService:
                 if price_result and len(price_result) > 0:
                     price_row = price_result[0]
                     current_price = float(price_row["current_price"] or 0)
-                    price_change_24h = float(price_row["price_change_24h"] or 0)
+                    price_change_24h = float(
+                        price_row["price_change_24h"] or 0)
                 else:
                     current_price = 0
                     price_change_24h = 0
-            except Exception as e:
-                logger.error(f"Error getting price for {symbol}: {e}")
+            except Exception:
+                logger.exception("Error getting price for {symbol}")
                 current_price = 0
                 price_change_24h = 0
 
@@ -282,7 +297,7 @@ class StatisticsService:
             }
 
         except Exception as e:
-            logger.error(f"Error getting symbol statistics for {symbol}: {e}")
+            logger.exception("Error getting symbol statistics for {symbol}")
             return {
                 "error": str(e),
                 "symbol": symbol,
@@ -291,7 +306,7 @@ class StatisticsService:
 
     async def get_performance_history(
         self, period: str = "7d", interval: str = "1h"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Récupère l'historique de performance.
 
@@ -319,7 +334,7 @@ class StatisticsService:
 
             query = f"""
                 WITH time_series AS (
-                    SELECT 
+                    SELECT
                         date_trunc('{pg_interval}', completed_at) as period,
                         symbol,
                         SUM(profit_loss) as period_pnl,
@@ -332,7 +347,7 @@ class StatisticsService:
                     GROUP BY date_trunc('{pg_interval}', completed_at), symbol
                 ),
                 aggregated AS (
-                    SELECT 
+                    SELECT
                         period,
                         SUM(period_pnl) as total_pnl,
                         AVG(period_pnl_percent) as avg_pnl_percent,
@@ -354,12 +369,14 @@ class StatisticsService:
 
             for row in rows:
                 raw_pnl = row["total_pnl"] or Decimal("0")
-                corrected_pnl = raw_pnl * Decimal(str(self.pnl_correction_factor))
+                corrected_pnl = raw_pnl * \
+                    Decimal(str(self.pnl_correction_factor))
                 cumulative_pnl += corrected_pnl
 
                 win_rate = 0
                 if row["total_trades"] > 0:
-                    win_rate = (row["total_winning_trades"] / row["total_trades"]) * 100
+                    win_rate = (row["total_winning_trades"] /
+                                row["total_trades"]) * 100
 
                 history.append(
                     {
@@ -389,7 +406,8 @@ class StatisticsService:
                     "total_pnl": float(cumulative_pnl),
                     "total_trades": sum(h["trades"] for h in history),
                     "avg_win_rate": (
-                        round(sum(h["win_rate"] for h in history) / len(history), 2)
+                        round(sum(h["win_rate"]
+                              for h in history) / len(history), 2)
                         if history
                         else 0
                     ),
@@ -397,10 +415,10 @@ class StatisticsService:
             }
 
         except Exception as e:
-            logger.error(f"Error getting performance history: {e}")
+            logger.exception("Error getting performance history")
             return {"error": str(e), "period": period, "interval": interval}
 
-    async def get_strategy_comparison(self) -> Dict[str, Any]:
+    async def get_strategy_comparison(self) -> dict[str, Any]:
         """
         Compare les performances des différentes stratégies individuelles.
         CONSENSUS SUPPRIMÉ - Plus utilisé depuis l'implémentation du consensus adaptatif.
@@ -442,7 +460,8 @@ class StatisticsService:
                 "ZScore_Extreme_Reversal_Strategy",
             ]
 
-            # 2. Récupérer les stratégies individuelles avec séparation signaux émis vs trades effectués
+            # 2. Récupérer les stratégies individuelles avec séparation signaux
+            # émis vs trades effectués
             individual_query = """
                 WITH strategy_trades AS (
                     -- Trouver tous les trades où chaque stratégie a participé
@@ -457,8 +476,8 @@ class StatisticsService:
                         ts.side
                     FROM trading_signals ts
                     -- Joindre avec les cycles basés sur la proximité temporelle
-                    JOIN trade_cycles tc ON 
-                        tc.symbol = ts.symbol 
+                    JOIN trade_cycles tc ON
+                        tc.symbol = ts.symbol
                         AND tc.side = ts.side
                         AND tc.created_at >= ts.timestamp - INTERVAL '1 minute'
                         AND tc.created_at <= ts.timestamp + INTERVAL '1 minute'
@@ -467,7 +486,7 @@ class StatisticsService:
                         AND ts.strategy NOT LIKE 'CONSENSUS_%'
                 ),
                 strategy_performance AS (
-                    SELECT 
+                    SELECT
                         strategy,
                         COUNT(DISTINCT cycle_id) as total_trades_participated,
                         SUM(profit_loss) as total_pnl,
@@ -486,7 +505,7 @@ class StatisticsService:
                 ),
                 signal_counts AS (
                     -- Compter le nombre total de signaux émis par chaque stratégie (séparés BUY/SELL)
-                    SELECT 
+                    SELECT
                         strategy,
                         COUNT(*) as total_signals_emitted,
                         COUNT(CASE WHEN side = 'BUY' THEN 1 END) as buy_signals_emitted,
@@ -497,19 +516,19 @@ class StatisticsService:
                         AND strategy NOT LIKE 'CONSENSUS_%'
                     GROUP BY strategy
                 )
-                SELECT 
+                SELECT
                     sc.strategy,
                     -- Signaux émis (tous)
                     COALESCE(sc.total_signals_emitted, 0) as total_signals_emitted,
                     COALESCE(sc.buy_signals_emitted, 0) as buy_signals_emitted,
                     COALESCE(sc.sell_signals_emitted, 0) as sell_signals_emitted,
                     COALESCE(sc.signals_in_consensus, 0) as signals_in_consensus,
-                    
+
                     -- Trades effectués (qui ont vraiment eu lieu)
                     COALESCE(sp.total_trades_participated, 0) as trades_executed,
                     COALESCE(sp.buy_trades_executed, 0) as buy_trades_executed,
                     COALESCE(sp.sell_trades_executed, 0) as sell_trades_executed,
-                    
+
                     -- Performance des trades effectués
                     COALESCE(sp.total_pnl, 0) as total_pnl,
                     COALESCE(sp.avg_pnl, 0) as avg_pnl,
@@ -519,28 +538,28 @@ class StatisticsService:
                     COALESCE(sp.max_loss, 0) as max_loss,
                     COALESCE(sp.max_gain_percent, 0) as max_gain_percent,
                     COALESCE(sp.max_loss_percent, 0) as max_loss_percent,
-                    
+
                     -- Taux de conversion signal -> trade
-                    CASE 
-                        WHEN sc.total_signals_emitted > 0 
+                    CASE
+                        WHEN sc.total_signals_emitted > 0
                         THEN (COALESCE(sp.total_trades_participated, 0)::float / sc.total_signals_emitted * 100)
-                        ELSE 0 
+                        ELSE 0
                     END as signal_to_trade_rate,
-                    
+
                     -- Taux de conversion BUY
-                    CASE 
-                        WHEN sc.buy_signals_emitted > 0 
+                    CASE
+                        WHEN sc.buy_signals_emitted > 0
                         THEN (COALESCE(sp.buy_trades_executed, 0)::float / sc.buy_signals_emitted * 100)
-                        ELSE 0 
+                        ELSE 0
                     END as buy_conversion_rate,
-                    
+
                     -- Taux de conversion SELL
-                    CASE 
-                        WHEN sc.sell_signals_emitted > 0 
+                    CASE
+                        WHEN sc.sell_signals_emitted > 0
                         THEN (COALESCE(sp.sell_trades_executed, 0)::float / sc.sell_signals_emitted * 100)
-                        ELSE 0 
+                        ELSE 0
                     END as sell_conversion_rate
-                    
+
                 FROM signal_counts sc
                 LEFT JOIN strategy_performance sp ON sc.strategy = sp.strategy
                 ORDER BY COALESCE(sp.total_pnl, 0) DESC;
@@ -550,21 +569,22 @@ class StatisticsService:
             individual_rows = await self.data_manager.execute_query(individual_query)
 
             # CONSENSUS SUPPRIMÉ - Section obsolète
-            consensus_strategies = []  # Liste vide - plus utilisée
 
             # Créer un dictionnaire avec les stratégies qui ont des données
             strategies_with_data = {}
             for row in individual_rows:
                 strategies_with_data[row["strategy"]] = row
 
-            # Formatter les résultats INDIVIDUELS (inclure TOUTES les stratégies avec données RÉELLES)
+            # Formatter les résultats INDIVIDUELS (inclure TOUTES les
+            # stratégies avec données RÉELLES)
             individual_strategies = []
             for strategy_name in all_available_strategies:
                 if strategy_name in strategies_with_data:
                     # Stratégie avec des données RÉELLES
                     row = strategies_with_data[strategy_name]
 
-                    # Calculer le win rate basé sur les trades réels où la stratégie a participé
+                    # Calculer le win rate basé sur les trades réels où la
+                    # stratégie a participé
                     win_rate = 0
                     if row["trades_executed"] > 0:
                         win_rate = (
@@ -603,20 +623,6 @@ class StatisticsService:
                             "max_loss": float(row["max_loss"] or 0),
                             "max_gain_percent": float(row["max_gain_percent"] or 0),
                             "max_loss_percent": float(row["max_loss_percent"] or 0),
-                            # Champs optimisés pour le nouveau frontend
-                            "total_signals_emitted": row["total_signals_emitted"],
-                            "buy_signals_emitted": row["buy_signals_emitted"],
-                            "sell_signals_emitted": row["sell_signals_emitted"],
-                            "signal_to_trade_rate": float(
-                                row["signal_to_trade_rate"] or 0
-                            ),
-                            "buy_conversion_rate": float(
-                                row["buy_conversion_rate"] or 0
-                            ),
-                            "sell_conversion_rate": float(
-                                row["sell_conversion_rate"] or 0
-                            ),
-                            "trades_executed": row["trades_executed"],
                             "avgPnl": float(row["avg_pnl"] or 0),
                             "avgDuration": 0,
                             "maxDrawdown": float(row["max_loss"] or 0),
@@ -654,14 +660,6 @@ class StatisticsService:
                             "max_loss": 0,
                             "max_gain_percent": 0,
                             "max_loss_percent": 0,
-                            # Champs pour stratégies sans données
-                            "total_signals_emitted": 0,
-                            "buy_signals_emitted": 0,
-                            "sell_signals_emitted": 0,
-                            "signal_to_trade_rate": 0,
-                            "buy_conversion_rate": 0,
-                            "sell_conversion_rate": 0,
-                            "trades_executed": 0,
                             "avgPnl": 0,
                             "avgDuration": 0,
                             "maxDrawdown": 0,
@@ -672,11 +670,13 @@ class StatisticsService:
                         }
                     )
 
-            # Trier par performance (P&L Total décroissant, puis par taux de conversion)
+            # Trier par performance (P&L Total décroissant, puis par taux de
+            # conversion)
             individual_strategies.sort(
-                key=lambda x: (x.get("totalPnl", 0), x.get("signal_to_trade_rate", 0)),
-                reverse=True,
-            )
+                key=lambda x: (
+                    x.get(
+                        "totalPnl", 0), x.get(
+                        "signal_to_trade_rate", 0)), reverse=True, )
 
             # Statistiques résumées optimisées
             active_strategies = [
@@ -702,7 +702,8 @@ class StatisticsService:
                 "active_count": len(active_strategies),
                 "profitable_count": len(profitable_strategies),
                 "avg_conversion_rate": (
-                    sum(s.get("signal_to_trade_rate", 0) for s in active_strategies)
+                    sum(s.get("signal_to_trade_rate", 0)
+                        for s in active_strategies)
                     / len(active_strategies)
                     if active_strategies
                     else 0
@@ -716,16 +717,16 @@ class StatisticsService:
             }
 
         except Exception as e:
-            logger.error(f"Error getting strategy comparison: {e}")
+            logger.exception("Error getting strategy comparison")
             return {"error": str(e)}
 
     # Méthodes privées pour requêtes spécifiques
 
-    async def _get_portfolio_summary(self) -> Dict[str, Any]:
+    async def _get_portfolio_summary(self) -> dict[str, Any]:
         """Récupère le résumé du portfolio."""
         query = """
             WITH latest_balances AS (
-                SELECT DISTINCT ON (asset) 
+                SELECT DISTINCT ON (asset)
                     asset,
                     total,
                     value_usdc,
@@ -734,7 +735,7 @@ class StatisticsService:
                 WHERE total > 0
                 ORDER BY asset, timestamp DESC
             )
-            SELECT 
+            SELECT
                 SUM(total) as total_balance,
                 SUM(value_usdc) as total_value_usdc,
                 COUNT(DISTINCT asset) as active_assets
@@ -751,10 +752,10 @@ class StatisticsService:
             }
         return {}
 
-    async def _get_trading_activity_24h(self) -> Dict[str, Any]:
+    async def _get_trading_activity_24h(self) -> dict[str, Any]:
         """Récupère l'activité de trading des 24 dernières heures."""
         query = """
-            SELECT 
+            SELECT
                 COUNT(*) as total_trades,
                 SUM(quantity * price) as total_volume_usdc,
                 SUM(quantity) as total_quantity,
@@ -776,7 +777,7 @@ class StatisticsService:
             }
         return {}
 
-    async def _get_performance_metrics_24h(self) -> Dict[str, Any]:
+    async def _get_performance_metrics_24h(self) -> dict[str, Any]:
         """Calcule les métriques de performance des dernières 24h."""
         query = """
             WITH recent_cycles AS (
@@ -827,7 +828,7 @@ class StatisticsService:
             }
         return {}
 
-    async def _get_unrealized_pnl(self) -> Dict[str, Any]:
+    async def _get_unrealized_pnl(self) -> dict[str, Any]:
         """Calcule le PnL non réalisé des positions actives."""
         query = """
             WITH active_positions AS (
@@ -858,11 +859,13 @@ class StatisticsService:
         if result and result[0]:
             row = result[0]
             return {
-                "total_unrealized_pnl": float(row["total_unrealized_pnl"] or 0),
+                "total_unrealized_pnl": float(
+                    row["total_unrealized_pnl"] or 0),
                 "active_positions_count": row["active_positions_count"] or 0,
                 "avg_unrealized_pnl_percent": round(
-                    float(row["avg_unrealized_pnl_percent"] or 0), 2
-                ),
+                    float(
+                        row["avg_unrealized_pnl_percent"] or 0),
+                    2),
             }
         return {
             "total_unrealized_pnl": 0,
@@ -870,10 +873,10 @@ class StatisticsService:
             "avg_unrealized_pnl_percent": 0,
         }
 
-    async def _get_cycle_statistics(self) -> Dict[str, Any]:
+    async def _get_cycle_statistics(self) -> dict[str, Any]:
         """Récupère les statistiques sur les cycles de trading."""
         query = """
-            SELECT 
+            SELECT
                 status,
                 COUNT(*) as count
             FROM trade_cycles
@@ -897,10 +900,10 @@ class StatisticsService:
             ),
         }
 
-    async def _get_signal_statistics(self) -> Dict[str, Any]:
+    async def _get_signal_statistics(self) -> dict[str, Any]:
         """Récupère les statistiques sur les signaux."""
         query = """
-            SELECT 
+            SELECT
                 side,
                 COUNT(*) as count,
                 COUNT(DISTINCT symbol) as symbols,
@@ -934,10 +937,10 @@ class StatisticsService:
             "active_strategies": len(total_strategies),
         }
 
-    async def _get_symbol_performance(self, symbol: str) -> Dict[str, Any]:
+    async def _get_symbol_performance(self, symbol: str) -> dict[str, Any]:
         """Récupère la performance d'un symbole spécifique."""
         query = f"""
-            SELECT 
+            SELECT
                 SUM(profit_loss) as total_pnl,
                 AVG(profit_loss_percent) as avg_pnl_percent,
                 COUNT(*) as total_cycles,
@@ -969,10 +972,11 @@ class StatisticsService:
             }
         return {}
 
-    async def _get_symbol_trading_activity(self, symbol: str) -> Dict[str, Any]:
+    async def _get_symbol_trading_activity(
+            self, symbol: str) -> dict[str, Any]:
         """Récupère l'activité de trading pour un symbole."""
         query = f"""
-            SELECT 
+            SELECT
                 COUNT(*) as trades_24h,
                 SUM(quantity) as volume_24h,
                 AVG(price) as avg_price,
@@ -997,14 +1001,14 @@ class StatisticsService:
             }
         return {}
 
-    async def _get_symbol_signal_accuracy(self, symbol: str) -> Dict[str, Any]:
+    async def _get_symbol_signal_accuracy(self, symbol: str) -> dict[str, Any]:
         """Calcule la précision des signaux pour un symbole."""
         query = f"""
             WITH signal_results AS (
-                SELECT 
+                SELECT
                     ts.side,
                     ts.strategy,
-                    CASE 
+                    CASE
                         WHEN tc.profit_loss > 0 THEN 'profitable'
                         ELSE 'unprofitable'
                     END as result
@@ -1016,7 +1020,7 @@ class StatisticsService:
                     AND ts.timestamp >= NOW() - INTERVAL '7 days'
                     AND tc.status = 'completed'
             )
-            SELECT 
+            SELECT
                 strategy,
                 COUNT(*) as total_signals,
                 SUM(CASE WHEN result = 'profitable' THEN 1 ELSE 0 END) as profitable_signals
@@ -1029,7 +1033,8 @@ class StatisticsService:
         for row in result:
             accuracy = 0
             if row["total_signals"] > 0:
-                accuracy = (row["profitable_signals"] / row["total_signals"]) * 100
+                accuracy = (row["profitable_signals"] /
+                            row["total_signals"]) * 100
 
             strategies.append(
                 {
@@ -1048,10 +1053,10 @@ class StatisticsService:
             ),
         }
 
-    async def _get_symbol_cycle_analysis(self, symbol: str) -> Dict[str, Any]:
+    async def _get_symbol_cycle_analysis(self, symbol: str) -> dict[str, Any]:
         """Analyse détaillée des cycles pour un symbole."""
         query = f"""
-            SELECT 
+            SELECT
                 DATE(completed_at) as date,
                 COUNT(*) as cycles,
                 SUM(profit_loss) as daily_pnl,
@@ -1090,10 +1095,10 @@ class StatisticsService:
             ),
         }
 
-    async def _get_symbol_market_metrics(self, symbol: str) -> Dict[str, Any]:
+    async def _get_symbol_market_metrics(self, symbol: str) -> dict[str, Any]:
         """Récupère les métriques de marché pour un symbole."""
         query = f"""
-            SELECT 
+            SELECT
                 AVG(close) as avg_price,
                 STDDEV(close) as price_volatility,
                 AVG(volume) as avg_volume,

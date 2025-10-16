@@ -1,9 +1,11 @@
 import asyncio
 import logging
-from typing import Dict, Set, Optional, List, Any
-from fastapi import WebSocket
 from datetime import datetime, timedelta
-from data_manager import DataManager
+from typing import Any
+
+from fastapi import WebSocket
+
+from visualization.src.data_manager import DataManager
 
 logger = logging.getLogger(__name__)
 
@@ -11,11 +13,13 @@ logger = logging.getLogger(__name__)
 class WebSocketHub:
     def __init__(self, data_manager: DataManager):
         self.data_manager = data_manager
-        self.connections: Dict[str, WebSocket] = {}
-        self.subscriptions: Dict[str, Set[str]] = {}  # client_id -> set of channels
-        self.channel_clients: Dict[str, Set[str]] = {}  # channel -> set of client_ids
+        self.connections: dict[str, WebSocket] = {}
+        # client_id -> set of channels
+        self.subscriptions: dict[str, set[str]] = {}
+        # channel -> set of client_ids
+        self.channel_clients: dict[str, set[str]] = {}
         self._running = False
-        self._tasks: List[asyncio.Task] = []
+        self._tasks: list[asyncio.Task] = []
 
     async def start(self):
         """Start the WebSocket hub"""
@@ -69,8 +73,8 @@ class WebSocketHub:
             # Close connection
             try:
                 await self.connections[client_id].close()
-            except Exception as e:
-                logger.error(f"Error closing connection for {client_id}: {e}")
+            except Exception:
+                logger.exception("Error closing connection for {client_id}")
 
             # Clean up
             del self.connections[client_id]
@@ -79,9 +83,11 @@ class WebSocketHub:
 
             logger.info(f"Client {client_id} disconnected")
 
-    async def subscribe_client(
-        self, client_id: str, channel: str, params: Optional[Dict[Any, Any]] = None
-    ):
+    async def subscribe_client(self,
+                               client_id: str,
+                               channel: str,
+                               params: dict[Any,
+                                            Any] | None = None):
         """Subscribe a client to a channel"""
         if client_id not in self.connections:
             return
@@ -138,7 +144,7 @@ class WebSocketHub:
             },
         )
 
-    async def broadcast_to_channel(self, channel: str, data: Dict):
+    async def broadcast_to_channel(self, channel: str, data: dict):
         """Broadcast data to all clients subscribed to a channel"""
         if channel not in self.channel_clients:
             return
@@ -156,15 +162,15 @@ class WebSocketHub:
                 },
             )
 
-    async def _send_to_client(self, client_id: str, data: Dict):
+    async def _send_to_client(self, client_id: str, data: dict):
         """Send data to a specific client"""
         if client_id not in self.connections:
             return
 
         try:
             await self.connections[client_id].send_json(data)
-        except Exception as e:
-            logger.error(f"Error sending to client {client_id}: {e}")
+        except Exception:
+            logger.exception("Error sending to client {client_id}")
             await self.disconnect(client_id)
 
     async def _subscribe_to_redis_channels(self):
@@ -187,7 +193,7 @@ class WebSocketHub:
         )
 
     async def _start_market_updates(
-        self, channel: str, params: Optional[Dict[Any, Any]] = None
+        self, channel: str, params: dict[Any, Any] | None = None
     ):
         """Start periodic market data updates for a channel"""
         parts = channel.split(":")
@@ -219,8 +225,8 @@ class WebSocketHub:
                             },
                         )
 
-                except Exception as e:
-                    logger.error(f"Error in market update loop: {e}")
+                except Exception:
+                    logger.exception("Error in market update loop")
 
                 await asyncio.sleep(1)  # Update every second
 
@@ -228,7 +234,7 @@ class WebSocketHub:
         self._tasks.append(task)
 
     async def _start_signal_updates(
-        self, channel: str, params: Optional[Dict[Any, Any]] = None
+        self, channel: str, params: dict[Any, Any] | None = None
     ):
         """Start periodic signal updates for a channel"""
         symbol = params.get("symbol") if params else None
@@ -248,11 +254,12 @@ class WebSocketHub:
 
                     if signals:
                         await self.broadcast_to_channel(
-                            channel, {"signals": signals[-10:]}  # Last 10 signals
+                            # Last 10 signals
+                            channel, {"signals": signals[-10:]}
                         )
 
-                except Exception as e:
-                    logger.error(f"Error in signal update loop: {e}")
+                except Exception:
+                    logger.exception("Error in signal update loop")
 
                 await asyncio.sleep(5)  # Update every 5 seconds
 
@@ -260,7 +267,7 @@ class WebSocketHub:
         self._tasks.append(task)
 
     async def _start_performance_updates(
-        self, channel: str, params: Optional[Dict[Any, Any]] = None
+        self, channel: str, params: dict[Any, Any] | None = None
     ):
         """Start periodic performance updates"""
 
@@ -289,8 +296,8 @@ class WebSocketHub:
                             },
                         )
 
-                except Exception as e:
-                    logger.error(f"Error in performance update loop: {e}")
+                except Exception:
+                    logger.exception("Error in performance update loop")
 
                 await asyncio.sleep(10)  # Update every 10 seconds
 

@@ -3,12 +3,12 @@ Module de gestion des publications Redis pour l'analyzer.
 Publie les signaux générés par les stratégies.
 """
 
-import asyncio
 import json
 import logging
-from typing import List, Dict, Any, Optional
+from datetime import datetime, timezone
+from typing import Any
+
 import redis.asyncio as redis
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class RedisPublisher:
 
     def __init__(self, redis_url: str = "redis://localhost:6379"):
         self.redis_url = redis_url
-        self.redis_client: Optional[redis.Redis] = None
+        self.redis_client: redis.Redis | None = None
 
         # Canaux Redis pour les différents types de messages
         self.channels = {
@@ -34,8 +34,8 @@ class RedisPublisher:
             self.redis_client = redis.from_url(self.redis_url)
             await self.redis_client.ping()
             logger.info("Connexion Redis Publisher établie")
-        except Exception as e:
-            logger.error(f"Erreur connexion Redis Publisher: {e}")
+        except Exception:
+            logger.exception("Erreur connexion Redis Publisher")
             raise
 
     async def disconnect(self):
@@ -45,7 +45,7 @@ class RedisPublisher:
             logger.info("Connexion Redis Publisher fermée")
 
     async def publish_signals(
-        self, signals: List[Dict[str, Any]], mode: str = "individual"
+        self, signals: list[dict[str, Any]], mode: str = "individual"
     ):
         """
         Publie une liste de signaux vers Redis.
@@ -59,7 +59,8 @@ class RedisPublisher:
 
         try:
             if mode == "individual":
-                # Mode recommandé : publication individuelle pour consensus adaptatif
+                # Mode recommandé : publication individuelle pour consensus
+                # adaptatif
                 for signal in signals:
                     await self.publish_signal(signal)
                 logger.info(
@@ -70,19 +71,20 @@ class RedisPublisher:
                 # Mode legacy : publication en batch
                 batch_message = {
                     "type": "signal_batch",
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                     "count": len(signals),
                     "signals": signals,
                 }
 
                 await self._publish_message(self.channels["signals"], batch_message)
-                logger.info(f"Publié batch de {len(signals)} signaux vers Redis")
+                logger.info(
+                    f"Publié batch de {len(signals)} signaux vers Redis")
 
         except Exception as e:
-            logger.error(f"Erreur publication signaux: {e}")
-            await self.publish_error(f"Erreur publication signaux: {str(e)}")
+            logger.exception("Erreur publication signaux")
+            await self.publish_error(f"Erreur publication signaux: {e!s}")
 
-    async def publish_signal(self, signal: Dict[str, Any]):
+    async def publish_signal(self, signal: dict[str, Any]):
         """
         Publie un signal individuel vers Redis.
 
@@ -93,7 +95,7 @@ class RedisPublisher:
             # Enrichissement du signal avec des métadonnées
             enriched_signal = {
                 **signal,
-                "analyzer_timestamp": datetime.utcnow().isoformat(),
+                "analyzer_timestamp": datetime.now(timezone.utc).isoformat(),
                 "source": "analyzer",
                 "version": "2.0",
             }
@@ -109,10 +111,10 @@ class RedisPublisher:
                 f"Signal publié: {signal['strategy']} {signal['symbol']} {signal['side']}"
             )
 
-        except Exception as e:
-            logger.error(f"Erreur publication signal: {e}")
+        except Exception:
+            logger.exception("Erreur publication signal")
 
-    async def publish_health_status(self, status: Dict[str, Any]):
+    async def publish_health_status(self, status: dict[str, Any]):
         """
         Publie le statut de santé de l'analyzer.
 
@@ -122,7 +124,7 @@ class RedisPublisher:
         try:
             health_message = {
                 "service": "analyzer",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "status": status,
             }
 
@@ -130,10 +132,10 @@ class RedisPublisher:
 
             logger.debug("Statut de santé publié")
 
-        except Exception as e:
-            logger.error(f"Erreur publication santé: {e}")
+        except Exception:
+            logger.exception("Erreur publication santé")
 
-    async def publish_metrics(self, metrics: Dict[str, Any]):
+    async def publish_metrics(self, metrics: dict[str, Any]):
         """
         Publie les métriques de performance de l'analyzer.
 
@@ -143,7 +145,7 @@ class RedisPublisher:
         try:
             metrics_message = {
                 "service": "analyzer",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "metrics": metrics,
             }
 
@@ -151,11 +153,11 @@ class RedisPublisher:
 
             logger.debug("Métriques publiées")
 
-        except Exception as e:
-            logger.error(f"Erreur publication métriques: {e}")
+        except Exception:
+            logger.exception("Erreur publication métriques")
 
     async def publish_error(
-        self, error_message: str, context: Optional[Dict[Any, Any]] = None
+        self, error_message: str, context: dict[Any, Any] | None = None
     ):
         """
         Publie une erreur vers Redis.
@@ -167,7 +169,7 @@ class RedisPublisher:
         try:
             error_data = {
                 "service": "analyzer",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "error": error_message,
                 "context": context or {},
             }
@@ -176,10 +178,10 @@ class RedisPublisher:
 
             logger.debug(f"Erreur publiée: {error_message}")
 
-        except Exception as e:
-            logger.error(f"Erreur publication erreur: {e}")
+        except Exception:
+            logger.exception("Erreur publication erreur")
 
-    async def _publish_message(self, channel: str, message: Dict[str, Any]):
+    async def _publish_message(self, channel: str, message: dict[str, Any]):
         """
         Publie un message sur un canal Redis.
 
@@ -198,7 +200,7 @@ class RedisPublisher:
         await self.redis_client.publish(channel, message_json)
 
     async def publish_strategy_performance(
-        self, strategy_name: str, performance_data: Dict[str, Any]
+        self, strategy_name: str, performance_data: dict[str, Any]
     ):
         """
         Publie les données de performance d'une stratégie.
@@ -211,7 +213,7 @@ class RedisPublisher:
             perf_message = {
                 "service": "analyzer",
                 "strategy": strategy_name,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "performance": performance_data,
             }
 
@@ -220,8 +222,8 @@ class RedisPublisher:
 
             logger.debug(f"Performance publiée pour {strategy_name}")
 
-        except Exception as e:
-            logger.error(f"Erreur publication performance {strategy_name}: {e}")
+        except Exception:
+            logger.exception(f"Erreur publication performance {strategy_name}")
 
 
 class RedisSubscriber:
@@ -229,8 +231,8 @@ class RedisSubscriber:
 
     def __init__(self, redis_url: str = "redis://localhost:6379"):
         self.redis_url = redis_url
-        self.redis_client: Optional[redis.Redis] = None
-        self.pubsub: Optional[redis.client.PubSub] = None
+        self.redis_client: redis.Redis | None = None
+        self.pubsub: redis.client.PubSub | None = None
         self.running = False
 
         # Canaux d'abonnement
@@ -251,8 +253,8 @@ class RedisSubscriber:
 
             logger.info("Redis Subscriber connecté et abonné")
 
-        except Exception as e:
-            logger.error(f"Erreur connexion Redis Subscriber: {e}")
+        except Exception:
+            logger.exception("Erreur connexion Redis Subscriber")
             raise
 
     async def disconnect(self):
@@ -301,17 +303,19 @@ class RedisSubscriber:
                         else:
                             await self._default_message_handler(channel, data)
 
-                    except Exception as e:
-                        logger.error(f"Erreur traitement message: {e}")
+                    except Exception:
+                        logger.exception("Erreur traitement message")
 
-        except Exception as e:
-            logger.error(f"Erreur écoute Redis: {e}")
+        except Exception:
+            logger.exception("Erreur écoute Redis")
         finally:
             self.running = False
 
-    async def _default_message_handler(self, channel: str, data: Dict[str, Any]):
+    async def _default_message_handler(
+            self, channel: str, data: dict[str, Any]):
         """Gestionnaire par défaut des messages."""
-        logger.info(f"Message reçu sur {channel}: {data.get('type', 'unknown')}")
+        logger.info(
+            f"Message reçu sur {channel}: {data.get('type', 'unknown')}")
 
         # Traitement basique selon le canal
         if channel == "analyzer:config":

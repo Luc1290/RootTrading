@@ -2,9 +2,10 @@
 Stochastic_Oversold_Buy_Strategy - Stratégie basée sur les conditions oversold du Stochastic.
 """
 
-from typing import Dict, Any, Optional
-from .base_strategy import BaseStrategy
 import logging
+from typing import Any
+
+from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,8 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
     - Pas de signaux SELL (stratégie focalisée sur les achats en survente)
     """
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres Stochastic ASSOUPLIS - Oversolds réalistes
         self.oversold_threshold = 22  # Seuil assoupli pour plus de signaux
@@ -34,7 +36,7 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
             1.5  # Distance assouplie pour petits croisements
         )
 
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs Stochastic et confirmation."""
         return {
             # Stochastic principal
@@ -92,7 +94,7 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
             "confluence_score": self.indicators.get("confluence_score"),
         }
 
-    def _get_current_price(self) -> Optional[float]:
+    def _get_current_price(self) -> float | None:
         """Récupère le prix actuel depuis les données OHLCV."""
         try:
             if self.data and "close" in self.data and self.data["close"]:
@@ -101,7 +103,7 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
             pass
         return None
 
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """
         Génère un signal d'achat basé sur les conditions oversold du Stochastic.
         """
@@ -179,8 +181,8 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         )
 
     def _analyze_stochastic_conditions(
-        self, values: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, values: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """Analyse les conditions actuelles du Stochastic avec fallbacks."""
         stoch_k = values.get("stoch_k")
         stoch_d = values.get("stoch_d")
@@ -205,8 +207,7 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
 
         # États du Stochastic
         is_oversold = (
-            k_val <= self.oversold_threshold and d_val <= self.oversold_threshold
-        )
+            k_val <= self.oversold_threshold and d_val <= self.oversold_threshold)
         is_exiting_oversold = (
             k_val > self.oversold_threshold or d_val > self.oversold_threshold
         ) and (
@@ -214,8 +215,7 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
             or d_val <= self.exit_oversold_threshold
         )
         is_overbought = (
-            k_val >= self.overbought_threshold or d_val >= self.overbought_threshold
-        )
+            k_val >= self.overbought_threshold or d_val >= self.overbought_threshold)
 
         # Croisement %K > %D (signal haussier)
         k_above_d = k_val > d_val
@@ -274,15 +274,16 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         }
 
     def _check_oversold_buy_conditions(
-        self, stoch_analysis: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, stoch_analysis: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """Vérifie si les conditions d'achat oversold sont remplies."""
         # Rejeter si en surachat
         if stoch_analysis["is_overbought"]:
             return None
 
         # Condition principale: oversold OU sortie d'oversold
-        if not (stoch_analysis["is_oversold"] or stoch_analysis["is_exiting_oversold"]):
+        if not (stoch_analysis["is_oversold"]
+                or stoch_analysis["is_exiting_oversold"]):
             return None
 
         # ASSOUPLISSEMENT: Accepter les cas sans croisement si très oversold
@@ -318,15 +319,16 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
 
     def _create_oversold_buy_signal(
         self,
-        values: Dict[str, Any],
+        values: dict[str, Any],
         current_price: float,
-        stoch_analysis: Dict[str, Any],
-        buy_condition: Dict[str, Any],
+        stoch_analysis: dict[str, Any],
+        buy_condition: dict[str, Any],
         external_penalties: float = 0.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Crée le signal d'achat oversold avec confirmations."""
         signal_side = "BUY"  # Stratégie uniquement orientée achat
-        base_confidence = 0.55  # Abaissée pour plus d'accessibilité (0.65 -> 0.55)
+        # Abaissée pour plus d'accessibilité (0.65 -> 0.55)
+        base_confidence = 0.55
         confidence_boost = 0.0
 
         # Appliquer les pénalités externes
@@ -426,7 +428,8 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         directional_bias = values.get(
             "directional_bias"
         )  # CORRECTION: variable manquante
-        market_regime = values.get("market_regime")  # AJOUT: récupérer market_regime
+        # AJOUT: récupérer market_regime
+        market_regime = values.get("market_regime")
 
         # Directional bias déjà vérifié en amont, ici que BULLISH ou NEUTRAL
         if directional_bias == "BULLISH":
@@ -434,7 +437,8 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
             reason += " + bias haussier"
 
         if trend_strength is not None:
-            # trend_strength DB format: weak/absent/strong/very_strong/extreme (lowercase)
+            # trend_strength DB format: weak/absent/strong/very_strong/extreme
+            # (lowercase)
             trend_str = str(trend_strength).lower()
             if trend_str in ["extreme", "very_strong"]:
                 confidence_boost += 0.12
@@ -452,12 +456,15 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         if nearest_support is not None and current_price is not None:
             try:
                 support = float(nearest_support)
-                distance_to_support = abs(current_price - support) / current_price
+                distance_to_support = abs(
+                    current_price - support) / current_price
 
-                if distance_to_support <= 0.03:  # Seuil assoupli (3% au lieu de 1.5%)
+                # Seuil assoupli (3% au lieu de 1.5%)
+                if distance_to_support <= 0.03:
                     confidence_boost += 0.12  # Augmenté
                     reason += " + très proche support"
-                elif distance_to_support <= 0.05:  # Seuil assoupli (5% au lieu de 3%)
+                # Seuil assoupli (5% au lieu de 3%)
+                elif distance_to_support <= 0.05:
                     confidence_boost += 0.07  # Augmenté
                     reason += " + support proche"
             except (ValueError, TypeError):
@@ -565,8 +572,8 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
 
         # Calcul final avec clamp à 1.0
         confidence = min(
-            1.0, self.calculate_confidence(base_confidence, 1 + confidence_boost)
-        )
+            1.0, self.calculate_confidence(
+                base_confidence, 1 + confidence_boost))
         strength: str = self.get_strength_from_confidence(confidence)
 
         return {

@@ -11,12 +11,11 @@ This module provides intelligent volume analysis with contextual adaptation:
 Enhanced with cached indicators for optimal performance.
 """
 
-import numpy as np
-import pandas as pd
-from typing import Dict, List, Optional, Union, Tuple, NamedTuple
+import logging
 from dataclasses import dataclass
 from enum import Enum
-import logging
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -58,9 +57,9 @@ class VolumeContext:
     pattern_detected: VolumePatternType
     tolerance_factor: float  # Facteur de tolérance appliqué
     description: str
-    market_conditions: Dict[str, float]  # RSI, CCI, ADX, etc.
+    market_conditions: dict[str, float]  # RSI, CCI, ADX, etc.
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convertit en dictionnaire pour export."""
         return {
             "context_type": self.context_type.value,
@@ -85,9 +84,9 @@ class VolumeAnalysis:
     volume_trend: str  # 'increasing', 'decreasing', 'stable'
     buildup_detected: bool
     spike_detected: bool
-    recommendations: List[str]  # Recommandations d'action
+    recommendations: list[str]  # Recommandations d'action
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convertit en dictionnaire pour export."""
         return {
             "current_volume_ratio": self.current_volume_ratio,
@@ -186,11 +185,11 @@ class VolumeContextAnalyzer:
 
     def analyze_volume_context(
         self,
-        volumes: Union[List[float], np.ndarray],
-        closes: Union[List[float], np.ndarray],
-        highs: Optional[Union[List[float], np.ndarray]] = None,
-        lows: Optional[Union[List[float], np.ndarray]] = None,
-        symbol: Optional[str] = None,
+        volumes: list[float] | np.ndarray,
+        closes: list[float] | np.ndarray,
+        highs: list[float] | np.ndarray | None = None,
+        lows: list[float] | np.ndarray | None = None,
+        symbol: str | None = None,
         signal_type: str = "BUY",
         enable_cache: bool = True,
     ) -> VolumeAnalysis:
@@ -267,8 +266,8 @@ class VolumeContextAnalyzer:
                 recommendations=recommendations,
             )
 
-        except Exception as e:
-            logger.error(f"Erreur analyse contexte volume: {e}")
+        except Exception:
+            logger.exception("Erreur analyse contexte volume")
             return self._create_default_analysis(
                 np.asarray(volumes), np.asarray(closes)
             )
@@ -276,11 +275,11 @@ class VolumeContextAnalyzer:
     def _calculate_market_indicators(
         self,
         closes: np.ndarray,
-        highs: Optional[np.ndarray] = None,
-        lows: Optional[np.ndarray] = None,
-        symbol: Optional[str] = None,
+        highs: np.ndarray | None = None,
+        lows: np.ndarray | None = None,
+        symbol: str | None = None,
         enable_cache: bool = True,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Calcule les indicateurs techniques nécessaires."""
         indicators = {}
 
@@ -315,7 +314,7 @@ class VolumeContextAnalyzer:
 
     def _detect_market_context(
         self,
-        market_conditions: Dict[str, float],
+        market_conditions: dict[str, float],
         signal_type: str,
         volumes: np.ndarray,
         closes: np.ndarray,
@@ -330,22 +329,28 @@ class VolumeContextAnalyzer:
         # 1. Conditions oversold (pour signaux BUY)
         if signal_type == "BUY" and rsi is not None:
             if rsi < 30 and cci is not None and cci < -200:
-                detected_contexts.append((VolumeContextType.DEEP_OVERSOLD, 0.9))
+                detected_contexts.append(
+                    (VolumeContextType.DEEP_OVERSOLD, 0.9))
             elif rsi < 40 and cci is not None and cci < -150:
-                detected_contexts.append((VolumeContextType.MODERATE_OVERSOLD, 0.8))
+                detected_contexts.append(
+                    (VolumeContextType.MODERATE_OVERSOLD, 0.8))
             elif rsi < 40:
-                detected_contexts.append((VolumeContextType.OVERSOLD_BOUNCE, 0.7))
+                detected_contexts.append(
+                    (VolumeContextType.OVERSOLD_BOUNCE, 0.7))
 
         # 2. Conditions de volatilité
         if adx is not None:
             if adx < 20:
-                detected_contexts.append((VolumeContextType.LOW_VOLATILITY, 0.6))
+                detected_contexts.append(
+                    (VolumeContextType.LOW_VOLATILITY, 0.6))
             elif adx > 35:
-                detected_contexts.append((VolumeContextType.HIGH_VOLATILITY, 0.7))
+                detected_contexts.append(
+                    (VolumeContextType.HIGH_VOLATILITY, 0.7))
 
         # 3. Patterns de volume
         if self._detect_volume_buildup(volumes):
-            detected_contexts.append((VolumeContextType.CONSOLIDATION_BREAK, 0.7))
+            detected_contexts.append(
+                (VolumeContextType.CONSOLIDATION_BREAK, 0.7))
         elif self._detect_volume_spike(volumes):
             detected_contexts.append((VolumeContextType.BREAKOUT, 0.8))
 
@@ -374,7 +379,8 @@ class VolumeContextAnalyzer:
 
         # 5. Tendance continuation
         if adx is not None and adx > 25 and rsi is not None and 40 <= rsi <= 70:
-            detected_contexts.append((VolumeContextType.TREND_CONTINUATION, 0.6))
+            detected_contexts.append(
+                (VolumeContextType.TREND_CONTINUATION, 0.6))
 
         # Sélection du meilleur contexte
         if detected_contexts:
@@ -400,13 +406,15 @@ class VolumeContextAnalyzer:
         return VolumeContext(
             context_type=best_context,
             min_ratio=float(
-                min_ratio if isinstance(min_ratio, (int, float, str)) else 0.0
-            )
-            * tolerance_factor,
+                min_ratio if isinstance(
+                    min_ratio,
+                    int | float | str) else 0.0) *
+            tolerance_factor,
             ideal_ratio=float(
-                ideal_ratio if isinstance(ideal_ratio, (int, float, str)) else 0.0
-            )
-            * tolerance_factor,
+                ideal_ratio if isinstance(
+                    ideal_ratio,
+                    int | float | str) else 0.0) *
+            tolerance_factor,
             confidence=confidence,
             pattern_detected=pattern_detected,
             tolerance_factor=tolerance_factor,
@@ -419,7 +427,7 @@ class VolumeContextAnalyzer:
         if len(volumes) < self.buildup_lookback + 1:
             return False
 
-        recent_volumes = volumes[-self.buildup_lookback :]
+        recent_volumes = volumes[-self.buildup_lookback:]
         increases = 0
         min_increase = 1.1  # 10% d'augmentation minimum
 
@@ -442,7 +450,7 @@ class VolumeContextAnalyzer:
         if len(volumes) < self.buildup_lookback + 1:
             return 0
 
-        recent_volumes = volumes[-self.buildup_lookback :]
+        recent_volumes = volumes[-self.buildup_lookback:]
         consecutive_increases = 0
         min_increase = 1.1  # 10% d'augmentation minimum
 
@@ -453,7 +461,8 @@ class VolumeContextAnalyzer:
             else:
                 break  # Arrêter à la première non-augmentation
 
-        # Retourner le nombre de périodes (incluant la période actuelle si augmentation)
+        # Retourner le nombre de périodes (incluant la période actuelle si
+        # augmentation)
         return consecutive_increases if consecutive_increases > 0 else 0
 
     def _detect_volume_spike(self, volumes: np.ndarray) -> bool:
@@ -462,7 +471,8 @@ class VolumeContextAnalyzer:
             return False
 
         current_volume = volumes[-1]
-        avg_volume = np.mean(volumes[-5:-1])  # Moyenne des 4 périodes précédentes
+        # Moyenne des 4 périodes précédentes
+        avg_volume = np.mean(volumes[-5:-1])
 
         return current_volume > avg_volume * self.spike_multiplier
 
@@ -479,31 +489,31 @@ class VolumeContextAnalyzer:
 
         if relative_slope > 0.05:
             return "increasing"
-        elif relative_slope < -0.05:
+        if relative_slope < -0.05:
             return "decreasing"
-        else:
-            return "stable"
+        return "stable"
 
-    def _identify_volume_pattern(self, volumes: np.ndarray) -> VolumePatternType:
+    def _identify_volume_pattern(
+            self, volumes: np.ndarray) -> VolumePatternType:
         """Identifie le pattern de volume dominant."""
         if self._detect_volume_spike(volumes):
             return VolumePatternType.SPIKE
-        elif self._detect_volume_buildup(volumes):
+        if self._detect_volume_buildup(volumes):
             return VolumePatternType.BUILDUP
-        else:
-            # Analyse volume soutenu vs déclinant
-            if len(volumes) >= 10:
-                recent_avg = np.mean(volumes[-5:])
-                older_avg = np.mean(volumes[-10:-5])
+        # Analyse volume soutenu vs déclinant
+        if len(volumes) >= 10:
+            recent_avg = np.mean(volumes[-5:])
+            older_avg = np.mean(volumes[-10:-5])
 
-                if recent_avg > older_avg * 1.5:
-                    return VolumePatternType.SUSTAINED_HIGH
-                elif recent_avg < older_avg * 0.7:
-                    return VolumePatternType.DECLINING
+            if recent_avg > older_avg * 1.5:
+                return VolumePatternType.SUSTAINED_HIGH
+            if recent_avg < older_avg * 0.7:
+                return VolumePatternType.DECLINING
 
-            return VolumePatternType.NORMAL
+        return VolumePatternType.NORMAL
 
-    def _calculate_tolerance_factor(self, market_conditions: Dict[str, float]) -> float:
+    def _calculate_tolerance_factor(
+            self, market_conditions: dict[str, float]) -> float:
         """Calcule le facteur de tolérance basé sur les conditions market."""
         tolerance_factors = []
 
@@ -540,7 +550,8 @@ class VolumeContextAnalyzer:
             return strength
 
         current_volume = volumes[-1]
-        avg_volume = np.mean(volumes[-10:]) if len(volumes) >= 10 else np.mean(volumes)
+        avg_volume = np.mean(
+            volumes[-10:]) if len(volumes) >= 10 else np.mean(volumes)
         volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
 
         # Bonus basé sur le ratio volume
@@ -582,7 +593,8 @@ class VolumeContextAnalyzer:
             # En dessous du minimum
             threshold_score = (current_volume_ratio / context.min_ratio) * 50.0
 
-        # Score pondéré : seuils (60%) + pattern (30%) + confiance contexte (10%)
+        # Score pondéré : seuils (60%) + pattern (30%) + confiance contexte
+        # (10%)
         quality_score = (
             threshold_score * 0.6
             + pattern_strength * 0.3
@@ -597,19 +609,21 @@ class VolumeContextAnalyzer:
         current_volume_ratio: float,
         buildup_detected: bool,
         spike_detected: bool,
-    ) -> List[str]:
+    ) -> list[str]:
         """Génère des recommandations basées sur l'analyse."""
         recommendations = []
 
         if current_volume_ratio >= context.ideal_ratio:
             recommendations.append("✅ Volume excellent - Signal très fiable")
         elif current_volume_ratio >= context.min_ratio:
-            recommendations.append("⚠️ Volume acceptable - Signal modérément fiable")
+            recommendations.append(
+                "⚠️ Volume acceptable - Signal modérément fiable")
         else:
             recommendations.append("❌ Volume insuffisant - Prudence requise")
 
         if buildup_detected:
-            recommendations.append("📈 Volume buildup détecté - Momentum building")
+            recommendations.append(
+                "📈 Volume buildup détecté - Momentum building")
 
         if spike_detected:
             recommendations.append(
@@ -630,7 +644,8 @@ class VolumeContextAnalyzer:
             )
 
         if context.context_type == VolumeContextType.PUMP_START:
-            recommendations.append("🔥 Début pump détecté - Volume massif requis")
+            recommendations.append(
+                "🔥 Début pump détecté - Volume massif requis")
 
         return recommendations
 
@@ -672,11 +687,11 @@ class VolumeContextAnalyzer:
 
     def get_adaptive_threshold(
         self,
-        volumes: Union[List[float], np.ndarray],
-        closes: Union[List[float], np.ndarray],
+        volumes: list[float] | np.ndarray,
+        closes: list[float] | np.ndarray,
         signal_type: str = "BUY",
-        symbol: Optional[str] = None,
-    ) -> Tuple[float, str]:
+        symbol: str | None = None,
+    ) -> tuple[float, str]:
         """
         Retourne le seuil volume adaptatif et le contexte détecté.
 
@@ -691,10 +706,10 @@ class VolumeContextAnalyzer:
     def is_volume_acceptable(
         self,
         current_volume_ratio: float,
-        volumes: Union[List[float], np.ndarray],
-        closes: Union[List[float], np.ndarray],
-        symbol: Optional[str] = None,
-    ) -> Tuple[bool, float]:
+        volumes: list[float] | np.ndarray,
+        closes: list[float] | np.ndarray,
+        symbol: str | None = None,
+    ) -> tuple[bool, float]:
         """
         Vérifie si le volume est acceptable selon le contexte.
 
@@ -709,11 +724,10 @@ class VolumeContextAnalyzer:
         """Retourne une description qualitative du score volume."""
         if quality_score >= 80:
             return "Excellent"
-        elif quality_score >= 60:
+        if quality_score >= 60:
             return "Très bon"
-        elif quality_score >= 40:
+        if quality_score >= 40:
             return "Acceptable"
-        elif quality_score >= 20:
+        if quality_score >= 20:
             return "Faible"
-        else:
-            return "Insuffisant"
+        return "Insuffisant"

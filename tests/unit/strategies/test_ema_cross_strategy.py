@@ -2,14 +2,14 @@
 Tests pour EMA_Cross_Strategy.
 """
 
-import pytest
-import sys
+from analyzer.strategies.EMA_Cross_Strategy import EMA_Cross_Strategy
 import os
+import sys
+
+import pytest
 
 # Ajouter le chemin racine pour les imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-
-from analyzer.strategies.EMA_Cross_Strategy import EMA_Cross_Strategy
 
 
 class TestEMACrossStrategy:
@@ -18,8 +18,9 @@ class TestEMACrossStrategy:
     def test_init(self, mock_strategy_data):
         """Test d'initialisation de la stratégie EMA."""
         strategy = EMA_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], mock_strategy_data["indicators"]
-        )
+            "BTCUSDC",
+            mock_strategy_data["data"],
+            mock_strategy_data["indicators"])
 
         assert strategy.symbol == "BTCUSDC"
         assert strategy.name == "EMA_Cross_Strategy"
@@ -46,7 +47,8 @@ class TestEMACrossStrategy:
         # Supprimer ema_12
         indicators.pop("ema_12", None)
 
-        strategy = EMA_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = EMA_Cross_Strategy(
+            "BTCUSDC", mock_strategy_data["data"], indicators)
         assert strategy.validate_data() is False
 
     def test_validate_data_missing_price_data(self, mock_strategy_data):
@@ -65,7 +67,8 @@ class TestEMACrossStrategy:
         indicators["ema_12"] = None
         indicators["ema_26"] = 49950
 
-        strategy = EMA_Cross_Strategy("BTCUSDC", mock_strategy_data["data"], indicators)
+        strategy = EMA_Cross_Strategy(
+            "BTCUSDC", mock_strategy_data["data"], indicators)
         result = strategy.generate_signal()
 
         assert result["side"] is None
@@ -80,7 +83,8 @@ class TestEMACrossStrategy:
         """Test signal rejeté car EMA trop proches."""
         indicators = mock_strategy_data["indicators"].copy()
         indicators.update(
-            {"ema_12": 50000, "ema_26": 49999}  # Distance < min_separation_pct (0.2%)
+            # Distance < min_separation_pct (0.2%)
+            {"ema_12": 50000, "ema_26": 49999}
         )
         data = mock_strategy_data["data"].copy()
         data["close"] = [49000, 49500, 50000]
@@ -248,7 +252,8 @@ class TestEMACrossStrategy:
         if result["side"] is not None:  # Peut être rejeté
             assert "MACD diverge" in result["reason"]
 
-    def test_generate_signal_momentum_contraire_penalty(self, mock_strategy_data):
+    def test_generate_signal_momentum_contraire_penalty(
+            self, mock_strategy_data):
         """Test pénalité pour momentum contraire."""
         indicators = mock_strategy_data["indicators"].copy()
         indicators.update(
@@ -289,7 +294,8 @@ class TestEMACrossStrategy:
 
         assert result["side"] is None
         assert result["confidence"] == 0.0
-        # Signal peut être rejeté pour différentes raisons (EMA proches, confidence faible, etc.)
+        # Signal peut être rejeté pour différentes raisons (EMA proches,
+        # confidence faible, etc.)
         assert (
             "confidence insuffisante" in result["reason"]
             or "EMA trop proches" in result["reason"]
@@ -365,8 +371,9 @@ class TestEMACrossStrategy:
     def test_get_current_values_structure(self, mock_strategy_data):
         """Test que _get_current_values retourne la structure attendue."""
         strategy = EMA_Cross_Strategy(
-            "BTCUSDC", mock_strategy_data["data"], mock_strategy_data["indicators"]
-        )
+            "BTCUSDC",
+            mock_strategy_data["data"],
+            mock_strategy_data["indicators"])
         values = strategy._get_current_values()
 
         # Vérifier que les clés essentielles sont présentes
@@ -391,7 +398,8 @@ class TestEMACrossStrategy:
         data = mock_strategy_data["data"].copy()
         data["close"] = [49000, 49500, 50000]
 
-        strategy = EMA_Cross_Strategy("BTCUSDC", data, mock_strategy_data["indicators"])
+        strategy = EMA_Cross_Strategy(
+            "BTCUSDC", data, mock_strategy_data["indicators"])
         price = strategy._get_current_price()
 
         assert price == 50000
@@ -401,7 +409,8 @@ class TestEMACrossStrategy:
         data = mock_strategy_data["data"].copy()
         data["close"] = []  # Pas de données
 
-        strategy = EMA_Cross_Strategy("BTCUSDC", data, mock_strategy_data["indicators"])
+        strategy = EMA_Cross_Strategy(
+            "BTCUSDC", data, mock_strategy_data["indicators"])
         price = strategy._get_current_price()
 
         assert price is None
@@ -411,13 +420,20 @@ class TestEMACrossStrategy:
         [
             (50300, 50000, 50100, 49800, "BUY"),  # Golden cross + prix > EMA50
             (49700, 50000, 49400, 50200, "SELL"),  # Death cross + prix < EMA50
-            (50300, 50000, 49900, 50200, None),  # Golden cross mais prix < EMA50
-            (49700, 50000, 50500, 49800, None),  # Death cross mais prix > EMA50
+            # Golden cross mais prix < EMA50
+            (50300, 50000, 49900, 50200, None),
+            # Death cross mais prix > EMA50
+            (49700, 50000, 50500, 49800, None),
         ],
     )
     def test_generate_signal_different_crossovers(
-        self, mock_strategy_data, ema_12, ema_26, current_price, ema_50, expected_side
-    ):
+            self,
+            mock_strategy_data,
+            ema_12,
+            ema_26,
+            current_price,
+            ema_50,
+            expected_side):
         """Test différents types de croisements EMA avec filtre de tendance."""
         indicators = mock_strategy_data["indicators"].copy()
         indicators.update(
@@ -437,6 +453,7 @@ class TestEMACrossStrategy:
         if expected_side is None:
             assert result["side"] is None
         else:
-            # Peut être rejeté pour d'autres raisons, mais si accepté, doit être correct
+            # Peut être rejeté pour d'autres raisons, mais si accepté, doit
+            # être correct
             if result["side"] is not None:
                 assert result["side"] == expected_side

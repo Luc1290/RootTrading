@@ -12,9 +12,9 @@ Version: 2.0 - Professional Grade
 """
 
 import logging
-from typing import Optional, Dict, Tuple, List
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +36,8 @@ class ValidationResult:
     passed: bool
     score: float  # 0-100
     reason: str
-    details: Dict[str, any]
-    warnings: List[str]
+    details: dict[str, Any]
+    warnings: list[str]
 
 
 @dataclass
@@ -45,11 +45,11 @@ class ValidationSummary:
     """Résumé complet de validation."""
 
     all_passed: bool
-    level_results: Dict[ValidationLevel, ValidationResult]
+    level_results: dict[ValidationLevel, ValidationResult]
     overall_score: float  # 0-100
-    blocking_issues: List[str]
-    warnings: List[str]
-    recommendations: List[str]
+    blocking_issues: list[str]
+    warnings: list[str]
+    recommendations: list[str]
 
 
 class OpportunityValidator:
@@ -62,7 +62,6 @@ class OpportunityValidator:
 
     def __init__(self):
         """Initialise le validateur."""
-        pass
 
     @staticmethod
     def safe_float(value, default=0.0):
@@ -76,7 +75,7 @@ class OpportunityValidator:
         self,
         analyzer_data: dict,
         current_price: float,
-        higher_tf_data: Optional[dict] = None,
+        higher_tf_data: dict | None = None,
     ) -> ValidationSummary:
         """
         Valide une opportunité sur les 4 niveaux.
@@ -96,10 +95,10 @@ class OpportunityValidator:
 
         # Level 1: Data Quality
         level_results[ValidationLevel.DATA_QUALITY] = self._validate_data_quality(
-            analyzer_data
-        )
+            analyzer_data)
         if not level_results[ValidationLevel.DATA_QUALITY].passed:
-            blocking_issues.append(level_results[ValidationLevel.DATA_QUALITY].reason)
+            blocking_issues.append(
+                level_results[ValidationLevel.DATA_QUALITY].reason)
             return self._create_failed_summary(level_results, blocking_issues)
 
         # Level 2: Market Conditions
@@ -113,8 +112,7 @@ class OpportunityValidator:
 
         # Level 3: Risk Management
         level_results[ValidationLevel.RISK_MANAGEMENT] = self._validate_risk_management(
-            analyzer_data, current_price
-        )
+            analyzer_data, current_price)
         if not level_results[ValidationLevel.RISK_MANAGEMENT].passed:
             blocking_issues.append(
                 level_results[ValidationLevel.RISK_MANAGEMENT].reason
@@ -122,10 +120,10 @@ class OpportunityValidator:
 
         # Level 4: Entry Timing
         level_results[ValidationLevel.ENTRY_TIMING] = self._validate_entry_timing(
-            analyzer_data
-        )
+            analyzer_data)
         if not level_results[ValidationLevel.ENTRY_TIMING].passed:
-            blocking_issues.append(level_results[ValidationLevel.ENTRY_TIMING].reason)
+            blocking_issues.append(
+                level_results[ValidationLevel.ENTRY_TIMING].reason)
 
         # Collecter warnings
         for result in level_results.values():
@@ -142,10 +140,12 @@ class OpportunityValidator:
         # Recommandations
         if all_passed:
             recommendations.append("✅ Toutes les validations passées")
-            recommendations.append(f"Score validation: {overall_score:.0f}/100")
+            recommendations.append(
+                f"Score validation: {overall_score:.0f}/100")
         else:
             recommendations.append("❌ Validation échouée")
-            recommendations.append(f"Problèmes à résoudre: {len(blocking_issues)}")
+            recommendations.append(
+                f"Problèmes à résoudre: {len(blocking_issues)}")
 
         return ValidationSummary(
             all_passed=all_passed,
@@ -212,7 +212,8 @@ class OpportunityValidator:
         missing = []
         for ind in critical_indicators:
             val = ad.get(ind)
-            # Considérer comme manquant seulement si None ou clé absente (pas si 0 ou False)
+            # Considérer comme manquant seulement si None ou clé absente (pas
+            # si 0 ou False)
             if val is None and ind not in ad:
                 missing.append(ind)
 
@@ -245,7 +246,7 @@ class OpportunityValidator:
         )
 
     def _validate_market_conditions(
-        self, ad: dict, higher_tf: Optional[dict]
+        self, ad: dict, higher_tf: dict | None
     ) -> ValidationResult:
         """
         Level 2: Validation conditions de marché.
@@ -275,7 +276,7 @@ class OpportunityValidator:
             details["regime_bear_warning"] = True
         elif regime == "TRANSITION":
             score -= 10
-            warnings.append(f"⚠️ Régime transition - Direction incertaine")
+            warnings.append("⚠️ Régime transition - Direction incertaine")
 
         # Confiance régime
         if regime_conf < 50:
@@ -301,7 +302,8 @@ class OpportunityValidator:
         # CHANGEMENT: Malus progressif au lieu de rejet binaire
         if bias == "BEARISH":
             score -= 30  # Malus mais pas bloquant
-            warnings.append(f"⚠️⚠️ BIAIS BAISSIER: {bias} - Setup contre-tendance!")
+            warnings.append(
+                f"⚠️⚠️ BIAIS BAISSIER: {bias} - Setup contre-tendance!")
             details["bias_bear_warning"] = True
         elif bias == "NEUTRAL":
             warnings.append("⚠️ Biais neutre - Pas de direction claire")
@@ -337,7 +339,8 @@ class OpportunityValidator:
 
         # Validation passée si score >30 (abaissé de 60 pour tolérer contre-tendances)
         # Avec malus progressifs: Bear -40, Bias Bear -30, HTF Bear -35 = score peut descendre à 0-30
-        # Score 35-50 = contre-tendance risquée mais acceptable si reste du setup excellent
+        # Score 35-50 = contre-tendance risquée mais acceptable si reste du
+        # setup excellent
         passed = score >= 30
 
         return ValidationResult(
@@ -400,7 +403,11 @@ class OpportunityValidator:
 
         # Calculer SL distance
         if nearest_support > 0 and current_price > nearest_support:
-            sl_dist = max(0.007, (current_price - nearest_support) / current_price)
+            sl_dist = max(
+                0.007,
+                (current_price -
+                 nearest_support) /
+                current_price)
             sl_basis = "support"
         else:
             sl_dist = max(0.007, atr_percent * 0.7)
@@ -413,7 +420,8 @@ class OpportunityValidator:
 
         # Calculer TP distance (utiliser multiplier plus agressif pour validation)
         # TP1 conservateur: 0.8 ATR, TP2 modéré: 1.2 ATR
-        # Pour validation, on vérifie que TP2 (moderate) donne un R/R acceptable
+        # Pour validation, on vérifie que TP2 (moderate) donne un R/R
+        # acceptable
         tp_dist_conservative = max(0.01, atr_percent * 0.8)
         tp_dist_moderate = max(0.015, atr_percent * 1.2)
 
@@ -427,7 +435,8 @@ class OpportunityValidator:
         # CHANGEMENT: Malus progressif au lieu de rejet binaire
         # R/R 1.4 acceptable, R/R 0.8 très mauvais
         if rr_ratio < 1.5:
-            # Malus proportionnel : RR 1.4 = -3pts, RR 1.0 = -15pts, RR 0.5 = -30pts
+            # Malus proportionnel : RR 1.4 = -3pts, RR 1.0 = -15pts, RR 0.5 =
+            # -30pts
             rr_penalty = max(0, min((1.5 - rr_ratio) * 30, 50))
             score -= rr_penalty
 
@@ -454,7 +463,8 @@ class OpportunityValidator:
 
         # 3. Vérifier résistance
         if nearest_resistance > 0 and current_price > 0:
-            res_dist_pct = ((nearest_resistance - current_price) / current_price) * 100
+            res_dist_pct = (
+                (nearest_resistance - current_price) / current_price) * 100
 
             # Récupérer momentum_score pour contextualiser
             momentum_score = self.safe_float(ad.get("momentum_score"), 50)
@@ -463,7 +473,8 @@ class OpportunityValidator:
             )
 
             # SCALPING/DAY TRADING: Résistances <2% sont du bruit, pénalités minimales
-            # On ne pénalise vraiment QUE si momentum très faible + résistance proche
+            # On ne pénalise vraiment QUE si momentum très faible + résistance
+            # proche
             if res_dist_pct < 1.0:
                 if momentum_score < 45:
                     # Momentum TRÈS faible = risque réel de rejet
@@ -506,11 +517,13 @@ class OpportunityValidator:
         break_prob = self.safe_float(ad.get("break_probability"))
         if break_prob > 0:
             if break_prob < 0.35:  # Abaissé de 0.4 à 0.35
-                warnings.append(f"⚠️ Probabilité cassure faible: {break_prob*100:.0f}%")
+                warnings.append(
+                    f"⚠️ Probabilité cassure faible: {break_prob*100:.0f}%")
                 score -= 10
             elif break_prob < 0.45:
                 # Zone intermédiaire: warning informatif seulement
-                warnings.append(f"ℹ️ Break probability modérée: {break_prob*100:.0f}%")
+                warnings.append(
+                    f"ℹ️ Break probability modérée: {break_prob*100:.0f}%")
                 score -= 3
 
             details["break_probability"] = break_prob * 100
@@ -549,7 +562,8 @@ class OpportunityValidator:
         warnings = []
         score = 100.0
 
-        # Détecter si c'est un pump validé (volume fort + regime bull + context breakout)
+        # Détecter si c'est un pump validé (volume fort + regime bull + context
+        # breakout)
         vol_spike = self.safe_float(ad.get("volume_spike_multiplier"), 1.0)
         rel_volume = self.safe_float(ad.get("relative_volume"), 1.0)
         market_regime = ad.get("market_regime", "").upper()
@@ -557,11 +571,13 @@ class OpportunityValidator:
 
         # AJUSTÉ: 2.0x (compromis 20 cryptos: P95 varie de 1.4x à 8.3x)
         is_pump_context = (
-            (vol_spike > 2.0 or rel_volume > 2.0)
-            and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]
-            and vol_context
-            in ["CONSOLIDATION_BREAK", "BREAKOUT", "PUMP_START", "HIGH_VOLATILITY"]
-        )
+            (vol_spike > 2.0 or rel_volume > 2.0) and market_regime in [
+                "TRENDING_BULL",
+                "BREAKOUT_BULL"] and vol_context in [
+                "CONSOLIDATION_BREAK",
+                "BREAKOUT",
+                "PUMP_START",
+                "HIGH_VOLATILITY"])
 
         # 1. Overbought Check (avec tolérance pump)
         rsi = self.safe_float(ad.get("rsi_14"))
@@ -602,7 +618,8 @@ class OpportunityValidator:
             score -= 10
 
         if stoch_k > 90 and stoch_d > 90:
-            overbought_issues.append(f"Stochastic saturé ({stoch_k:.0f}/{stoch_d:.0f})")
+            overbought_issues.append(
+                f"Stochastic saturé ({stoch_k:.0f}/{stoch_d:.0f})")
             score -= 15
 
         if overbought_issues:
@@ -615,9 +632,11 @@ class OpportunityValidator:
         obv_osc = self.safe_float(ad.get("obv_oscillator"))
 
         # CHANGEMENT: Malus progressif au lieu de rejet binaire
-        # Volume 0.4x sur un setup excellent peut passer si tout le reste compense
+        # Volume 0.4x sur un setup excellent peut passer si tout le reste
+        # compense
         if rel_volume < 0.5:
-            # Malus proportionnel : 0.4x = -10pts, 0.3x = -20pts, 0.2x = -30pts, 0.1x = -40pts
+            # Malus proportionnel : 0.4x = -10pts, 0.3x = -20pts, 0.2x =
+            # -30pts, 0.1x = -40pts
             vol_penalty = max(0, min((0.5 - rel_volume) * 100, 50))
             score -= vol_penalty
 
@@ -662,7 +681,8 @@ class OpportunityValidator:
             score -= 5
 
         if momentum_score_val < 40:
-            warnings.append(f"⚠️ Momentum score faible: {momentum_score_val:.0f}")
+            warnings.append(
+                f"⚠️ Momentum score faible: {momentum_score_val:.0f}")
             score -= 10
 
         details["macd_trend"] = macd_trend

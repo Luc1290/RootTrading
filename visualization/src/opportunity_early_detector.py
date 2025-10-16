@@ -13,7 +13,6 @@ Version: 1.0 - Early Warning System
 """
 
 import logging
-from typing import Optional, Dict, List, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
@@ -48,9 +47,9 @@ class EarlySignal:
     estimated_move_completion_pct: float  # % du mouvement déjà fait (0-100)
 
     # Reasons
-    reasons: List[str]
-    warnings: List[str]
-    recommendations: List[str]
+    reasons: list[str]
+    warnings: list[str]
+    recommendations: list[str]
 
 
 class OpportunityEarlyDetector:
@@ -74,7 +73,6 @@ class OpportunityEarlyDetector:
 
     def __init__(self):
         """Initialise le détecteur early."""
-        pass
 
     @staticmethod
     def safe_float(value, default=0.0):
@@ -85,7 +83,7 @@ class OpportunityEarlyDetector:
             return default
 
     def detect_early_opportunity(
-        self, current_data: dict, historical_data: Optional[List[dict]] = None
+        self, current_data: dict, historical_data: list[dict] | None = None
     ) -> EarlySignal:
         """
         Détecte early opportunity.
@@ -102,9 +100,9 @@ class OpportunityEarlyDetector:
         if not current_data:
             return self._create_no_signal("Pas de données")
 
-        reasons = []
-        warnings = []
-        recommendations = []
+        reasons: list[str] = []
+        warnings: list[str] = []
+        recommendations: list[str] = []
 
         # === SCORE 1: VELOCITY & ACCELERATION (35 points max) ===
         velocity_score = self._score_velocity_acceleration(
@@ -122,7 +120,8 @@ class OpportunityEarlyDetector:
         )
 
         # === SCORE 4: ORDER FLOW PRESSURE (13 points max) ===
-        order_flow_score = self._score_order_flow(current_data, reasons, warnings)
+        order_flow_score = self._score_order_flow(
+            current_data, reasons, warnings)
 
         # === SCORE 5: EARLY MOMENTUM (15 points max) ===
         early_momentum_score = self._score_early_momentum(
@@ -147,12 +146,12 @@ class OpportunityEarlyDetector:
             confidence = 60.0
         else:
             confidence = 40.0
-            warnings.append("⚠️ Pas de données historiques - Détection limitée")
+            warnings.append(
+                "⚠️ Pas de données historiques - Détection limitée")
 
         # Déterminer niveau de signal
         level, entry_window_seconds, move_completion_pct = self._determine_signal_level(
-            total_score, current_data, historical_data
-        )
+            total_score, current_data, historical_data)
 
         # Générer recommandations
         self._generate_recommendations(
@@ -183,9 +182,9 @@ class OpportunityEarlyDetector:
     def _score_velocity_acceleration(
         self,
         current: dict,
-        historical: Optional[List[dict]],
-        reasons: List[str],
-        warnings: List[str],
+        historical: list[dict] | None,
+        reasons: list[str],
+        warnings: list[str],
     ) -> float:
         """
         Score velocity & acceleration (LEADING).
@@ -201,7 +200,7 @@ class OpportunityEarlyDetector:
 
         # 1. Price Velocity (ROC) - 20 points max
         roc_10 = self.safe_float(current.get("roc_10"))
-        roc_20 = self.safe_float(current.get("roc_20"))
+        self.safe_float(current.get("roc_20"))
 
         if roc_10 > 0:
             # ROC positif = momentum haussier
@@ -257,9 +256,9 @@ class OpportunityEarlyDetector:
     def _score_volume_buildup(
         self,
         current: dict,
-        historical: Optional[List[dict]],
-        reasons: List[str],
-        warnings: List[str],
+        historical: list[dict] | None,
+        reasons: list[str],
+        warnings: list[str],
     ) -> float:
         """
         Score volume buildup (LEADING).
@@ -289,7 +288,9 @@ class OpportunityEarlyDetector:
             # Calculer progression volume
             recent_vols = []
             for h in historical[-3:]:
-                recent_vols.append(self.safe_float(h.get("relative_volume"), 1.0))
+                recent_vols.append(
+                    self.safe_float(
+                        h.get("relative_volume"), 1.0))
             recent_vols.append(rel_vol)
 
             # Volume en progression?
@@ -324,9 +325,9 @@ class OpportunityEarlyDetector:
     def _score_micro_patterns(
         self,
         current: dict,
-        historical: Optional[List[dict]],
-        reasons: List[str],
-        warnings: List[str],
+        historical: list[dict] | None,
+        reasons: list[str],
+        warnings: list[str],
     ) -> float:
         """
         Score micro-patterns (LEADING).
@@ -417,7 +418,7 @@ class OpportunityEarlyDetector:
         return min(score, 20)
 
     def _score_order_flow(
-        self, current: dict, reasons: List[str], warnings: List[str]
+        self, current: dict, reasons: list[str], warnings: list[str]
     ) -> float:
         """
         Score order flow pressure (si données disponibles).
@@ -464,7 +465,8 @@ class OpportunityEarlyDetector:
         break_prob = self.safe_float(current.get("break_probability"), 0.5)
         if break_prob > 0.75:
             score += 3
-            reasons.append(f"🔓 Résistance faible: {break_prob*100:.0f}% break prob")
+            reasons.append(
+                f"🔓 Résistance faible: {break_prob*100:.0f}% break prob")
         elif break_prob > 0.65:
             score += 2
             reasons.append(f"🔓 Break probable: {break_prob*100:.0f}%")
@@ -476,9 +478,9 @@ class OpportunityEarlyDetector:
     def _score_early_momentum(
         self,
         current: dict,
-        historical: Optional[List[dict]],
-        reasons: List[str],
-        warnings: List[str],
+        historical: list[dict] | None,
+        reasons: list[str],
+        warnings: list[str],
     ) -> float:
         """
         Score early momentum indicators.
@@ -546,8 +548,8 @@ class OpportunityEarlyDetector:
         return min(score, 15)  # Max augmenté de 10 à 15 pour bonus oversold
 
     def _determine_signal_level(
-        self, score: float, current: dict, historical: Optional[List[dict]]
-    ) -> Tuple[EarlySignalLevel, int, float]:
+        self, score: float, current: dict, historical: list[dict] | None
+    ) -> tuple[EarlySignalLevel, int, float]:
         """
         Détermine le niveau de signal + timing estimé.
 
@@ -557,7 +559,8 @@ class OpportunityEarlyDetector:
         # Estimer % du mouvement déjà fait
         rsi = self.safe_float(current.get("rsi_14"))
         rel_vol = self.safe_float(current.get("relative_volume"), 1.0)
-        vol_spike = self.safe_float(current.get("volume_spike_multiplier"), 1.0)
+        vol_spike = self.safe_float(
+            current.get("volume_spike_multiplier"), 1.0)
 
         # Heuristique: RSI et volume spike indiquent avancement
         if rsi > 80 or vol_spike > 4.0:
@@ -573,20 +576,19 @@ class OpportunityEarlyDetector:
         if score >= self.THRESHOLDS["too_late"]:
             return EarlySignalLevel.TOO_LATE, 0, move_completion_pct
 
-        elif score >= self.THRESHOLDS["entry_now"]:
+        if score >= self.THRESHOLDS["entry_now"]:
             # Entry window = 10-30s
             return EarlySignalLevel.ENTRY_NOW, 20, move_completion_pct
 
-        elif score >= self.THRESHOLDS["prepare"]:
+        if score >= self.THRESHOLDS["prepare"]:
             # Préparer entry dans 20-60s
             return EarlySignalLevel.PREPARE, 40, move_completion_pct
 
-        elif score >= self.THRESHOLDS["watch"]:
+        if score >= self.THRESHOLDS["watch"]:
             # Surveiller, entry potentielle dans 60-120s
             return EarlySignalLevel.WATCH, 90, move_completion_pct
 
-        else:
-            return EarlySignalLevel.NONE, 0, move_completion_pct
+        return EarlySignalLevel.NONE, 0, move_completion_pct
 
     def _generate_recommendations(
         self,
@@ -594,22 +596,28 @@ class OpportunityEarlyDetector:
         score: float,
         entry_window_seconds: int,
         move_completion_pct: float,
-        recommendations: List[str],
-        warnings: List[str],
+        recommendations: list[str],
+        warnings: list[str],
     ):
         """Génère recommandations selon niveau."""
         if level == EarlySignalLevel.ENTRY_NOW:
-            recommendations.append(f"🚀 ENTRY WINDOW NOW - Score: {score:.0f}/100")
-            recommendations.append(f"⏱️ Fenêtre entry: {entry_window_seconds}s estimé")
+            recommendations.append(
+                f"🚀 ENTRY WINDOW NOW - Score: {score:.0f}/100")
+            recommendations.append(
+                f"⏱️ Fenêtre entry: {entry_window_seconds}s estimé")
             recommendations.append("💡 Préparer ordre LIMIT à entry_optimal")
 
             if move_completion_pct > 50:
-                warnings.append(f"⚠️ Mouvement déjà {move_completion_pct:.0f}% avancé")
+                warnings.append(
+                    f"⚠️ Mouvement déjà {move_completion_pct:.0f}% avancé")
 
         elif level == EarlySignalLevel.PREPARE:
-            recommendations.append(f"⚡ PRÉPARER ENTRY - Score: {score:.0f}/100")
-            recommendations.append(f"⏱️ Entry estimée dans: ~{entry_window_seconds}s")
-            recommendations.append("💡 Vérifier entry_optimal et préparer capital")
+            recommendations.append(
+                f"⚡ PRÉPARER ENTRY - Score: {score:.0f}/100")
+            recommendations.append(
+                f"⏱️ Entry estimée dans: ~{entry_window_seconds}s")
+            recommendations.append(
+                "💡 Vérifier entry_optimal et préparer capital")
 
         elif level == EarlySignalLevel.WATCH:
             recommendations.append(f"👀 SURVEILLER - Score: {score:.0f}/100")
@@ -617,8 +625,10 @@ class OpportunityEarlyDetector:
 
         elif level == EarlySignalLevel.TOO_LATE:
             recommendations.append(f"⏸️ TROP TARD - Score: {score:.0f}/100")
-            recommendations.append(f"❌ Mouvement {move_completion_pct:.0f}% terminé")
-            recommendations.append("💡 Attendre pullback ou prochaine opportunité")
+            recommendations.append(
+                f"❌ Mouvement {move_completion_pct:.0f}% terminé")
+            recommendations.append(
+                "💡 Attendre pullback ou prochaine opportunité")
 
         else:
             recommendations.append("⏸️ PAS DE SETUP - Continuer scan")
@@ -646,8 +656,8 @@ class OpportunityEarlyDetector:
 # EXEMPLE D'UTILISATION
 # ===========================================================
 if __name__ == "__main__":
-    import sys
     import io
+    import sys
 
     # Fix Windows encoding
     if sys.platform == "win32":
@@ -722,31 +732,31 @@ if __name__ == "__main__":
     signal = detector.detect_early_opportunity(current_t0, historical)
 
     # Afficher résultat
-    print(f"\n🎯 EARLY SIGNAL DETECTED")
+    print("\n🎯 EARLY SIGNAL DETECTED")
     print(f"Niveau: {signal.level.value.upper()}")
     print(f"Score: {signal.score:.0f}/100")
     print(f"Confiance: {signal.confidence:.0f}%")
 
-    print(f"\n📊 BREAKDOWN:")
+    print("\n📊 BREAKDOWN:")
     print(f"  Velocity/Accel: {signal.velocity_score:.0f}/35")
     print(f"  Volume Buildup: {signal.volume_buildup_score:.0f}/25")
     print(f"  Micro-Patterns: {signal.micro_pattern_score:.0f}/20")
     print(f"  Order Flow: {signal.order_flow_score:.0f}/10")
 
-    print(f"\n⏱️ TIMING:")
+    print("\n⏱️ TIMING:")
     print(f"  Entry window: ~{signal.estimated_entry_window_seconds}s")
     print(f"  Mouvement complété: {signal.estimated_move_completion_pct:.0f}%")
 
-    print(f"\n📋 REASONS:")
+    print("\n📋 REASONS:")
     for reason in signal.reasons:
         print(f"  {reason}")
 
     if signal.warnings:
-        print(f"\n⚠️ WARNINGS:")
+        print("\n⚠️ WARNINGS:")
         for warning in signal.warnings:
             print(f"  {warning}")
 
-    print(f"\n💡 RECOMMENDATIONS:")
+    print("\n💡 RECOMMENDATIONS:")
     for rec in signal.recommendations:
         print(f"  {rec}")
 
@@ -805,11 +815,11 @@ if __name__ == "__main__":
     print(f"Score: {real_signal.score:.0f}/100")
     print(f"Entry window: ~{real_signal.estimated_entry_window_seconds}s")
 
-    print(f"\n📋 REASONS:")
+    print("\n📋 REASONS:")
     for reason in real_signal.reasons:
         print(f"  {reason}")
 
-    print(f"\n💡 RECOMMENDATIONS:")
+    print("\n💡 RECOMMENDATIONS:")
     for rec in real_signal.recommendations:
         print(f"  {rec}")
 

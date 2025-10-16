@@ -4,20 +4,26 @@ Market Data Listener
 Système trigger-based pour traitement temps réel.
 """
 
-import logging
+from .indicator_processor import IndicatorProcessor
+from shared.src.config import get_db_config
+import contextlib
+import builtins
 import asyncio
-import asyncpg  # type: ignore
 import json
-from datetime import datetime
-from typing import Dict, Any, Optional, List
-import sys
+import logging
 import os
+import sys
+from datetime import datetime
+from typing import Any
+
+import asyncpg  # type: ignore
 
 # Ajouter les chemins pour les imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
-
-from shared.src.config import get_db_config
-from .indicator_processor import IndicatorProcessor
+sys.path.append(
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "../../")))
 
 
 logger = logging.getLogger(__name__)
@@ -36,7 +42,8 @@ class DataListener:
         self.processed_count = 0
         self.indicator_processor = IndicatorProcessor()
         # Semaphore pour limiter les connexions DB concurrentes
-        self.db_semaphore = asyncio.Semaphore(15)  # Max 15 connexions simultanées
+        self.db_semaphore = asyncio.Semaphore(
+            15)  # Max 15 connexions simultanées
 
         logger.info("📡 DataListener initialisé")
 
@@ -45,7 +52,8 @@ class DataListener:
         try:
             db_config = get_db_config()
 
-            # Pool principal pour les requêtes - AUGMENTÉ pour traitement historique
+            # Pool principal pour les requêtes - AUGMENTÉ pour traitement
+            # historique
             self.db_pool = await asyncpg.create_pool(
                 host=db_config["host"],
                 port=db_config["port"],
@@ -58,7 +66,8 @@ class DataListener:
                 server_settings={
                     "application_name": "market_analyzer_pool",
                     "statement_timeout": "30000",  # 30s timeout pour statements
-                    "idle_in_transaction_session_timeout": "60000",  # Tuer les "idle in transaction" après 60s
+                    # Tuer les "idle in transaction" après 60s
+                    "idle_in_transaction_session_timeout": "60000",
                 },
             )
 
@@ -84,8 +93,8 @@ class DataListener:
 
             logger.info("✅ DataListener connecté et prêt")
 
-        except Exception as e:
-            logger.error(f"❌ Erreur initialisation DataListener: {e}")
+        except Exception:
+            logger.exception("❌ Erreur initialisation DataListener")
             raise
 
     async def _setup_database_trigger(self):
@@ -151,8 +160,8 @@ class DataListener:
 
             logger.info("✅ Trigger PostgreSQL configuré pour market_data")
 
-        except Exception as e:
-            logger.error(f"❌ Erreur configuration trigger: {e}")
+        except Exception:
+            logger.exception("❌ Erreur configuration trigger")
             # Ne pas raise pour permettre au service de démarrer quand même
             logger.warning("⚠️ Service démarré sans trigger (mode dégradé)")
             # raise  # Commenté pour ne pas bloquer le démarrage
@@ -176,17 +185,18 @@ class DataListener:
             while self.running:
                 try:
                     # Attendre les notifications (bloquant)
-                    await asyncio.sleep(0.1)  # Petite pause pour éviter de surcharger
+                    # Petite pause pour éviter de surcharger
+                    await asyncio.sleep(0.1)
 
                 except asyncio.CancelledError:
                     logger.info("🛑 Écoute interrompue")
                     break
-                except Exception as e:
-                    logger.error(f"❌ Erreur dans la boucle d'écoute: {e}")
+                except Exception:
+                    logger.exception("❌ Erreur dans la boucle d'écoute")
                     await asyncio.sleep(1)  # Attendre avant de retry
 
-        except Exception as e:
-            logger.error(f"❌ Erreur critique dans l'écoute: {e}")
+        except Exception:
+            logger.exception("❌ Erreur critique dans l'écoute")
         finally:
             await self._cleanup()
 
@@ -215,13 +225,18 @@ class DataListener:
                 self.processed_count += 1
 
                 if self.processed_count % 10 == 0:
-                    logger.info(f"📊 {self.processed_count} analyses complétées")
+                    logger.info(
+                        f"📊 {self.processed_count} analyses complétées")
 
-        except Exception as e:
-            logger.error(f"❌ Erreur traitement notification: {e}")
-            logger.error(f"Payload: {payload}")
+        except Exception:
+            logger.exception("❌ Erreur traitement notification")
+            logger.exception(f"Payload: {payload}")
 
-    async def _process_new_data(self, symbol: str, timeframe: str, timestamp: datetime):
+    async def _process_new_data(
+            self,
+            symbol: str,
+            timeframe: str,
+            timestamp: datetime):
         """
         Traite une nouvelle donnée en lançant les calculs.
 
@@ -233,7 +248,8 @@ class DataListener:
         try:
             # Vérifier si on a déjà analysé cette donnée
             if await self._is_already_analyzed(symbol, timeframe, timestamp):
-                logger.debug(f"⏭️ Déjà analysé: {symbol} {timeframe} @ {timestamp}")
+                logger.debug(
+                    f"⏭️ Déjà analysé: {symbol} {timeframe} @ {timestamp}")
                 return
 
             # Appeler le processeur d'indicateurs
@@ -243,8 +259,8 @@ class DataListener:
 
             logger.debug(f"✅ Traitement terminé: {symbol} {timeframe}")
 
-        except Exception as e:
-            logger.error(f"❌ Erreur traitement données: {e}")
+        except Exception:
+            logger.exception("❌ Erreur traitement données")
 
     async def _is_already_analyzed(
         self, symbol: str, timeframe: str, timestamp: datetime
@@ -252,7 +268,7 @@ class DataListener:
         """Vérifie si cette donnée a déjà été analysée."""
 
         query = """
-            SELECT 1 FROM analyzer_data 
+            SELECT 1 FROM analyzer_data
             WHERE symbol = $1 AND timeframe = $2 AND time = $3
             LIMIT 1
         """
@@ -266,14 +282,14 @@ class DataListener:
                 )
                 return result is not None
 
-        except Exception as e:
-            logger.error(f"❌ Erreur vérification analyse: {e}")
+        except Exception:
+            logger.exception("❌ Erreur vérification analyse")
             return False
 
     async def process_historical_optimized(
         self,
-        symbol: Optional[str] = None,
-        timeframe: Optional[str] = None,
+        symbol: str | None = None,
+        timeframe: str | None = None,
         limit: int = 1000000,
     ):
         """
@@ -282,7 +298,8 @@ class DataListener:
         - Dans l'ordre chronologique
         - Réutilise les calculs précédents
         """
-        logger.info(f"🚀 Démarrage traitement optimisé des données non analysées...")
+        logger.info(
+            "🚀 Démarrage traitement optimisé des données non analysées...")
 
         # Si pas de symbole spécifique, traiter chaque symbole séparément
         if symbol is None:
@@ -326,7 +343,7 @@ class DataListener:
             return [row["symbol"] for row in rows]
 
     async def _process_symbol_historical(
-        self, symbol: str, timeframe: Optional[str] = None, limit: int = 1000000
+        self, symbol: str, timeframe: str | None = None, limit: int = 1000000
     ) -> int:
         """Traite l'historique d'un symbole spécifique dans l'ordre chronologique."""
         logger.info(f"🔄 Traitement historique optimisé pour {symbol}...")
@@ -337,20 +354,21 @@ class DataListener:
             FROM market_data md
             WHERE md.symbol = $1
             AND NOT EXISTS (
-                SELECT 1 FROM analyzer_data ad 
-                WHERE ad.symbol = md.symbol 
-                AND ad.timeframe = md.timeframe 
+                SELECT 1 FROM analyzer_data ad
+                WHERE ad.symbol = md.symbol
+                AND ad.timeframe = md.timeframe
                 AND ad.time = md.time
             )
         """
 
-        params: List[Any] = [symbol]
+        params: list[Any] = [symbol]
 
         if timeframe:
             query += " AND md.timeframe = $2"
             params.append(timeframe)
 
-        query += " ORDER BY md.timeframe, md.time ASC LIMIT $" + str(len(params) + 1)
+        query += " ORDER BY md.timeframe, md.time ASC LIMIT $" + \
+            str(len(params) + 1)
         params.append(limit)
 
         total_processed = 0
@@ -368,7 +386,7 @@ class DataListener:
             logger.info(f"📊 {symbol}: {len(rows)} données à analyser")
 
             # Grouper par timeframe pour optimiser
-            timeframes: Dict[str, List] = {}
+            timeframes: dict[str, list] = {}
             for row in rows:
                 tf = row["timeframe"]
                 if tf not in timeframes:
@@ -377,7 +395,8 @@ class DataListener:
 
             # Traiter chaque timeframe séparément dans l'ordre chronologique
             for tf, timestamps in timeframes.items():
-                logger.info(f"⏱️ {symbol} {tf}: {len(timestamps)} données à traiter")
+                logger.info(
+                    f"⏱️ {symbol} {tf}: {len(timestamps)} données à traiter")
 
                 processed = 0
                 errors = 0
@@ -398,14 +417,16 @@ class DataListener:
                                 f"📈 {symbol} {tf}: {processed}/{len(timestamps)} ({percent:.1f}%)"
                             )
 
-                        # Pause raisonnable tous les 10 éléments pour éviter saturation DB
+                        # Pause raisonnable tous les 10 éléments pour éviter
+                        # saturation DB
                         if processed % 10 == 0:
                             await asyncio.sleep(0.01)  # 10ms
 
-                    except Exception as e:
+                    except Exception:
                         errors += 1
                         if errors <= 5:  # Limiter les logs d'erreur
-                            logger.error(f"❌ Erreur {symbol} {tf} @ {timestamp}: {e}")
+                            logger.exception(
+                                "❌ Erreur {symbol} {tf} @ {timestamp}")
                         continue
 
                 logger.info(
@@ -417,28 +438,28 @@ class DataListener:
                 f"✅ {symbol}: Traitement terminé - {total_processed} données analysées"
             )
 
-        except Exception as e:
-            logger.error(f"❌ Erreur traitement {symbol}: {e}")
+        except Exception:
+            logger.exception("❌ Erreur traitement {symbol}")
 
         return total_processed
 
-    async def get_stats(self) -> Dict[str, Any]:
+    async def get_stats(self) -> dict[str, Any]:
         """Retourne les statistiques du listener."""
 
         # Compter les données avec focus sur les gaps récents (24h)
         stats_query = """
-            SELECT 
+            SELECT
                 (SELECT COUNT(*) FROM market_data) as total_market_data,
                 (SELECT COUNT(*) FROM analyzer_data) as total_analyzer_data,
                 (SELECT COUNT(DISTINCT symbol) FROM market_data) as symbols_count,
                 (SELECT COUNT(DISTINCT timeframe) FROM market_data) as timeframes_count,
-                (SELECT COUNT(*) FROM market_data md 
+                (SELECT COUNT(*) FROM market_data md
                  LEFT JOIN analyzer_data ad ON (
-                     md.symbol = ad.symbol AND 
-                     md.timeframe = ad.timeframe AND 
+                     md.symbol = ad.symbol AND
+                     md.timeframe = ad.timeframe AND
                      md.time = ad.time
                  )
-                 WHERE ad.time IS NULL 
+                 WHERE ad.time IS NULL
                  AND md.time >= NOW() - INTERVAL '24 hours'
                 ) as recent_gaps_24h
         """
@@ -471,7 +492,7 @@ class DataListener:
                 }
 
         except Exception as e:
-            logger.error(f"❌ Erreur récupération stats: {e}")
+            logger.exception("❌ Erreur récupération stats")
             return {
                 "running": self.running,
                 "processed_count": self.processed_count,
@@ -507,11 +528,13 @@ class DataListener:
             # Fermer le pool de connexions
             if self.db_pool:
                 try:
-                    # Attendre que toutes les connexions se terminent (timeout 5s)
+                    # Attendre que toutes les connexions se terminent (timeout
+                    # 5s)
                     await asyncio.wait_for(self.db_pool.close(), timeout=5.0)
                     logger.info("✅ Pool DB fermé proprement")
                 except asyncio.TimeoutError:
-                    logger.warning("⚠️ Timeout fermeture pool - connexions forcées")
+                    logger.warning(
+                        "⚠️ Timeout fermeture pool - connexions forcées")
                     # Force terminate si timeout
                     await self.db_pool.terminate()
                 except Exception as e:
@@ -519,14 +542,12 @@ class DataListener:
 
             logger.info("🧹 DataListener nettoyé complètement")
 
-        except Exception as e:
-            logger.error(f"❌ Erreur critique nettoyage: {e}")
+        except Exception:
+            logger.exception("❌ Erreur critique nettoyage")
             # Toujours essayer de terminer le pool
             if self.db_pool:
-                try:
+                with contextlib.suppress(builtins.BaseException):
                     await self.db_pool.terminate()
-                except:
-                    pass
 
     async def stop(self):
         """Arrête l'écoute."""

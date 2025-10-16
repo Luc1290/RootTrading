@@ -5,10 +5,10 @@ Contient la logique de synchronisation initiale avec Binance.
 
 import logging
 
-from .models import DBManager, SharedCache
-from .binance_account_manager import BinanceAccountManager, BinanceApiError
-from .models import PortfolioModel
 from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY
+
+from .binance_account_manager import BinanceAccountManager, BinanceApiError
+from .models import DBManager, PortfolioModel, SharedCache
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,8 @@ async def initial_sync_binance():
             return
 
         logger.info("⏳ Synchronisation initiale des balances Binance...")
-        account_manager = BinanceAccountManager(BINANCE_API_KEY, BINANCE_SECRET_KEY)
+        account_manager = BinanceAccountManager(
+            BINANCE_API_KEY, BINANCE_SECRET_KEY)
         balances = account_manager.calculate_asset_values()
 
         if not balances:
@@ -43,7 +44,7 @@ async def initial_sync_binance():
         SharedCache.clear("latest_balances")
         SharedCache.clear("portfolio_summary")
         logger.info("♻️ Cache invalidé après synchronisation")
-    except BinanceApiError as e:
-        logger.error(f"❌ Erreur API Binance: {str(e)}")
-    except Exception as e:
-        logger.error(f"❌ Erreur de synchronisation initiale Binance: {e}")
+    except BinanceApiError:
+        logger.exception("❌ Erreur API Binance")
+    except Exception:
+        logger.exception("❌ Erreur de synchronisation initiale Binance")

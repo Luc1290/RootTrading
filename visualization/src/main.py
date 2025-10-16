@@ -1,34 +1,41 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
-from contextlib import asynccontextmanager
-from typing import Optional
-from datetime import datetime
 import asyncio
 import json
 import logging
 import os
 import sys
+from contextlib import asynccontextmanager
+from datetime import datetime
 
-from data_manager import DataManager
-from chart_service import ChartService
-from websocket_hub import WebSocketHub
-from statistics_service import StatisticsService
-from opportunity_calculator_pro import OpportunityCalculatorPro
+from fastapi import (FastAPI, HTTPException, Request, WebSocket,
+                     WebSocketDisconnect)
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
+from visualization.src.chart_service import ChartService
+from visualization.src.data_manager import DataManager
+from visualization.src.opportunity_calculator_pro import \
+    OpportunityCalculatorPro
+from visualization.src.statistics_service import StatisticsService
+from visualization.src.websocket_hub import WebSocketHub
 
 # Ajouter le path pour accéder au module notifications
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+sys.path.insert(
+    0,
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "../..")))
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-data_manager: Optional[DataManager] = None
-chart_service: Optional[ChartService] = None
-websocket_hub: Optional[WebSocketHub] = None
-statistics_service: Optional[StatisticsService] = None
-opportunity_calculator: Optional[OpportunityCalculatorPro] = None
+data_manager: DataManager | None = None
+chart_service: ChartService | None = None
+websocket_hub: WebSocketHub | None = None
+statistics_service: StatisticsService | None = None
+opportunity_calculator: OpportunityCalculatorPro | None = None
 
 
 @asynccontextmanager
@@ -57,8 +64,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="RootTrading Visualization Service", version="1.0.0", lifespan=lifespan
-)
+    title="RootTrading Visualization Service",
+    version="1.0.0",
+    lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -79,8 +87,10 @@ serve_react_app_flag = os.path.exists(frontend_build_path)
 if serve_react_app_flag:
     # Serve static assets first
     app.mount(
-        "/assets", StaticFiles(directory=f"{frontend_build_path}/assets"), name="assets"
-    )
+        "/assets",
+        StaticFiles(
+            directory=f"{frontend_build_path}/assets"),
+        name="assets")
     logger.info(f"Serving React app from {frontend_build_path}")
 else:
     logger.warning(
@@ -100,8 +110,7 @@ async def health_check():
         "timestamp": datetime.utcnow().isoformat() + "Z",
         "redis_connected": data_manager.is_redis_connected() if data_manager else False,
         "postgres_connected": (
-            data_manager.is_postgres_connected() if data_manager else False
-        ),
+            data_manager.is_postgres_connected() if data_manager else False),
     }
 
 
@@ -112,21 +121,21 @@ async def get_system_alerts():
 
     async def fetch_service_health(url: str, service_name: str):
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url, timeout=aiohttp.ClientTimeout(total=5)
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return data
-                    else:
-                        return {
-                            "status": "error",
-                            "service": service_name,
-                            "error": f"HTTP {response.status}",
-                        }
+            async with aiohttp.ClientSession() as session, session.get(
+                url, timeout=aiohttp.ClientTimeout(total=5)
+            ) as response:
+                if response.status == 200:
+                    return await response.json()
+                return {
+                    "status": "error",
+                    "service": service_name,
+                    "error": f"HTTP {response.status}",
+                }
         except Exception as e:
-            return {"status": "offline", "service": service_name, "error": str(e)}
+            return {
+                "status": "offline",
+                "service": service_name,
+                "error": str(e)}
 
     # Appels vers les services Docker
     portfolio_health, trader_health = await asyncio.gather(
@@ -160,9 +169,9 @@ async def get_system_alerts():
 async def get_market_chart(
     symbol: str,
     interval: str = "1m",
-    limit: Optional[int] = None,
-    start_time: Optional[str] = None,
-    end_time: Optional[str] = None,
+    limit: int | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
 ):
     """Get market data chart for a specific symbol"""
     try:
@@ -179,39 +188,41 @@ async def get_market_chart(
             limit = timeframe_limits.get(interval, 2880)
 
         if chart_service is None:
-            raise HTTPException(status_code=503, detail="Chart service not available")
+            raise HTTPException(
+                status_code=503,
+                detail="Chart service not available")
 
-        data = await chart_service.get_market_chart(
+        return await chart_service.get_market_chart(
             symbol=symbol,
             interval=interval,
             limit=limit,
             start_time=start_time,
             end_time=end_time,
         )
-        return data
     except Exception as e:
-        logger.error(f"Error getting market chart: {e}")
+        logger.exception("Error getting market chart")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/charts/signals/{symbol}")
 async def get_signals_chart(
     symbol: str,
-    strategy: Optional[str] = None,
-    start_time: Optional[str] = None,
-    end_time: Optional[str] = None,
+    strategy: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
 ):
     """Get trading signals overlaid on price chart"""
     try:
         if chart_service is None:
-            raise HTTPException(status_code=503, detail="Chart service not available")
+            raise HTTPException(
+                status_code=503,
+                detail="Chart service not available")
 
-        data = await chart_service.get_signals_chart(
+        return await chart_service.get_signals_chart(
             symbol=symbol, strategy=strategy, start_time=start_time, end_time=end_time
         )
-        return data
     except Exception as e:
-        logger.error(f"Error getting signals chart: {e}")
+        logger.exception("Error getting signals chart")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -220,7 +231,9 @@ async def get_telegram_signals(symbol: str, hours: int = 24, limit: int = 100):
     """Get Telegram signals for a specific symbol"""
     try:
         if data_manager is None or not data_manager.postgres_pool:
-            raise HTTPException(status_code=503, detail="Data manager not available")
+            raise HTTPException(
+                status_code=503,
+                detail="Data manager not available")
 
         async with data_manager.postgres_pool.acquire() as conn:
             query = """
@@ -289,7 +302,7 @@ async def get_telegram_signals(symbol: str, hours: int = 24, limit: int = 100):
             return {"signals": signals}
 
     except Exception as e:
-        logger.error(f"Error getting Telegram signals: {e}")
+        logger.exception("Error getting Telegram signals")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -298,12 +311,13 @@ async def get_performance_chart(period: str = "24h", metric: str = "pnl"):
     """Get portfolio performance chart"""
     try:
         if chart_service is None:
-            raise HTTPException(status_code=503, detail="Chart service not available")
+            raise HTTPException(
+                status_code=503,
+                detail="Chart service not available")
 
-        data = await chart_service.get_performance_chart(period=period, metric=metric)
-        return data
+        return await chart_service.get_performance_chart(period=period, metric=metric)
     except Exception as e:
-        logger.error(f"Error getting performance chart: {e}")
+        logger.exception("Error getting performance chart")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -312,7 +326,7 @@ async def get_indicators_chart(
     symbol: str,
     indicators: str,  # comma-separated list
     interval: str = "1m",
-    limit: Optional[int] = None,
+    limit: int | None = None,
 ):
     """Get technical indicators chart"""
     try:
@@ -330,14 +344,15 @@ async def get_indicators_chart(
 
         indicator_list = indicators.split(",")
         if chart_service is None:
-            raise HTTPException(status_code=503, detail="Chart service not available")
+            raise HTTPException(
+                status_code=503,
+                detail="Chart service not available")
 
-        data = await chart_service.get_indicators_chart(
+        return await chart_service.get_indicators_chart(
             symbol=symbol, indicators=indicator_list, interval=interval, limit=limit
         )
-        return data
     except Exception as e:
-        logger.error(f"Error getting indicators chart: {e}")
+        logger.exception("Error getting indicators chart")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -358,17 +373,16 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     await websocket_hub.subscribe_client(
                         client_id, data.get("channel"), data.get("params", {})
                     )
-            elif data.get("action") == "unsubscribe":
-                if websocket_hub is not None:
-                    await websocket_hub.unsubscribe_client(
-                        client_id, data.get("channel")
-                    )
+            elif data.get("action") == "unsubscribe" and websocket_hub is not None:
+                await websocket_hub.unsubscribe_client(
+                    client_id, data.get("channel")
+                )
 
     except WebSocketDisconnect:
         if websocket_hub is not None:
             await websocket_hub.disconnect(client_id)
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+    except Exception:
+        logger.exception("WebSocket error")
         if websocket_hub is not None:
             await websocket_hub.disconnect(client_id)
 
@@ -380,7 +394,7 @@ async def get_available_symbols():
         symbols = await data_manager.get_available_symbols()
         return {"symbols": symbols}
     except Exception as e:
-        logger.error(f"Error getting available symbols: {e}")
+        logger.exception("Error getting available symbols")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -393,8 +407,8 @@ async def get_configured_symbols():
 
         return {"symbols": SYMBOLS}
 
-    except Exception as e:
-        logger.error(f"Error getting configured symbols: {e}")
+    except Exception:
+        logger.exception("Error getting configured symbols")
         # Fallback avec symboles par défaut en cas d'erreur
         default_symbols = [
             "BTCUSDC",
@@ -417,7 +431,9 @@ async def get_trading_opportunity(symbol: str):
     """Get manual trading opportunity analysis for a specific symbol"""
     try:
         if data_manager is None or not data_manager.postgres_pool:
-            raise HTTPException(status_code=503, detail="Data manager not available")
+            raise HTTPException(
+                status_code=503,
+                detail="Data manager not available")
 
         if opportunity_calculator is None:
             raise HTTPException(
@@ -435,7 +451,8 @@ async def get_trading_opportunity(symbol: str):
             """
             signals_data = await conn.fetchrow(signals_query, symbol)
 
-            # Récupérer TOUTES les données techniques pertinentes (1m pour signal, 5m pour contexte)
+            # Récupérer TOUTES les données techniques pertinentes (1m pour
+            # signal, 5m pour contexte)
             analyzer_query = """
                 SELECT
                     -- Data Quality & Performance
@@ -520,8 +537,10 @@ async def get_trading_opportunity(symbol: str):
             current_price = float(price_data["close"])
 
             # Convertir les données DB en dict
-            analyzer_dict_1m = dict(analyzer_data_1m) if analyzer_data_1m else {}
-            analyzer_dict_5m = dict(analyzer_data_5m) if analyzer_data_5m else None
+            analyzer_dict_1m = dict(
+                analyzer_data_1m) if analyzer_data_1m else {}
+            analyzer_dict_5m = dict(
+                analyzer_data_5m) if analyzer_data_5m else None
             signals_dict = dict(signals_data) if signals_data else {}
 
             # Récupérer les 10 dernières périodes 1m pour early detector
@@ -541,7 +560,8 @@ async def get_trading_opportunity(symbol: str):
                 else None
             )
 
-            # Fallback: Si nearest_resistance/support manquant, récupérer dernière valeur connue
+            # Fallback: Si nearest_resistance/support manquant, récupérer
+            # dernière valeur connue
             if (
                 analyzer_dict_1m.get("nearest_resistance") is None
                 or analyzer_dict_1m.get("nearest_support") is None
@@ -567,7 +587,8 @@ async def get_trading_opportunity(symbol: str):
                             fallback_data["nearest_support"]
                         )
 
-            # Calculer l'opportunité via le calculateur PRO (avec contexte 5m + early detection)
+            # Calculer l'opportunité via le calculateur PRO (avec contexte 5m +
+            # early detection)
             opportunity = opportunity_calculator.calculate_opportunity(
                 symbol=symbol,
                 current_price=current_price,
@@ -580,13 +601,16 @@ async def get_trading_opportunity(symbol: str):
             # Convertir en dict pour l'API
             response_data = opportunity_calculator.to_dict(opportunity)
 
-            # Envoyer notification Telegram pour BUY_NOW, BUY_DCA et EARLY_ENTRY
+            # Envoyer notification Telegram pour BUY_NOW, BUY_DCA et
+            # EARLY_ENTRY
             if opportunity.action in ["BUY_NOW", "BUY_DCA", "EARLY_ENTRY"]:
                 try:
                     import psycopg2
+
                     from notifications.telegram_service import get_notifier
 
-                    # Créer une connexion psycopg2 synchrone pour TelegramNotifier
+                    # Créer une connexion psycopg2 synchrone pour
+                    # TelegramNotifier
                     db_config = {
                         "host": os.getenv("DB_HOST", "db"),
                         "port": int(os.getenv("DB_PORT", "5432")),
@@ -625,7 +649,8 @@ async def get_trading_opportunity(symbol: str):
                         stop_loss=opportunity.stop_loss,
                         reason="\n".join(opportunity.reasons),
                         momentum=analyzer_dict_1m.get("adx_14", 0),
-                        volume_ratio=analyzer_dict_1m.get("relative_volume", 1.0),
+                        volume_ratio=analyzer_dict_1m.get(
+                            "relative_volume", 1.0),
                         regime=opportunity.market_regime,
                         estimated_hold_time=opportunity.estimated_hold_time,
                         grade=opportunity.score.grade,
@@ -655,7 +680,7 @@ async def get_trading_opportunity(symbol: str):
             return response_data
 
     except Exception as e:
-        logger.error(f"Error getting trading opportunity for {symbol}: {e}")
+        logger.exception("Error getting trading opportunity for {symbol}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -667,7 +692,9 @@ async def get_automatic_signals(symbol: str):
     """
     try:
         if data_manager is None or not data_manager.postgres_pool:
-            raise HTTPException(status_code=503, detail="Data manager not available")
+            raise HTTPException(
+                status_code=503,
+                detail="Data manager not available")
 
         async with data_manager.postgres_pool.acquire() as conn:
             # Récupérer les signaux validés récents (dernières 15 minutes)
@@ -713,7 +740,8 @@ async def get_automatic_signals(symbol: str):
 
                 # Récupérer métadonnées du signal le plus récent
                 if signal == signals[0] and signal["metadata"]:
-                    # Parser JSON si c'est une string, sinon utiliser directement
+                    # Parser JSON si c'est une string, sinon utiliser
+                    # directement
                     try:
                         if isinstance(signal["metadata"], str):
                             metadata_latest = json.loads(signal["metadata"])
@@ -739,7 +767,8 @@ async def get_automatic_signals(symbol: str):
             )
 
             # Status validé si consensus fort (au moins 3 stratégies)
-            validated = strategies_count >= 3 and abs(buy_count - sell_count) >= 2
+            validated = strategies_count >= 3 and abs(
+                buy_count - sell_count) >= 2
 
             return {
                 "symbol": symbol,
@@ -765,7 +794,7 @@ async def get_automatic_signals(symbol: str):
             }
 
     except Exception as e:
-        logger.error(f"Error getting automatic signals for {symbol}: {e}")
+        logger.exception("Error getting automatic signals for {symbol}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -802,10 +831,9 @@ async def get_global_statistics():
                 status_code=503, detail="Statistics service not available"
             )
 
-        stats = await statistics_service.get_global_statistics()
-        return stats
+        return await statistics_service.get_global_statistics()
     except Exception as e:
-        logger.error(f"Error getting global statistics: {e}")
+        logger.exception("Error getting global statistics")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -818,10 +846,9 @@ async def get_all_symbols_statistics():
                 status_code=503, detail="Statistics service not available"
             )
 
-        stats = await statistics_service.get_all_symbols_statistics()
-        return stats
+        return await statistics_service.get_all_symbols_statistics()
     except Exception as e:
-        logger.error(f"Error getting all symbols statistics: {e}")
+        logger.exception("Error getting all symbols statistics")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -834,10 +861,9 @@ async def get_symbol_statistics(symbol: str):
                 status_code=503, detail="Statistics service not available"
             )
 
-        stats = await statistics_service.get_symbol_statistics(symbol)
-        return stats
+        return await statistics_service.get_symbol_statistics(symbol)
     except Exception as e:
-        logger.error(f"Error getting symbol statistics: {e}")
+        logger.exception("Error getting symbol statistics")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -865,12 +891,11 @@ async def get_performance_history(period: str = "7d", interval: str = "1h"):
                 detail=f"Invalid interval. Must be one of: {valid_intervals}",
             )
 
-        history = await statistics_service.get_performance_history(period, interval)
-        return history
+        return await statistics_service.get_performance_history(period, interval)
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting performance history: {e}")
+        logger.exception("Error getting performance history")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -883,10 +908,9 @@ async def get_strategy_comparison():
                 status_code=503, detail="Statistics service not available"
             )
 
-        comparison = await statistics_service.get_strategy_comparison()
-        return comparison
+        return await statistics_service.get_strategy_comparison()
     except Exception as e:
-        logger.error(f"Error getting strategy comparison: {e}")
+        logger.exception("Error getting strategy comparison")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -895,14 +919,16 @@ async def get_ema_sentiment(timeframe: str = "1m", limit: int = 100):
     """Get EMA alignment sentiment across all symbols"""
     try:
         if data_manager is None or not data_manager.postgres_pool:
-            raise HTTPException(status_code=503, detail="Data manager not available")
+            raise HTTPException(
+                status_code=503,
+                detail="Data manager not available")
 
         # Récupérer les symboles actifs depuis .env TRADING_SYMBOLS
         trading_symbols_env = os.getenv("TRADING_SYMBOLS", "")
         if not trading_symbols_env:
             raise HTTPException(
-                status_code=500, detail="TRADING_SYMBOLS not configured in .env"
-            )
+                status_code=500,
+                detail="TRADING_SYMBOLS not configured in .env")
         active_symbols = [s.strip() for s in trading_symbols_env.split(",")]
 
         async with data_manager.postgres_pool.acquire() as conn:
@@ -1067,13 +1093,14 @@ async def get_ema_sentiment(timeframe: str = "1m", limit: int = 100):
             }
 
     except Exception as e:
-        logger.error(f"Error getting EMA sentiment: {e}")
+        logger.exception("Error getting EMA sentiment")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/top-signals")
 async def get_top_signals(
-    timeframe_minutes: int = 180,  # MODIFIÉ: 180min (3h) au lieu de 15min pour capter tous signaux actifs
+    # MODIFIÉ: 180min (3h) au lieu de 15min pour capter tous signaux actifs
+    timeframe_minutes: int = 180,
     limit: int = 50,
 ):
     """Get all trading signals ranked by net signal strength (BUY - SELL)
@@ -1082,7 +1109,9 @@ async def get_top_signals(
     """
     try:
         if data_manager is None or not data_manager.postgres_pool:
-            raise HTTPException(status_code=503, detail="Data manager not available")
+            raise HTTPException(
+                status_code=503,
+                detail="Data manager not available")
 
         async with data_manager.postgres_pool.acquire() as conn:
             query = """
@@ -1133,7 +1162,8 @@ async def get_top_signals(
             top_signals = []
             for row in rows:
                 net = row["net_signal"]
-                dominant_side = "BUY" if net > 0 else ("SELL" if net < 0 else "NEUTRAL")
+                dominant_side = "BUY" if net > 0 else (
+                    "SELL" if net < 0 else "NEUTRAL")
 
                 top_signals.append(
                     {
@@ -1152,27 +1182,30 @@ async def get_top_signals(
                     }
                 )
 
-            return {"signals": top_signals, "timeframe_minutes": timeframe_minutes}
+            return {"signals": top_signals,
+                    "timeframe_minutes": timeframe_minutes}
     except Exception as e:
-        logger.error(f"Error getting top signals: {e}")
+        logger.exception("Error getting top signals")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/trade-cycles")
 async def get_trade_cycles(
-    symbol: Optional[str] = None, status: Optional[str] = None, limit: int = 100
+    symbol: str | None = None, status: str | None = None, limit: int = 100
 ):
     """Get trade cycles from database"""
     try:
         if data_manager is None:
-            raise HTTPException(status_code=503, detail="Data service not available")
+            raise HTTPException(
+                status_code=503,
+                detail="Data service not available")
 
         cycles = await data_manager.get_trade_cycles(
             symbol=symbol, status=status, limit=limit
         )
         return {"cycles": cycles}
     except Exception as e:
-        logger.error(f"Error getting trade cycles: {e}")
+        logger.exception("Error getting trade cycles")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1193,20 +1226,17 @@ async def proxy_portfolio(path: str, request: Request):
         portfolio_url += f"?{query_string}"
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                portfolio_url, timeout=aiohttp.ClientTimeout(total=10)
-            ) as response:
-                if response.content_type == "application/json":
-                    data = await response.json()
-                    return data
-                else:
-                    text = await response.text()
-                    return {"data": text}
+        async with aiohttp.ClientSession() as session, session.get(
+            portfolio_url, timeout=aiohttp.ClientTimeout(total=10)
+        ) as response:
+            if response.content_type == "application/json":
+                return await response.json()
+            text = await response.text()
+            return {"data": text}
     except Exception as e:
-        logger.error(f"Error proxying to portfolio service: {e}")
+        logger.exception("Error proxying to portfolio service")
         raise HTTPException(
-            status_code=503, detail=f"Portfolio service unavailable: {str(e)}"
+            status_code=503, detail=f"Portfolio service unavailable: {e!s}"
         )
 
 
@@ -1222,20 +1252,17 @@ async def proxy_trader(path: str, request: Request):
         trader_url += f"?{query_string}"
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                trader_url, timeout=aiohttp.ClientTimeout(total=10)
-            ) as response:
-                if response.content_type == "application/json":
-                    data = await response.json()
-                    return data
-                else:
-                    text = await response.text()
-                    return {"data": text}
+        async with aiohttp.ClientSession() as session, session.get(
+            trader_url, timeout=aiohttp.ClientTimeout(total=10)
+        ) as response:
+            if response.content_type == "application/json":
+                return await response.json()
+            text = await response.text()
+            return {"data": text}
     except Exception as e:
-        logger.error(f"Error proxying to trader service: {e}")
+        logger.exception("Error proxying to trader service")
         raise HTTPException(
-            status_code=503, detail=f"Trader service unavailable: {str(e)}"
+            status_code=503, detail=f"Trader service unavailable: {e!s}"
         )
 
 
@@ -1252,27 +1279,24 @@ async def proxy_trader_post(path: str, request: Request):
     trader_url = f"http://trader:5002/{path}"
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                trader_url,
-                data=body,
-                headers={
-                    k: v
-                    for k, v in headers.items()
-                    if k.lower() not in ["host", "content-length"]
-                },
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as response:
-                if response.content_type == "application/json":
-                    data = await response.json()
-                    return data
-                else:
-                    text = await response.text()
-                    return {"data": text}
+        async with aiohttp.ClientSession() as session, session.post(
+            trader_url,
+            data=body,
+            headers={
+                k: v
+                for k, v in headers.items()
+                if k.lower() not in ["host", "content-length"]
+            },
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as response:
+            if response.content_type == "application/json":
+                return await response.json()
+            text = await response.text()
+            return {"data": text}
     except Exception as e:
-        logger.error(f"Error proxying POST to trader service: {e}")
+        logger.exception("Error proxying POST to trader service")
         raise HTTPException(
-            status_code=503, detail=f"Trader service unavailable: {str(e)}"
+            status_code=503, detail=f"Trader service unavailable: {e!s}"
         )
 
 
@@ -1289,27 +1313,24 @@ async def proxy_portfolio_post(path: str, request: Request):
     portfolio_url = f"http://portfolio:8000/{path}"
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                portfolio_url,
-                data=body,
-                headers={
-                    k: v
-                    for k, v in headers.items()
-                    if k.lower() not in ["host", "content-length"]
-                },
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as response:
-                if response.content_type == "application/json":
-                    data = await response.json()
-                    return data
-                else:
-                    text = await response.text()
-                    return {"data": text}
+        async with aiohttp.ClientSession() as session, session.post(
+            portfolio_url,
+            data=body,
+            headers={
+                k: v
+                for k, v in headers.items()
+                if k.lower() not in ["host", "content-length"]
+            },
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as response:
+            if response.content_type == "application/json":
+                return await response.json()
+            text = await response.text()
+            return {"data": text}
     except Exception as e:
-        logger.error(f"Error proxying POST to portfolio service: {e}")
+        logger.exception("Error proxying POST to portfolio service")
         raise HTTPException(
-            status_code=503, detail=f"Portfolio service unavailable: {str(e)}"
+            status_code=503, detail=f"Portfolio service unavailable: {e!s}"
         )
 
 
@@ -1319,7 +1340,7 @@ if serve_react_app_flag:
     @app.get("/", response_class=HTMLResponse)
     async def serve_react_app(request: Request):
         """Serve React app"""
-        with open(f"{frontend_build_path}/index.html", "r") as f:
+        with open(f"{frontend_build_path}/index.html") as f:
             return HTMLResponse(content=f.read())
 
     @app.get("/{path:path}", response_class=HTMLResponse)
@@ -1330,7 +1351,7 @@ if serve_react_app_flag:
             from fastapi import HTTPException
 
             raise HTTPException(status_code=404, detail="Not found")
-        with open(f"{frontend_build_path}/index.html", "r") as f:
+        with open(f"{frontend_build_path}/index.html") as f:
             return HTMLResponse(content=f.read())
 
 

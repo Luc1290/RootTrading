@@ -2,9 +2,10 @@
 CCI_Reversal_Strategy - Stratégie basée sur le CCI et les indicateurs pré-calculés.
 """
 
-from typing import Dict, Any, Optional
-from .base_strategy import BaseStrategy
 import logging
+from typing import Any
+
+from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,8 @@ class CCI_Reversal_Strategy(BaseStrategy):
     - SELL: CCI en zone de surachat avec conditions favorables
     """
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres CCI durcis pour crypto intraday
         self.oversold_level = -150  # Zone survente stricte (crypto adapté)
@@ -27,7 +29,8 @@ class CCI_Reversal_Strategy(BaseStrategy):
         self.extreme_overbought = 200  # Extrême vraiment extrême
 
         # Paramètres de validation temporelle - SIMPLIFIÉS (STATELESS)
-        self.min_cci_persistence = 0  # Pas de persistance requise (crypto 3m rapide)
+        # Pas de persistance requise (crypto 3m rapide)
+        self.min_cci_persistence = 0
         # self.cci_history supprimé pour rendre la stratégie stateless
         # self.max_history_size supprimé
 
@@ -39,7 +42,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
             "extreme": 1.5,  # Très strict en volatilité extrême
         }
 
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
         return {
             "cci_20": self.indicators.get("cci_20"),
@@ -53,14 +56,17 @@ class CCI_Reversal_Strategy(BaseStrategy):
             "market_regime": self.indicators.get("market_regime"),
             "regime_strength": self.indicators.get("regime_strength"),
             "volatility_regime": self.indicators.get("volatility_regime"),
-            "volume_ratio": self.indicators.get("volume_ratio"),  # Ajout volume
-            "rsi_14": self.indicators.get("rsi_14"),  # Ajout RSI pour confirmation
+            # Ajout volume
+            "volume_ratio": self.indicators.get("volume_ratio"),
+            # Ajout RSI pour confirmation
+            "rsi_14": self.indicators.get("rsi_14"),
         }
 
     # Méthodes d'historique CCI supprimées - stratégie stateless
     # Pas de persistance temporelle requise en crypto 3m
 
-    def _get_adjusted_thresholds(self, volatility_regime: str) -> Dict[str, float]:
+    def _get_adjusted_thresholds(
+            self, volatility_regime: str) -> dict[str, float]:
         """Ajuste les seuils selon le régime de volatilité."""
         adjustment = self.volatility_adjustment.get(volatility_regime, 1.0)
         return {
@@ -70,7 +76,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
             "extreme_overbought": self.extreme_overbought * adjustment,
         }
 
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """
         Génère un signal basé sur le CCI et les indicateurs pré-calculés.
         """
@@ -164,7 +170,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
                             "momentum_score": momentum_score,
                         },
                     }
-                elif signal_side == "SELL" and momentum_score > 70:
+                if signal_side == "SELL" and momentum_score > 70:
                     return {
                         "side": None,
                         "confidence": 0.0,
@@ -190,7 +196,8 @@ class CCI_Reversal_Strategy(BaseStrategy):
 
             # Utilisation du trend_strength
             trend_strength_raw = values.get("trend_strength")
-            if trend_strength_raw and str(trend_strength_raw).lower() in ["strong"]:
+            if trend_strength_raw and str(
+                    trend_strength_raw).lower() in ["strong"]:
                 confidence_boost += 0.1
                 reason += f" et tendance {str(trend_strength_raw).lower()}"
 
@@ -238,7 +245,8 @@ class CCI_Reversal_Strategy(BaseStrategy):
                 confidence_boost += 0.08
                 reason += " avec confluence solide"
 
-            # Utilisation du pattern_detected et pattern_confidence avec conversion sécurisée
+            # Utilisation du pattern_detected et pattern_confidence avec
+            # conversion sécurisée
             pattern_detected = values.get("pattern_detected")
             pattern_confidence_raw = values.get("pattern_confidence")
             pattern_confidence = 0.0
@@ -260,16 +268,15 @@ class CCI_Reversal_Strategy(BaseStrategy):
                 market_regime
                 and regime_strength_raw
                 and str(regime_strength_raw).upper() in ["STRONG"]
-            ):
-                if (
-                    signal_side == "BUY"
-                    and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]
-                ) or (
-                    signal_side == "SELL"
-                    and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]
-                ):
-                    confidence_boost += 0.1
-                    reason += f" en régime {market_regime}"
+            ) and ((
+                signal_side == "BUY"
+                and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]
+            ) or (
+                signal_side == "SELL"
+                and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]
+            )):
+                confidence_boost += 0.1
+                reason += f" en régime {market_regime}"
 
             # Validation RSI avec rejets contradictoires
             rsi_raw = values.get("rsi_14")
@@ -283,15 +290,19 @@ class CCI_Reversal_Strategy(BaseStrategy):
                             "confidence": 0.0,
                             "strength": "weak",
                             "reason": f"Rejet BUY: RSI trop haut ({rsi:.1f}) pour reversal",
-                            "metadata": {"strategy": self.name, "rsi": rsi},
+                            "metadata": {
+                                "strategy": self.name,
+                                "rsi": rsi},
                         }
-                    elif signal_side == "SELL" and rsi < 35:
+                    if signal_side == "SELL" and rsi < 35:
                         return {
                             "side": None,
                             "confidence": 0.0,
                             "strength": "weak",
                             "reason": f"Rejet SELL: RSI trop bas ({rsi:.1f}) pour reversal",
-                            "metadata": {"strategy": self.name, "rsi": rsi},
+                            "metadata": {
+                                "strategy": self.name,
+                                "rsi": rsi},
                         }
 
                     # Confirmations RSI
@@ -319,7 +330,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
                                 "volume_ratio": volume_ratio,
                             },
                         }
-                    elif volume_ratio > 1.5:
+                    if volume_ratio > 1.5:
                         confidence_boost += 0.08
                         reason += " avec volume élevé"
                 except (ValueError, TypeError):
@@ -348,8 +359,10 @@ class CCI_Reversal_Strategy(BaseStrategy):
 
             # Calcul final avec plafond et clamp strict
             total_boost = min(confidence_boost, 0.30)  # Boost total réduit
-            confidence = self.calculate_confidence(base_confidence, 1 + total_boost)
-            confidence = min(1.0, max(0.0, confidence))  # Clamp explicite [0,1]
+            confidence = self.calculate_confidence(
+                base_confidence, 1 + total_boost)
+            # Clamp explicite [0,1]
+            confidence = min(1.0, max(0.0, confidence))
 
             # Filtre final : confidence minimum élevé
             if confidence < 0.45:  # Seuil plus strict pour qualité

@@ -4,14 +4,14 @@ Expose des endpoints pour interagir avec le système de trading.
 """
 
 import logging
-import threading
-import psutil  # type: ignore[import-untyped]
 import os
-from flask import Flask
-from typing import Optional
+import threading
 
-from trader.src.trading.order_manager import OrderManager
+import psutil  # type: ignore[import-untyped]
+from flask import Flask
+
 from trader.src.api.routes import register_routes
+from trader.src.trading.order_manager import OrderManager
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ class RestApiServer:
         self.port = port
         self.process = psutil.Process(os.getpid())
         self.app = Flask(__name__)
-        self.api_thread: Optional[threading.Thread] = None
+        self.api_thread: threading.Thread | None = None
 
         # Configurer les routes via le module routes.py
         register_routes(self.app, self.order_manager)

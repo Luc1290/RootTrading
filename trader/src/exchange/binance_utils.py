@@ -3,19 +3,20 @@
 Fonctions utilitaires pour interagir avec l'API Binance.
 Contient les fonctions de bas niveau pour les requêtes, signatures, etc.
 """
+import hashlib
+import hmac
 import logging
 import time
-import hmac
-import hashlib
 import uuid
-import requests  # type: ignore
-from decimal import getcontext
-from urllib.parse import urlencode
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Tuple
+from decimal import getcontext
+from typing import Any
+from urllib.parse import urlencode
+
+import requests  # type: ignore
 
 from shared.src.enums import OrderSide, OrderStatus
-from shared.src.schemas import TradeOrder, TradeExecution
+from shared.src.schemas import TradeExecution, TradeOrder
 
 # Configuration de la précision décimale
 getcontext().prec = 28  # 28 chiffres significatifs suffisent largement
@@ -26,8 +27,6 @@ logger = logging.getLogger(__name__)
 
 class BinanceAPIError(Exception):
     """Exception personnalisée pour les erreurs de l'API Binance."""
-
-    pass
 
 
 class BinanceUtils:
@@ -73,7 +72,8 @@ class BinanceUtils:
             logger.info(f"⏱️ Décalage temporel avec Binance: {offset} ms")
             return offset
         except Exception as e:
-            logger.warning(f"⚠️ Impossible de calculer le décalage temporel: {str(e)}")
+            logger.warning(
+                f"⚠️ Impossible de calculer le décalage temporel: {e!s}")
             return 0
 
     def check_connectivity(self, demo_mode: bool = False) -> bool:
@@ -96,7 +96,7 @@ class BinanceUtils:
             if not demo_mode:
                 account_url = f"{self.BASE_URL}{self.API_V3}/account"
                 timestamp = int(time.time() * 1000)
-                params: Dict[str, Any] = {"timestamp": timestamp}
+                params: dict[str, Any] = {"timestamp": timestamp}
                 params["signature"] = self.generate_signature(params)
 
                 response = self.session.get(account_url, params=params)
@@ -116,12 +116,12 @@ class BinanceUtils:
             return True
 
         except Exception as e:
-            logger.error(f"❌ Erreur de connexion à Binance: {str(e)}")
+            logger.exception("❌ Erreur de connexion à Binance")
             if hasattr(e, "response") and e.response:
-                logger.error(f"Réponse: {e.response.text}")
+                logger.exception(f"Réponse: {e.response.text}")
             return False
 
-    def generate_signature(self, params: Dict[str, Any]) -> str:
+    def generate_signature(self, params: dict[str, Any]) -> str:
         """
         Génère une signature HMAC-SHA256 pour authentifier les requêtes vers l'API Binance.
 
@@ -151,18 +151,18 @@ class BinanceUtils:
 
             # Encoder les paramètres en query string
             query_string = urlencode(processed_params)
-            # logger.debug(f"Génération de signature pour: {query_string}")  # Commenté pour réduire le bruit dans les logs
+            # logger.debug(f"Génération de signature pour: {query_string}")  #
+            # Commenté pour réduire le bruit dans les logs
 
             # Générer la signature HMAC-SHA256
-            signature = hmac.new(
+            return hmac.new(
                 self.api_secret.encode("utf-8"),
                 query_string.encode("utf-8"),
                 hashlib.sha256,
             ).hexdigest()
 
-            return signature
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la génération de la signature: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur lors de la génération de la signature")
             raise
 
     def notify_order_failure(self, error, order_params, client_order_id=None):
@@ -178,7 +178,8 @@ class BinanceUtils:
             # Extraire le cycle_id de manière plus fiable
             cycle_id = None
 
-            # Si le client_order_id est fourni et commence par "entry_", extraire le cycle_id
+            # Si le client_order_id est fourni et commence par "entry_",
+            # extraire le cycle_id
             if client_order_id and client_order_id.startswith("entry_"):
                 cycle_id = client_order_id.replace("entry_", "")
             # Sinon, essayer d'obtenir le newClientOrderId des paramètres
@@ -198,8 +199,9 @@ class BinanceUtils:
                 "side": order_params.get("side") if order_params else None,
                 "quantity": order_params.get("quantity") if order_params else None,
                 "price": order_params.get("price") if order_params else None,
-                "reason": f"Erreur Binance: {str(error)}",
-                "timestamp": int(time.time() * 1000),
+                "reason": f"Erreur Binance: {error!s}",
+                "timestamp": int(
+                    time.time() * 1000),
             }
 
             try:
@@ -216,14 +218,16 @@ class BinanceUtils:
 
                 redis_client = RedisClient()
                 redis_client.publish("roottrading:order:failed", notification)
-                logger.info(f"✅ Notification d'échec d'ordre envoyée pour {cycle_id}")
+                logger.info(
+                    f"✅ Notification d'échec d'ordre envoyée pour {cycle_id}")
             except Exception as e:
                 logger.warning(
-                    f"⚠️ Impossible d'envoyer la notification Redis: {str(e)}"
+                    f"⚠️ Impossible d'envoyer la notification Redis: {e!s}"
                 )
 
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la notification d'échec d'ordre: {str(e)}")
+        except Exception:
+            logger.exception(
+                "❌ Erreur lors de la notification d'échec d'ordre")
 
     def get_current_price(self, symbol: str) -> float:
         """
@@ -245,23 +249,23 @@ class BinanceUtils:
             return float(data["price"])
 
         except requests.exceptions.RequestException as e:
-            logger.error(
-                f"❌ Erreur lors de la récupération du prix pour {symbol}: {str(e)}"
+            logger.exception(
+                f"❌ Erreur lors de la récupération du prix pour {symbol}: {e!s}"
             )
             if hasattr(e, "response") and e.response:
-                logger.error(f"Réponse: {e.response.text}")
+                logger.exception(f"Réponse: {e.response.text}")
 
-            # En cas d'erreur, utiliser un prix de secours (pourrait être amélioré)
+            # En cas d'erreur, utiliser un prix de secours (pourrait être
+            # amélioré)
             if symbol.startswith("BTC"):
                 return 60000.0
-            elif symbol.startswith("ETH"):
+            if symbol.startswith("ETH"):
                 return 3000.0
-            else:
-                return 100.0  # Valeur par défaut
+            return 100.0  # Valeur par défaut
 
     def prepare_order_params(
         self, order: TradeOrder, time_offset: int = 0
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Prépare les paramètres d'un ordre pour envoi à Binance.
 
@@ -276,7 +280,9 @@ class BinanceUtils:
         client_order_id = order.client_order_id or f"root_{uuid.uuid4().hex[:16]}"
 
         # Convertir side en string si c'est un enum
-        side_str = order.side.value if hasattr(order.side, "value") else str(order.side)
+        side_str = order.side.value if hasattr(
+            order.side, "value") else str(
+            order.side)
 
         # Convertir BUY/SELL vers BUY/SELL pour Binance
         if side_str == "BUY":
@@ -311,7 +317,7 @@ class BinanceUtils:
         logger.debug(f"Paramètres de l'ordre préparés: {params}")
         return params
 
-    def send_order_request(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def send_order_request(self, params: dict[str, Any]) -> dict[str, Any]:
         """
         Envoie une requête d'ordre à Binance.
 
@@ -344,7 +350,8 @@ class BinanceUtils:
                     )
                 except (ValueError, KeyError, TypeError):
                     error_msg = f"HTTP {response.status_code}"
-                    logger.error(f"Erreur Binance {response.status_code}: {error_msg}")
+                    logger.exception(
+                        f"Erreur Binance {response.status_code}: {error_msg}")
 
                 self.notify_order_failure(
                     error_msg, params, params.get("newClientOrderId")
@@ -355,15 +362,17 @@ class BinanceUtils:
             return response.json()
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Erreur lors de l'exécution: {str(e)}")
+            logger.exception("❌ Erreur lors de l'exécution")
             if hasattr(e, "response") and e.response:
-                logger.error(f"Réponse: {e.response.text}")
+                logger.exception(f"Réponse: {e.response.text}")
 
             # Notifier l'échec
-            self.notify_order_failure(e, params, params.get("newClientOrderId"))
-            raise BinanceAPIError(f"Erreur de requête Binance: {str(e)}")
+            self.notify_order_failure(
+                e, params, params.get("newClientOrderId"))
+            raise BinanceAPIError(f"Erreur de requête Binance: {e!s}")
 
-    def create_execution_from_response(self, data: Dict[str, Any]) -> TradeExecution:
+    def create_execution_from_response(
+            self, data: dict[str, Any]) -> TradeExecution:
         """
         Crée un objet TradeExecution à partir de la réponse de Binance.
 
@@ -373,7 +382,8 @@ class BinanceUtils:
         Returns:
             Objet TradeExecution
         """
-        # Calculer le prix si l'ordre est MARKET (cumulativeQuoteQty / executedQty)
+        # Calculer le prix si l'ordre est MARKET (cumulativeQuoteQty /
+        # executedQty)
         price = (
             float(data["price"])
             if float(data.get("price", 0)) > 0
@@ -384,7 +394,8 @@ class BinanceUtils:
             )
         )
 
-        # Pour les ordres non encore exécutés, utiliser origQty au lieu de executedQty
+        # Pour les ordres non encore exécutés, utiliser origQty au lieu de
+        # executedQty
         quantity = (
             float(data["executedQty"])
             if float(data.get("executedQty", 0)) > 0
@@ -403,11 +414,13 @@ class BinanceUtils:
             try:
                 side = OrderSide(binance_side)
             except ValueError:
-                # Si la conversion échoue, traiter comme inconnu et logger l'erreur
-                logger.error(
+                # Si la conversion échoue, traiter comme inconnu et logger
+                # l'erreur
+                logger.exception(
                     f"❌ Valeur OrderSide non reconnue de Binance: {binance_side}"
                 )
-                raise ValueError(f"OrderSide invalide reçu de Binance: {binance_side}")
+                raise ValueError(
+                    f"OrderSide invalide reçu de Binance: {binance_side}")
 
         # Créer et retourner l'exécution
         return TradeExecution(
@@ -427,7 +440,7 @@ class BinanceUtils:
 
     def fetch_order_status(
         self, symbol: str, order_id: str, time_offset: int = 0
-    ) -> Optional[TradeExecution]:
+    ) -> TradeExecution | None:
         """
         Récupère le statut d'un ordre sur Binance.
 
@@ -441,13 +454,17 @@ class BinanceUtils:
         """
         # Ne plus vérifier l'ID numérique car les vrais ordres Binance peuvent avoir des IDs élevés
         # La vérification des ordres démo doit se faire ailleurs (dans BinanceExecutor)
-        # logger.debug(f"Vérification order_id: {order_id} (type: {type(order_id)})")  # Commenté pour réduire le bruit dans les logs
+        # logger.debug(f"Vérification order_id: {order_id} (type:
+        # {type(order_id)})")  # Commenté pour réduire le bruit dans les logs
 
         try:
             order_url = f"{self.BASE_URL}{self.API_V3}/order"
             timestamp = int(time.time() * 1000) + time_offset
 
-            params = {"symbol": symbol, "orderId": order_id, "timestamp": timestamp}
+            params = {
+                "symbol": symbol,
+                "orderId": order_id,
+                "timestamp": timestamp}
 
             # Générer la signature
             params["signature"] = self.generate_signature(params)
@@ -483,8 +500,9 @@ class BinanceUtils:
                 try:
                     side = OrderSide(binance_side)
                 except ValueError:
-                    # Si la conversion échoue, traiter comme inconnu et logger l'erreur
-                    logger.error(
+                    # Si la conversion échoue, traiter comme inconnu et logger
+                    # l'erreur
+                    logger.exception(
                         f"❌ Valeur OrderSide non reconnue de Binance: {binance_side}"
                     )
                     raise ValueError(
@@ -492,7 +510,7 @@ class BinanceUtils:
                     )
 
             # Préparer l'objet d'exécution
-            execution = TradeExecution(
+            return TradeExecution(
                 order_id=str(order_response["orderId"]),
                 symbol=order_response["symbol"],
                 side=side,
@@ -509,15 +527,17 @@ class BinanceUtils:
                 demo=False,
             )
 
-            return execution
-
         except Exception as e:
-            logger.error(
-                f"❌ Erreur lors de la récupération du statut de l'ordre: {str(e)}"
+            logger.exception(
+                f"❌ Erreur lors de la récupération du statut de l'ordre: {e!s}"
             )
             return None
 
-    def cancel_order(self, symbol: str, order_id: str, time_offset: int = 0) -> bool:
+    def cancel_order(
+            self,
+            symbol: str,
+            order_id: str,
+            time_offset: int = 0) -> bool:
         """
         Annule un ordre sur Binance.
 
@@ -530,13 +550,17 @@ class BinanceUtils:
             True si l'annulation a réussi, False sinon
         """
         # Ne plus vérifier l'ID numérique car les vrais ordres Binance peuvent avoir des IDs élevés
-        # La vérification des ordres démo doit se faire ailleurs (dans BinanceExecutor)
+        # La vérification des ordres démo doit se faire ailleurs (dans
+        # BinanceExecutor)
 
         try:
             cancel_url = f"{self.BASE_URL}{self.API_V3}/order"
             timestamp = int(time.time() * 1000) + time_offset
 
-            params = {"symbol": symbol, "orderId": order_id, "timestamp": timestamp}
+            params = {
+                "symbol": symbol,
+                "orderId": order_id,
+                "timestamp": timestamp}
 
             # Générer la signature
             params["signature"] = self.generate_signature(params)
@@ -551,9 +575,11 @@ class BinanceUtils:
                 except (ValueError, KeyError, TypeError):
                     error_msg = f"HTTP {response.status_code}"
 
-                logger.error(f"Erreur Binance lors de l'annulation: {error_msg}")
+                logger.error(
+                    f"Erreur Binance lors de l'annulation: {error_msg}")
 
-                # Notifier de l'échec si ce n'est pas une erreur "ordre déjà rempli"
+                # Notifier de l'échec si ce n'est pas une erreur "ordre déjà
+                # rempli"
                 if "FILLED" not in error_msg:
                     self.notify_order_failure(error_msg, params, order_id)
 
@@ -563,7 +589,7 @@ class BinanceUtils:
             return True
 
         except Exception as e:
-            logger.error(f"❌ Erreur lors de l'annulation de l'ordre: {str(e)}")
+            logger.exception("❌ Erreur lors de l'annulation de l'ordre")
 
             # Notifier l'échec d'annulation
             self.notify_order_failure(
@@ -574,7 +600,7 @@ class BinanceUtils:
 
     def fetch_account_balances(
         self, time_offset: int = 0
-    ) -> Dict[str, Dict[str, float]]:
+    ) -> dict[str, dict[str, float]]:
         """
         Récupère les soldes du compte Binance.
 
@@ -588,7 +614,7 @@ class BinanceUtils:
             account_url = f"{self.BASE_URL}{self.API_V3}/account"
             timestamp = int(time.time() * 1000) + time_offset
 
-            params: Dict[str, Any] = {"timestamp": timestamp}
+            params: dict[str, Any] = {"timestamp": timestamp}
             params["signature"] = self.generate_signature(params)
 
             response = self.session.get(account_url, params=params)
@@ -612,13 +638,14 @@ class BinanceUtils:
 
             return balances
 
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la récupération des soldes: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur lors de la récupération des soldes")
 
             # En cas d'erreur, retourner un dictionnaire vide
             return {}
 
-    def fetch_trade_fee(self, symbol: str, time_offset: int = 0) -> Tuple[float, float]:
+    def fetch_trade_fee(self, symbol: str,
+                        time_offset: int = 0) -> tuple[float, float]:
         """
         Récupère les frais de trading pour un symbole.
 
@@ -651,16 +678,16 @@ class BinanceUtils:
             return (0.001, 0.001)
 
         except Exception as e:
-            logger.error(
-                f"❌ Erreur lors de la récupération des frais de trading: {str(e)}"
+            logger.exception(
+                f"❌ Erreur lors de la récupération des frais de trading: {e!s}"
             )
 
             # En cas d'erreur, retourner des frais standard
             return (0.001, 0.001)
 
     def fetch_open_orders(
-        self, symbol: Optional[str] = None, time_offset: int = 0
-    ) -> List[Dict[str, Any]]:
+        self, symbol: str | None = None, time_offset: int = 0
+    ) -> list[dict[str, Any]]:
         """
         Récupère tous les ordres ouverts sur Binance.
 
@@ -675,7 +702,7 @@ class BinanceUtils:
             orders_url = f"{self.BASE_URL}{self.API_V3}/openOrders"
             timestamp = int(time.time() * 1000) + time_offset
 
-            params: Dict[str, Any] = {"timestamp": timestamp}
+            params: dict[str, Any] = {"timestamp": timestamp}
 
             # Ajouter le symbole si spécifié
             if symbol:
@@ -697,16 +724,16 @@ class BinanceUtils:
             return orders
 
         except Exception as e:
-            logger.error(
-                f"❌ Erreur lors de la récupération des ordres ouverts: {str(e)}"
+            logger.exception(
+                f"❌ Erreur lors de la récupération des ordres ouverts: {e!s}"
             )
             if hasattr(e, "response") and e.response:
-                logger.error(f"Réponse: {e.response.text}")
+                logger.exception(f"Réponse: {e.response.text}")
 
             # En cas d'erreur, retourner une liste vide
             return []
 
-    def fetch_exchange_info(self) -> Dict[str, Dict[str, Any]]:
+    def fetch_exchange_info(self) -> dict[str, dict[str, Any]]:
         """
         Récupère les informations de trading pour tous les symboles.
 
@@ -722,7 +749,9 @@ class BinanceUtils:
             symbol_info = {}
             for symbol_data in data.get("symbols", []):
                 symbol_name = symbol_data["symbol"]
-                filters = {f["filterType"]: f for f in symbol_data.get("filters", [])}
+                filters = {
+                    f["filterType"]: f for f in symbol_data.get(
+                        "filters", [])}
 
                 price_filter = filters.get("PRICE_FILTER", {})
                 lot_size_filter = filters.get("LOT_SIZE", {})
@@ -731,14 +760,21 @@ class BinanceUtils:
 
                 info = {}
                 if price_filter:
-                    info["tick_size"] = float(price_filter.get("tickSize", 0.01))
-                    info["min_price"] = float(price_filter.get("minPrice", 0.01))
-                    info["max_price"] = float(price_filter.get("maxPrice", 100000.0))
+                    info["tick_size"] = float(
+                        price_filter.get("tickSize", 0.01))
+                    info["min_price"] = float(
+                        price_filter.get("minPrice", 0.01))
+                    info["max_price"] = float(
+                        price_filter.get("maxPrice", 100000.0))
 
                 if lot_size_filter:
-                    info["step_size"] = float(lot_size_filter.get("stepSize", 0.0001))
-                    info["min_qty"] = float(lot_size_filter.get("minQty", 0.001))
-                    info["max_qty"] = float(lot_size_filter.get("maxQty", 100000.0))
+                    info["step_size"] = float(
+                        lot_size_filter.get("stepSize", 0.0001))
+                    info["min_qty"] = float(
+                        lot_size_filter.get("minQty", 0.001))
+                    info["max_qty"] = float(
+                        lot_size_filter.get(
+                            "maxQty", 100000.0))
 
                 if notional_filter:
                     info["min_notional"] = float(
@@ -757,11 +793,11 @@ class BinanceUtils:
             return symbol_info
 
         except Exception as e:
-            logger.error(
-                f"❌ Erreur lors de la récupération des informations d'échange: {str(e)}"
+            logger.exception(
+                f"❌ Erreur lors de la récupération des informations d'échange: {e!s}"
             )
             # Retourner des informations par défaut pour les symboles courants
-            default_info = {
+            return {
                 "BTCUSDC": {
                     "tick_size": 0.01,
                     "step_size": 0.00001,
@@ -775,11 +811,10 @@ class BinanceUtils:
                     "min_notional": 10.0,
                 },
             }
-            return default_info
 
     def get_my_trades(
         self, symbol: str, limit: int = 100, time_offset: int = 0
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Récupère l'historique des trades pour un symbole.
 
@@ -813,6 +848,6 @@ class BinanceUtils:
             logger.debug(f"📈 Récupéré {len(trades)} trades pour {symbol}")
             return trades
 
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la récupération des trades: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur lors de la récupération des trades")
             return []

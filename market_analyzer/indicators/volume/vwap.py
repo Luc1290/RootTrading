@@ -4,21 +4,21 @@ VWAP (Volume Weighted Average Price) Indicator
 This module provides VWAP calculation for volume-based price analysis.
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
-from typing import List, Optional, Union, Dict
-import logging
 
 logger = logging.getLogger(__name__)
 
 
 def calculate_vwap_quote(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
-    quote_volumes: Union[List[float], np.ndarray, pd.Series],
-    period: Optional[int] = None,
-) -> Optional[float]:
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
+    quote_volumes: list[float] | np.ndarray | pd.Series,
+    period: int | None = None,
+) -> float | None:
     """
     Calculate Volume Weighted Average Price using quote asset volume (USDC).
 
@@ -47,8 +47,10 @@ def calculate_vwap_quote(
 
     # Ensure all arrays have same length
     min_len = min(
-        len(highs_array), len(lows_array), len(closes_array), len(quote_volumes_array)
-    )
+        len(highs_array),
+        len(lows_array),
+        len(closes_array),
+        len(quote_volumes_array))
     if min_len == 0:
         return None
 
@@ -82,12 +84,12 @@ def calculate_vwap_quote(
 
 
 def calculate_vwap(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
-    volumes: Union[List[float], np.ndarray, pd.Series],
-    period: Optional[int] = None,
-) -> Optional[float]:
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
+    volumes: list[float] | np.ndarray | pd.Series,
+    period: int | None = None,
+) -> float | None:
     """
     Calculate Volume Weighted Average Price (VWAP).
 
@@ -117,8 +119,10 @@ def calculate_vwap(
 
     # Ensure all arrays have same length
     min_len = min(
-        len(highs_array), len(lows_array), len(closes_array), len(volumes_array)
-    )
+        len(highs_array),
+        len(lows_array),
+        len(closes_array),
+        len(volumes_array))
     if min_len == 0:
         return None
 
@@ -152,12 +156,12 @@ def calculate_vwap(
 
 
 def calculate_vwap_series(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
-    volumes: Union[List[float], np.ndarray, pd.Series],
-    period: Optional[int] = None,
-) -> List[Optional[float]]:
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
+    volumes: list[float] | np.ndarray | pd.Series,
+    period: int | None = None,
+) -> list[float | None]:
     """
     Calculate VWAP for entire price series.
 
@@ -178,8 +182,10 @@ def calculate_vwap_series(
 
     # Ensure all arrays have same length
     min_len = min(
-        len(highs_array), len(lows_array), len(closes_array), len(volumes_array)
-    )
+        len(highs_array),
+        len(lows_array),
+        len(closes_array),
+        len(volumes_array))
     highs_array = highs_array[-min_len:]
     lows_array = lows_array[-min_len:]
     closes_array = closes_array[-min_len:]
@@ -188,7 +194,7 @@ def calculate_vwap_series(
     # Calculate typical price
     typical_prices = (highs_array + lows_array + closes_array) / 3
 
-    vwap_series: List[Optional[float]] = []
+    vwap_series: list[float | None] = []
 
     for i in range(len(typical_prices)):
         if period is None:
@@ -199,7 +205,8 @@ def calculate_vwap_series(
                 else:
                     vwap_series.append(float(typical_prices[i]))
             else:
-                cumulative_pv = np.sum(typical_prices[: i + 1] * volumes_array[: i + 1])
+                cumulative_pv = np.sum(
+                    typical_prices[: i + 1] * volumes_array[: i + 1])
                 cumulative_volume = np.sum(volumes_array[: i + 1])
 
                 if cumulative_volume == 0:
@@ -207,33 +214,32 @@ def calculate_vwap_series(
                 else:
                     vwap = cumulative_pv / cumulative_volume
                     vwap_series.append(float(vwap))
+        # Rolling VWAP
+        elif i < period - 1:
+            vwap_series.append(None)
         else:
-            # Rolling VWAP
-            if i < period - 1:
+            window_typical = typical_prices[i - period + 1: i + 1]
+            window_volumes = volumes_array[i - period + 1: i + 1]
+
+            window_pv = np.sum(window_typical * window_volumes)
+            window_volume = np.sum(window_volumes)
+
+            if window_volume == 0:
                 vwap_series.append(None)
             else:
-                window_typical = typical_prices[i - period + 1 : i + 1]
-                window_volumes = volumes_array[i - period + 1 : i + 1]
-
-                window_pv = np.sum(window_typical * window_volumes)
-                window_volume = np.sum(window_volumes)
-
-                if window_volume == 0:
-                    vwap_series.append(None)
-                else:
-                    vwap = window_pv / window_volume
-                    vwap_series.append(float(vwap))
+                vwap = window_pv / window_volume
+                vwap_series.append(float(vwap))
 
     return vwap_series
 
 
 def calculate_vwap_quote_series(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
-    quote_volumes: Union[List[float], np.ndarray, pd.Series],
-    period: Optional[int] = None,
-) -> List[Optional[float]]:
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
+    quote_volumes: list[float] | np.ndarray | pd.Series,
+    period: int | None = None,
+) -> list[float | None]:
     """
     Calculate Quote VWAP series using quote asset volume.
 
@@ -254,8 +260,10 @@ def calculate_vwap_quote_series(
 
     # Ensure all arrays have same length
     min_len = min(
-        len(highs_array), len(lows_array), len(closes_array), len(quote_volumes_array)
-    )
+        len(highs_array),
+        len(lows_array),
+        len(closes_array),
+        len(quote_volumes_array))
     if min_len == 0:
         return []
 
@@ -267,7 +275,7 @@ def calculate_vwap_quote_series(
     # Calculate typical price
     typical_prices = (highs_array + lows_array + closes_array) / 3
 
-    vwap_series: List[Optional[float]] = []
+    vwap_series: list[float | None] = []
 
     for i in range(len(typical_prices)):
         if period is None:
@@ -288,34 +296,33 @@ def calculate_vwap_quote_series(
                 else:
                     vwap = cumulative_pv / cumulative_volume
                     vwap_series.append(float(vwap))
+        # Rolling VWAP
+        elif i < period - 1:
+            vwap_series.append(None)
         else:
-            # Rolling VWAP
-            if i < period - 1:
+            window_typical = typical_prices[i - period + 1: i + 1]
+            window_quote_volumes = quote_volumes_array[i - period + 1: i + 1]
+
+            window_pv = np.sum(window_typical * window_quote_volumes)
+            window_volume = np.sum(window_quote_volumes)
+
+            if window_volume == 0:
                 vwap_series.append(None)
             else:
-                window_typical = typical_prices[i - period + 1 : i + 1]
-                window_quote_volumes = quote_volumes_array[i - period + 1 : i + 1]
-
-                window_pv = np.sum(window_typical * window_quote_volumes)
-                window_volume = np.sum(window_quote_volumes)
-
-                if window_volume == 0:
-                    vwap_series.append(None)
-                else:
-                    vwap = window_pv / window_volume
-                    vwap_series.append(float(vwap))
+                vwap = window_pv / window_volume
+                vwap_series.append(float(vwap))
 
     return vwap_series
 
 
 def calculate_vwap_bands(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
-    volumes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
+    volumes: list[float] | np.ndarray | pd.Series,
     std_multiplier: float = 1.0,
-    period: Optional[int] = None,
-) -> Dict[str, Optional[float]]:
+    period: int | None = None,
+) -> dict[str, float | None]:
     """
     Calculate VWAP with standard deviation bands.
 
@@ -341,8 +348,10 @@ def calculate_vwap_bands(
     volumes_array = _to_numpy_array(volumes)
 
     min_len = min(
-        len(highs_array), len(lows_array), len(closes_array), len(volumes_array)
-    )
+        len(highs_array),
+        len(lows_array),
+        len(closes_array),
+        len(volumes_array))
     typical_prices = (
         highs_array[-min_len:] + lows_array[-min_len:] + closes_array[-min_len:]
     ) / 3
@@ -364,7 +373,8 @@ def calculate_vwap_bands(
     if total_volume == 0:
         return {"vwap": vwap, "upper_band": None, "lower_band": None}
 
-    weighted_variance = np.sum(vol_range * (data_range - vwap) ** 2) / total_volume
+    weighted_variance = np.sum(
+        vol_range * (data_range - vwap) ** 2) / total_volume
     vwap_std = np.sqrt(weighted_variance)
 
     upper_band = vwap + (vwap_std * std_multiplier)
@@ -378,12 +388,12 @@ def calculate_vwap_bands(
 
 
 def calculate_anchored_vwap(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
-    volumes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
+    volumes: list[float] | np.ndarray | pd.Series,
     anchor_index: int,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate Anchored VWAP from a specific point.
 
@@ -413,9 +423,9 @@ def calculate_anchored_vwap(
 
 def vwap_signal(
     current_price: float,
-    current_vwap: Optional[float],
-    previous_price: Optional[float] = None,
-    previous_vwap: Optional[float] = None,
+    current_vwap: float | None,
+    previous_price: float | None = None,
+    previous_vwap: float | None = None,
 ) -> str:
     """
     Generate trading signal based on price relative to VWAP.
@@ -454,8 +464,8 @@ def vwap_signal(
 
 
 def calculate_vwap_deviation(
-    current_price: float, vwap: Optional[float]
-) -> Optional[float]:
+    current_price: float, vwap: float | None
+) -> float | None:
     """
     Calculate price deviation from VWAP as percentage.
 
@@ -474,10 +484,10 @@ def calculate_vwap_deviation(
 
 
 def calculate_volume_profile(
-    prices: Union[List[float], np.ndarray, pd.Series],
-    volumes: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
+    volumes: list[float] | np.ndarray | pd.Series,
     num_bins: int = 20,
-) -> Dict[str, List[float]]:
+) -> dict[str, list[float]]:
     """
     Calculate volume profile for price levels.
 
@@ -515,11 +525,13 @@ def calculate_volume_profile(
     # Aggregate volume for each price bin
     for i, price in enumerate(prices_array):
         bin_index = np.digitize(price, price_bins) - 1
-        bin_index = max(0, min(bin_index, num_bins - 1))  # Clamp to valid range
+        # Clamp to valid range
+        bin_index = max(0, min(bin_index, num_bins - 1))
         volume_profile[bin_index] += volumes_array[i]
 
     # Calculate bin centers
-    price_levels = [(price_bins[i] + price_bins[i + 1]) / 2 for i in range(num_bins)]
+    price_levels = [(price_bins[i] + price_bins[i + 1]) /
+                    2 for i in range(num_bins)]
 
     return {
         "price_levels": [float(level) for level in price_levels],
@@ -528,10 +540,10 @@ def calculate_volume_profile(
 
 
 def find_poc(
-    prices: Union[List[float], np.ndarray, pd.Series],
-    volumes: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
+    volumes: list[float] | np.ndarray | pd.Series,
     num_bins: int = 20,
-) -> Optional[float]:
+) -> float | None:
     """
     Find Point of Control (POC) - price level with highest volume.
 
@@ -553,11 +565,11 @@ def find_poc(
 
 
 def calculate_value_area(
-    prices: Union[List[float], np.ndarray, pd.Series],
-    volumes: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
+    volumes: list[float] | np.ndarray | pd.Series,
     value_area_percent: float = 0.7,
     num_bins: int = 20,
-) -> Dict[str, Optional[float]]:
+) -> dict[str, float | None]:
     """
     Calculate Value Area High (VAH) and Value Area Low (VAL).
 
@@ -593,7 +605,8 @@ def calculate_value_area(
         low_index > 0 or high_index < len(profile["volume_profile"]) - 1
     ):
         # Determine which direction to expand (choose side with more volume)
-        left_volume = profile["volume_profile"][low_index - 1] if low_index > 0 else 0
+        left_volume = profile["volume_profile"][low_index -
+                                                1] if low_index > 0 else 0
         right_volume = (
             profile["volume_profile"][high_index + 1]
             if high_index < len(profile["volume_profile"]) - 1
@@ -618,10 +631,10 @@ def calculate_value_area(
 # ============ Helper Functions ============
 
 
-def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
+def _to_numpy_array(data: list[float] | np.ndarray | pd.Series) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
         return np.asarray(data.values, dtype=float)
-    elif isinstance(data, list):
+    if isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)

@@ -3,9 +3,10 @@ ParabolicSAR_Bounce_Strategy - VRAIE stratégie basée sur un SAR calculé corre
 REFONTE CONCEPTUELLE COMPLÈTE - Abandon simulation Hull/ATR
 """
 
-from typing import Dict, Any, Optional, Tuple
-from .base_strategy import BaseStrategy
 import logging
+from typing import Any
+
+from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
     - SELL: Prix rebondit sur SAR en tendance baissière (SAR > prix) + confirmations
     """
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
 
         # Paramètres SAR VRAIS
@@ -50,7 +52,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
 
     def _calculate_parabolic_sar(
         self, highs: list, lows: list, closes: list
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Calcule le Parabolic SAR avec la vraie formule mathématique.
         """
@@ -112,36 +114,37 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                         # Mettre à jour EP et AF
                         if highs[i] > prev_ep:
                             ep_values[i] = highs[i]
-                            af_values[i] = min(prev_af + self.af_increment, self.af_max)
+                            af_values[i] = min(
+                                prev_af + self.af_increment, self.af_max)
                         else:
                             ep_values[i] = prev_ep
                             af_values[i] = prev_af
 
                 # Downtrend
+                # Vérifier retournement
+                elif highs[i] >= new_sar:
+                    # Retournement vers uptrend
+                    trend_values[i] = 1
+                    sar_values[i] = prev_ep  # SAR = ancien EP
+                    ep_values[i] = highs[i]  # Nouvel EP = high actuel
+                    af_values[i] = self.af_initial  # Reset AF
                 else:
-                    # Vérifier retournement
-                    if highs[i] >= new_sar:
-                        # Retournement vers uptrend
-                        trend_values[i] = 1
-                        sar_values[i] = prev_ep  # SAR = ancien EP
-                        ep_values[i] = highs[i]  # Nouvel EP = high actuel
-                        af_values[i] = self.af_initial  # Reset AF
-                    else:
-                        # Continuer downtrend
-                        trend_values[i] = -1
-                        sar_values[i] = min(
-                            new_sar,
-                            highs[i - 1],
-                            highs[i - 2] if i > 2 else highs[i - 1],
-                        )
+                    # Continuer downtrend
+                    trend_values[i] = -1
+                    sar_values[i] = min(
+                        new_sar,
+                        highs[i - 1],
+                        highs[i - 2] if i > 2 else highs[i - 1],
+                    )
 
-                        # Mettre à jour EP et AF
-                        if lows[i] < prev_ep:
-                            ep_values[i] = lows[i]
-                            af_values[i] = min(prev_af + self.af_increment, self.af_max)
-                        else:
-                            ep_values[i] = prev_ep
-                            af_values[i] = prev_af
+                    # Mettre à jour EP et AF
+                    if lows[i] < prev_ep:
+                        ep_values[i] = lows[i]
+                        af_values[i] = min(
+                            prev_af + self.af_increment, self.af_max)
+                    else:
+                        ep_values[i] = prev_ep
+                        af_values[i] = prev_af
 
             return {
                 "current_sar": sar_values[-1],
@@ -156,7 +159,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
             logger.debug(f"Erreur calcul SAR: {e}")
             return None
 
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs."""
         return {
             # Confluence et validation
@@ -180,7 +183,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
             "momentum_score": self.indicators.get("momentum_score"),
         }
 
-    def _get_ohlc_data(self) -> Optional[Dict[str, list]]:
+    def _get_ohlc_data(self) -> dict[str, list] | None:
         """Récupère les données OHLC pour calcul SAR."""
         try:
             if not self.data:
@@ -203,7 +206,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         except (KeyError, IndexError, TypeError):
             return None
 
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """
         Génère un signal basé sur les rebonds sur le VRAI Parabolic SAR.
         """
@@ -257,7 +260,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Confluence insuffisante ({confluence_score}) < {self.min_confluence_required}",
-                "metadata": {"strategy": self.name},
+                "metadata": {
+                    "strategy": self.name},
             }
 
         # Distance au SAR
@@ -269,32 +273,37 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Prix trop éloigné du SAR ({distance_to_sar:.1%} > {self.max_sar_distance:.1%})",
-                "metadata": {"strategy": self.name, "distance_to_sar": distance_to_sar},
+                "metadata": {
+                    "strategy": self.name,
+                    "distance_to_sar": distance_to_sar},
             }
 
         # Analyser le rebond selon la tendance SAR
         if current_trend == 1 and current_price > current_sar:
             # Tendance haussière SAR - chercher rebond BUY
-            return self._analyze_sar_bounce(values, current_price, sar_data, "BUY")
-        elif current_trend == -1 and current_price < current_sar:
+            return self._analyze_sar_bounce(
+                values, current_price, sar_data, "BUY")
+        if current_trend == -1 and current_price < current_sar:
             # Tendance baissière SAR - chercher rebond SELL
-            return self._analyze_sar_bounce(values, current_price, sar_data, "SELL")
-        else:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Prix/SAR non alignés pour rebond (trend={current_trend}, prix={current_price:.4f}, SAR={current_sar:.4f})",
-                "metadata": {"strategy": self.name, "sar_data": sar_data},
-            }
+            return self._analyze_sar_bounce(
+                values, current_price, sar_data, "SELL")
+        return {
+            "side": None,
+            "confidence": 0.0,
+            "strength": "weak",
+            "reason": f"Prix/SAR non alignés pour rebond (trend={current_trend}, prix={current_price:.4f}, SAR={current_sar:.4f})",
+            "metadata": {
+                "strategy": self.name,
+                "sar_data": sar_data},
+        }
 
     def _analyze_sar_bounce(
         self,
-        values: Dict[str, Any],
+        values: dict[str, Any],
         current_price: float,
-        sar_data: Dict[str, Any],
+        sar_data: dict[str, Any],
         signal_side: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Analyse un rebond sur le SAR."""
 
         # Base confidence différenciée selon risque
@@ -339,7 +348,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         # Détection pattern rebond dans historique
         sar_history = sar_data.get("sar_history", [])
         if len(sar_history) >= 3:
-            if self._detect_sar_bounce_pattern(sar_history, current_price, signal_side):
+            if self._detect_sar_bounce_pattern(
+                    sar_history, current_price, signal_side):
                 confidence_boost += 0.25
                 reason += " + pattern rebond SAR détecté"
 
@@ -354,10 +364,12 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                     "confidence": 0.0,
                     "strength": "weak",
                     "reason": f"Rejet {signal_side}: régime contradictoire ({market_regime})",
-                    "metadata": {"strategy": self.name, "market_regime": market_regime},
+                    "metadata": {
+                        "strategy": self.name,
+                        "market_regime": market_regime},
                 }
             # Bonus si régime aligné
-            elif (
+            if (
                 signal_side == "BUY" and market_regime in ["TRENDING_BULL", "RANGING"]
             ) or (
                 signal_side == "SELL" and market_regime in ["TRENDING_BEAR", "RANGING"]
@@ -377,7 +389,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": (
-                    f"Rejet SAR: ADX insuffisant" + reason_additions.split("REJET:")[1]
+                    "Rejet SAR: ADX insuffisant" + reason_additions.split("REJET:")[1]
                     if "REJET:" in reason_additions
                     else ""
                 ),
@@ -388,14 +400,16 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         reason += reason_additions
 
         # Compter confirmations obligatoires
-        confirmations_count = self._count_sar_confirmations(values, signal_side)
+        confirmations_count = self._count_sar_confirmations(
+            values, signal_side)
         if confirmations_count < self.required_confirmations:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Confirmations SAR insuffisantes ({confirmations_count}/{self.required_confirmations})",
-                "metadata": {"strategy": self.name},
+                "metadata": {
+                    "strategy": self.name},
             }
 
         # PÉNALITÉ VOLUME - Empêcher les boosts faciles sans volume
@@ -425,7 +439,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Confiance SAR insuffisante ({confidence:.2f} < {min_confidence:.2f})",
-                "metadata": {"strategy": self.name},
+                "metadata": {
+                    "strategy": self.name},
             }
 
         strength = self.get_strength_from_confidence(confidence)
@@ -490,9 +505,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                     if signal_side == "BUY":
                         # Chandelier haussier pour rebond BUY
                         return current_close > current_open
-                    else:
-                        # Chandelier baissier pour rebond SELL
-                        return current_close < current_open
+                    # Chandelier baissier pour rebond SELL
+                    return current_close < current_open
                 except (ValueError, TypeError, IndexError):
                     pass
 
@@ -503,8 +517,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
             return False
 
     def _add_sar_confirmations(
-        self, values: Dict[str, Any], signal_side: str, current_price: float
-    ) -> Tuple[float, str]:
+        self, values: dict[str, Any], signal_side: str, current_price: float
+    ) -> tuple[float, str]:
         """Ajoute confirmations spécifiques au SAR."""
         boost = 0.0
         reason_additions = ""
@@ -516,7 +530,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 adx = float(adx_14)
                 if adx < self.min_adx_required:
                     # Retourner directement le rejet depuis _add_sar_confirmations n'est pas possible
-                    # On utilise un boost très négatif qui sera géré dans l'appelant
+                    # On utilise un boost très négatif qui sera géré dans
+                    # l'appelant
                     boost -= 1.0  # Signal de rejet
                     reason_additions += (
                         f" REJET: ADX trop faible ({adx:.0f} < {self.min_adx_required})"
@@ -556,10 +571,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         if rsi_14:
             try:
                 rsi = float(rsi_14)
-                if signal_side == "BUY" and 30 <= rsi <= 60:  # Elargi 55->60
-                    boost += 0.12
-                    reason_additions += f" + RSI optimal rebond ({rsi:.0f})"
-                elif signal_side == "SELL" and 40 <= rsi <= 70:  # Elargi 45->40
+                if (signal_side == "BUY" and 30 <= rsi <= 60) or (
+                        signal_side == "SELL" and 40 <= rsi <= 70):  # Elargi 55->60
                     boost += 0.12
                     reason_additions += f" + RSI optimal rebond ({rsi:.0f})"
             except (ValueError, TypeError):
@@ -567,7 +580,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
 
         return boost, reason_additions
 
-    def _count_sar_confirmations(self, values: Dict[str, Any], signal_side: str) -> int:
+    def _count_sar_confirmations(
+            self, values: dict[str, Any], signal_side: str) -> int:
         """Compte les confirmations obligatoires pour SAR."""
         count = 0
 
@@ -583,7 +597,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
 
         # 3. Confluence DURCIE
         confluence_score = values.get("confluence_score")
-        if confluence_score and float(confluence_score) >= self.min_confluence_required:
+        if confluence_score and float(
+                confluence_score) >= self.min_confluence_required:
             count += 1
 
         return count
@@ -596,8 +611,10 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         # Vérifier données OHLC
         required_ohlc = ["high", "low", "close"]
         for key in required_ohlc:
-            if key not in self.data or not self.data[key] or len(self.data[key]) < 3:
-                logger.warning(f"{self.name}: Données {key} insuffisantes pour SAR")
+            if key not in self.data or not self.data[key] or len(
+                    self.data[key]) < 3:
+                logger.warning(
+                    f"{self.name}: Données {key} insuffisantes pour SAR")
                 return False
 
         # Vérifier indicateurs minimum
@@ -608,7 +625,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 missing += 1
 
         if missing > 1:
-            logger.warning(f"{self.name}: Trop d'indicateurs manquants ({missing})")
+            logger.warning(
+                f"{self.name}: Trop d'indicateurs manquants ({missing})")
             return False
 
         return True

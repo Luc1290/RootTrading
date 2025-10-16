@@ -8,14 +8,14 @@ import logging
 import os
 import sys
 from datetime import datetime
-from typing import Optional
+
 import psycopg2
 import psycopg2.extensions
 from aiohttp import web
 
 from .context_manager import ContextManager
-from .signal_aggregator_simple import SimpleSignalAggregatorService
 from .database_manager import DatabaseManager
+from .signal_aggregator_simple import SimpleSignalAggregatorService
 
 # Configuration du logging
 log_level = (
@@ -24,8 +24,8 @@ log_level = (
     else logging.INFO
 )
 logging.basicConfig(
-    level=log_level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+    level=log_level,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -43,10 +43,10 @@ class SimpleSignalAggregatorApp:
         }
 
         # Modules simplifiés
-        self.db_connection: Optional[psycopg2.extensions.connection] = None
-        self.context_manager: Optional[ContextManager] = None
-        self.database_manager: Optional[DatabaseManager] = None
-        self.aggregator_service: Optional[SimpleSignalAggregatorService] = None
+        self.db_connection: psycopg2.extensions.connection | None = None
+        self.context_manager: ContextManager | None = None
+        self.database_manager: DatabaseManager | None = None
+        self.aggregator_service: SimpleSignalAggregatorService | None = None
 
         # Web server pour health checks
         self.web_app = None
@@ -92,8 +92,8 @@ class SimpleSignalAggregatorApp:
                 True  # Important pour éviter les transactions bloquées
             )
             logger.info("✅ Connexion DB établie")
-        except Exception as e:
-            logger.error(f"❌ Erreur connexion DB: {e}")
+        except Exception:
+            logger.exception("❌ Erreur connexion DB")
             raise
 
     def ensure_db_connection(self):
@@ -135,7 +135,7 @@ class SimpleSignalAggregatorApp:
                 logger.info("✅ Reconnexion DB réussie")
                 return self.db_connection
             except Exception as reconnect_error:
-                logger.error(f"❌ Échec reconnexion DB: {reconnect_error}")
+                logger.exception(f"❌ Échec reconnexion DB: {reconnect_error}")
                 raise
 
     async def setup_web_server(self):
@@ -169,9 +169,8 @@ class SimpleSignalAggregatorApp:
                     db_status = "OK"
 
             # Stats du service simplifié
-            stats = (
-                self.aggregator_service.get_stats() if self.aggregator_service else {}
-            )
+            stats = (self.aggregator_service.get_stats()
+                     if self.aggregator_service else {})
 
             return web.json_response(
                 {
@@ -201,7 +200,7 @@ class SimpleSignalAggregatorApp:
             )
 
         except Exception as e:
-            logger.error(f"❌ Erreur health check: {e}")
+            logger.exception("❌ Erreur health check")
             return web.json_response(
                 {
                     "status": "unhealthy",
@@ -248,7 +247,7 @@ class SimpleSignalAggregatorApp:
             return web.json_response(enriched_stats)
 
         except Exception as e:
-            logger.error(f"❌ Erreur récupération stats: {e}")
+            logger.exception("❌ Erreur récupération stats")
             return web.json_response({"error": str(e)}, status=500)
 
     async def run(self):
@@ -261,8 +260,8 @@ class SimpleSignalAggregatorApp:
 
         except KeyboardInterrupt:
             logger.info("⏹️  Arrêt demandé par l'utilisateur")
-        except Exception as e:
-            logger.error(f"❌ Erreur service d'agrégation: {e}")
+        except Exception:
+            logger.exception("❌ Erreur service d'agrégation")
             raise
         finally:
             await self.shutdown()

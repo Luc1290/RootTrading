@@ -3,24 +3,27 @@ Module Kafka Producer pour le Gateway.
 Convertit les données WebSocket Binance en messages Kafka.
 """
 
+from shared.src.redis_client import RedisClient
+from shared.src.kafka_client import KafkaClient
+from shared.src.config import KAFKA_BROKER, KAFKA_TOPIC_MARKET_DATA
 import logging
-import time
-from typing import Dict, Any, Optional
-
+import os
 # Importer les clients partagés
 import sys
-import os
+import time
+from typing import Any
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+sys.path.append(
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "../../")))
 
-from shared.src.config import KAFKA_TOPIC_MARKET_DATA, KAFKA_BROKER
-from shared.src.kafka_client import KafkaClient
-from shared.src.redis_client import RedisClient
 
 # Configuration du logging
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("kafka_producer")
 
 
@@ -42,7 +45,7 @@ class KafkaProducer:
         logger.info(f"✅ Producteur Kafka+Redis initialisé pour {broker}")
 
     def publish_market_data(
-        self, data: Dict[str, Any], key: Optional[str] = None
+        self, data: dict[str, Any], key: str | None = None
     ) -> None:
         """
         Publie les données de marché sur le topic Kafka approprié.
@@ -52,7 +55,8 @@ class KafkaProducer:
             key: Clé à utiliser pour le partitionnement (généralement le symbole)
         """
         if not data or "symbol" not in data:
-            logger.error("❌ Données de marché invalides, impossible de publier")
+            logger.error(
+                "❌ Données de marché invalides, impossible de publier")
             return
 
         symbol = data["symbol"].lower()
@@ -84,10 +88,11 @@ class KafkaProducer:
                 )
         except Exception as e:
             error_msg = str(e).replace("{", "{{").replace("}", "}}")
-            logger.error(f"❌ Erreur lors de la publication sur Kafka: {error_msg}")
+            logger.exception(
+                f"❌ Erreur lors de la publication sur Kafka: {error_msg}")
 
     def publish_to_topic(
-        self, topic: str, data: Dict[str, Any], key: Optional[str] = None
+        self, topic: str, data: dict[str, Any], key: str | None = None
     ) -> None:
         """
         Publie des données sur un topic Kafka spécifique.
@@ -105,12 +110,14 @@ class KafkaProducer:
                 symbol = data.get("symbol", "N/A")
                 timeframe = data.get("timeframe", "N/A")
                 price = data.get("close", "N/A")
-                logger.info(f"📊 Données publiées {symbol} {timeframe}: {price}")
+                logger.info(
+                    f"📊 Données publiées {symbol} {timeframe}: {price}")
 
-        except Exception as e:
-            logger.error(f"❌ Erreur publication topic {topic}: {e}")
+        except Exception:
+            logger.exception("❌ Erreur publication topic {topic}")
 
-    def publish_account_data(self, data: Dict[str, Any], data_type: str) -> None:
+    def publish_account_data(
+            self, data: dict[str, Any], data_type: str) -> None:
         """
         Publie les données de compte sur le topic Kafka approprié.
 
@@ -125,7 +132,7 @@ class KafkaProducer:
             logger.info(f"💰 Publié données de compte sur {topic}")
         except Exception as e:
             error_msg = str(e).replace("{", "{{").replace("}", "}}")
-            logger.error(
+            logger.exception(
                 f"❌ Erreur lors de la publication des données de compte: {error_msg}"
             )
 

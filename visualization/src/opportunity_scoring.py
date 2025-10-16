@@ -12,7 +12,6 @@ Version: 2.0 - Professional Grade
 """
 
 import logging
-from typing import Optional, Dict, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
@@ -39,7 +38,7 @@ class CategoryScore:
     score: float  # 0-100
     weight: float  # 0-1
     weighted_score: float  # score * weight
-    details: Dict[str, float]
+    details: dict[str, float]
     confidence: float  # 0-100
     issues: list[str]
 
@@ -50,7 +49,7 @@ class OpportunityScore:
 
     total_score: float  # 0-100
     grade: str  # S, A, B, C, D, F
-    category_scores: Dict[ScoreCategory, CategoryScore]
+    category_scores: dict[ScoreCategory, CategoryScore]
     confidence: float  # 0-100
     risk_level: str  # LOW, MEDIUM, HIGH, EXTREME
     recommendation: str  # BUY_NOW, BUY_DCA, WAIT, AVOID
@@ -84,7 +83,8 @@ class OpportunityScoring:
             ScoreCategory.MOMENTUM: 0.30,  # ↑ de 0.25 - PRIORITÉ pendant pump
             ScoreCategory.VOLUME: 0.20,  # ↑ de 0.15
             ScoreCategory.VOLATILITY: 0.05,
-            ScoreCategory.SUPPORT_RESISTANCE: 0.10,  # ↓ de 0.15 - résistance moins critique
+            # ↓ de 0.15 - résistance moins critique
+            ScoreCategory.SUPPORT_RESISTANCE: 0.10,
             ScoreCategory.PATTERN: 0.05,
             ScoreCategory.CONFLUENCE: 0.05,
         },
@@ -119,7 +119,6 @@ class OpportunityScoring:
 
     def __init__(self):
         """Initialise le système de scoring."""
-        pass
 
     @staticmethod
     def safe_float(value, default=0.0):
@@ -219,7 +218,8 @@ class OpportunityScoring:
             warnings=warnings,
         )
 
-    def _get_weights_for_regime(self, regime: str) -> Dict[ScoreCategory, float]:
+    def _get_weights_for_regime(
+            self, regime: str) -> dict[ScoreCategory, float]:
         """Retourne les pondérations adaptées au régime."""
         return self.REGIME_WEIGHTS.get(regime, self.DEFAULT_WEIGHTS)
 
@@ -233,8 +233,8 @@ class OpportunityScoring:
         - Directional bias (BULLISH/BEARISH)
         - Régime de marché + confiance
         """
-        details = {}
-        issues = []
+        details: dict[str, float] = {}
+        issues: list[str] = []
         score = 0.0
 
         # 1. ADX + DI (40 points max)
@@ -245,36 +245,36 @@ class OpportunityScoring:
         if adx > 0:
             # ADX force (0-25 points)
             if adx > 40:
-                adx_score = 25
+                adx_score = 25.0
             elif adx > 30:
-                adx_score = 20
+                adx_score = 20.0
             elif adx > 25:
-                adx_score = 15
+                adx_score = 15.0
             elif adx > 20:
-                adx_score = 10
+                adx_score = 10.0
             else:
-                adx_score = 5
+                adx_score = 5.0
 
             # Direction (0-15 points)
             if minus_di > 0:
                 di_ratio = plus_di / minus_di
                 if di_ratio > 3.0:
-                    di_score = 15
+                    di_score = 15.0
                 elif di_ratio > 2.0:
-                    di_score = 12
+                    di_score = 12.0
                 elif di_ratio > 1.5:
-                    di_score = 8
+                    di_score = 8.0
                 elif di_ratio > 1.0:
-                    di_score = 5
+                    di_score = 5.0
                 else:
-                    di_score = 0
+                    di_score = 0.0
                     issues.append(f"-DI > +DI (ratio {di_ratio:.2f})")
             else:
-                di_score = 10  # Pas de -DI, assume bullish
+                di_score = 10.0  # Pas de -DI, assume bullish
 
             score += adx_score + di_score
-            details["adx"] = adx_score
-            details["directional"] = di_score
+            details["adx"] = float(adx_score)
+            details["directional"] = float(di_score)
         else:
             issues.append("ADX indisponible")
 
@@ -283,63 +283,64 @@ class OpportunityScoring:
         if trend_alignment != 0:
             # trend_alignment: -100 (bear) à +100 (bull)
             if trend_alignment > 80:
-                align_score = 20
+                align_score = 20.0
             elif trend_alignment > 60:
-                align_score = 15
+                align_score = 15.0
             elif trend_alignment > 40:
-                align_score = 10
+                align_score = 10.0
             elif trend_alignment > 20:
-                align_score = 5
+                align_score = 5.0
             elif trend_alignment > 0:
-                align_score = 2
+                align_score = 2.0
             else:
-                align_score = 0
+                align_score = 0.0
                 issues.append(f"EMAs baissières ({trend_alignment:.0f})")
 
             score += align_score
-            details["ema_alignment"] = align_score
+            details["ema_alignment"] = float(align_score)
 
         # 3. Trend Strength (15 points max)
         trend_strength = ad.get("trend_strength", "").upper()
         strength_scores = {
-            "EXTREME": 15,
-            "VERY_STRONG": 12,
-            "STRONG": 10,
-            "MODERATE": 6,
-            "WEAK": 3,
-            "ABSENT": 0,
+            "EXTREME": 15.0,
+            "VERY_STRONG": 12.0,
+            "STRONG": 10.0,
+            "MODERATE": 6.0,
+            "WEAK": 3.0,
+            "ABSENT": 0.0,
         }
-        strength_score = strength_scores.get(trend_strength, 0)
+        strength_score = strength_scores.get(trend_strength, 0.0)
         score += strength_score
-        details["trend_strength"] = strength_score
+        details["trend_strength"] = float(strength_score)
 
         # 4. Directional Bias (15 points max)
         bias = ad.get("directional_bias", "").upper()
         if bias == "BULLISH":
-            bias_score = 15
+            bias_score = 15.0
         elif bias == "NEUTRAL":
-            bias_score = 5
+            bias_score = 5.0
         else:
-            bias_score = 0
+            bias_score = 0.0
             issues.append(f"Bias {bias}")
 
         score += bias_score
-        details["bias"] = bias_score
+        details["bias"] = float(bias_score)
 
         # 5. Régime + Confiance (10 points max)
         regime = ad.get("market_regime", "").upper()
         regime_conf = self.safe_float(ad.get("regime_confidence"))
 
         if regime in ["TRENDING_BULL", "BREAKOUT_BULL"]:
-            regime_score = 10 * (regime_conf / 100) if regime_conf > 0 else 5
+            regime_score = 10.0 * \
+                (regime_conf / 100.0) if regime_conf > 0 else 5.0
         elif regime in ["TRANSITION", "RANGING"]:
-            regime_score = 3
+            regime_score = 3.0
         else:
-            regime_score = 0
+            regime_score = 0.0
             issues.append(f"Régime {regime}")
 
         score += regime_score
-        details["regime"] = regime_score
+        details["regime"] = float(regime_score)
 
         # Confiance basée sur disponibilité des données
         confidence = 100.0 if len(details) >= 4 else 50.0
@@ -368,8 +369,8 @@ class OpportunityScoring:
 
         PUMP TOLERANCE: RSI/MFI élevés sont OK si pump validé
         """
-        details = {}
-        issues = []
+        details: dict[str, float] = {}
+        issues: list[str] = []
         score = 0.0
 
         # Détecter pump context (même logique que validator)
@@ -380,11 +381,13 @@ class OpportunityScoring:
 
         # AJUSTÉ: 2.0x (compromis 20 cryptos: P95 varie de 1.4x à 8.3x)
         is_pump = (
-            (vol_spike > 2.0 or rel_volume > 2.0)
-            and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]
-            and vol_context
-            in ["CONSOLIDATION_BREAK", "BREAKOUT", "PUMP_START", "HIGH_VOLATILITY"]
-        )
+            (vol_spike > 2.0 or rel_volume > 2.0) and market_regime in [
+                "TRENDING_BULL",
+                "BREAKOUT_BULL"] and vol_context in [
+                "CONSOLIDATION_BREAK",
+                "BREAKOUT",
+                "PUMP_START",
+                "HIGH_VOLATILITY"])
 
         # 1. RSI (20 points max)
         rsi_14 = self.safe_float(ad.get("rsi_14"))
@@ -394,25 +397,25 @@ class OpportunityScoring:
             # Zone bullish: 50-70 optimal
             # PUMP: Accepter RSI élevé comme signal de force
             if 55 <= rsi_14 <= 70:
-                rsi_score = 20
+                rsi_score = 20.0
             elif 50 <= rsi_14 < 55 or 70 < rsi_14 <= 75:
-                rsi_score = 15
+                rsi_score = 15.0
             elif 75 < rsi_14 <= 85 and is_pump:
                 # Pump context: RSI 75-85 = momentum fort = BONUS
-                rsi_score = 18
+                rsi_score = 18.0
                 issues.append(f"RSI pump ({rsi_14:.0f})")
             elif rsi_14 > 85 and is_pump:
                 # Pump extrême: RSI >85 = toujours bullish pendant pump
-                rsi_score = 15
+                rsi_score = 15.0
                 issues.append(f"RSI pump extrême ({rsi_14:.0f})")
             elif 45 <= rsi_14 < 50:
-                rsi_score = 10
+                rsi_score = 10.0
             elif rsi_14 > 75 and not is_pump:
                 # Sans pump context, RSI >75 = overbought = pénalité
-                rsi_score = 5
+                rsi_score = 5.0
                 issues.append(f"RSI overbought ({rsi_14:.0f})")
             else:
-                rsi_score = 0
+                rsi_score = 0.0
                 issues.append(f"RSI faible ({rsi_14:.0f})")
 
             # Bonus si RSI 14 et 21 cohérents
@@ -427,17 +430,17 @@ class OpportunityScoring:
         macd_hist = self.safe_float(ad.get("macd_histogram"))
         macd_signal_cross = ad.get("macd_signal_cross", False)
 
-        macd_score = 0
+        macd_score = 0.0
         if macd_trend == "BULLISH":
-            macd_score = 12
+            macd_score = 12.0
             # Bonus histogram positif et croissant
             if macd_hist > 0:
-                macd_score += 5
+                macd_score += 5.0
             # Bonus croisement récent
             if macd_signal_cross:
-                macd_score += 3
+                macd_score += 3.0
         elif macd_trend == "NEUTRAL":
-            macd_score = 3
+            macd_score = 3.0
         else:
             issues.append(f"MACD {macd_trend}")
 
@@ -450,28 +453,29 @@ class OpportunityScoring:
         stoch_signal = ad.get("stoch_signal", "").upper()
         stoch_div = ad.get("stoch_divergence", False)
 
-        stoch_score = 0
+        stoch_score = 0.0
         if stoch_k > 0:
             # Zone bullish: 40-80
             if 40 <= stoch_k <= 80 and 40 <= stoch_d <= 80:
-                stoch_score = 10
+                stoch_score = 10.0
             elif (stoch_k > 80 or stoch_d > 80) and is_pump:
                 # Pump context: Stoch >80 acceptable
-                stoch_score = 8
+                stoch_score = 8.0
                 issues.append(f"Stoch pump ({stoch_k:.0f}/{stoch_d:.0f})")
             elif stoch_k > 80 or stoch_d > 80:
-                stoch_score = 3
-                issues.append(f"Stoch overbought ({stoch_k:.0f}/{stoch_d:.0f})")
+                stoch_score = 3.0
+                issues.append(
+                    f"Stoch overbought ({stoch_k:.0f}/{stoch_d:.0f})")
             else:
-                stoch_score = 5
+                stoch_score = 5.0
 
             # Bonus signal
             if stoch_signal == "BULLISH":
-                stoch_score += 3
+                stoch_score += 3.0
 
             # Bonus divergence haussière
             if stoch_div:
-                stoch_score += 2
+                stoch_score += 2.0
 
             score += min(stoch_score, 15)
             details["stochastic"] = min(stoch_score, 15)
@@ -482,14 +486,14 @@ class OpportunityScoring:
             # Williams: -100 (oversold) à 0 (overbought)
             # Zone bullish: -50 à -20
             if -50 <= williams <= -20:
-                will_score = 10
+                will_score = 10.0
             elif -60 <= williams < -50 or -20 < williams <= -10:
-                will_score = 7
+                will_score = 7.0
             elif williams > -10:
-                will_score = 2
+                will_score = 2.0
                 issues.append(f"Williams overbought ({williams:.0f})")
             else:
-                will_score = 3
+                will_score = 3.0
 
             score += will_score
             details["williams"] = will_score
@@ -499,16 +503,16 @@ class OpportunityScoring:
         if cci != 0:
             # CCI > 0 = bullish, éviter >200
             if 0 < cci <= 100:
-                cci_score = 10
+                cci_score = 10.0
             elif 100 < cci <= 150:
-                cci_score = 7
+                cci_score = 7.0
             elif 150 < cci <= 200:
-                cci_score = 4
+                cci_score = 4.0
             elif cci > 200:
-                cci_score = 2
+                cci_score = 2.0
                 issues.append(f"CCI extreme ({cci:.0f})")
             else:
-                cci_score = 0
+                cci_score = 0.0
                 issues.append(f"CCI négatif ({cci:.0f})")
 
             score += cci_score
@@ -519,18 +523,18 @@ class OpportunityScoring:
         if mfi > 0:
             # MFI: 0-100, optimal 50-70
             if 50 <= mfi <= 70:
-                mfi_score = 10
+                mfi_score = 10.0
             elif 40 <= mfi < 50 or 70 < mfi <= 80:
-                mfi_score = 7
+                mfi_score = 7.0
             elif mfi > 80 and is_pump:
                 # Pump context: MFI >80 = argent entrant = BULLISH
-                mfi_score = 9
+                mfi_score = 9.0
                 issues.append(f"MFI pump ({mfi:.0f})")
             elif mfi > 80:
-                mfi_score = 3
+                mfi_score = 3.0
                 issues.append(f"MFI overbought ({mfi:.0f})")
             else:
-                mfi_score = 2
+                mfi_score = 2.0
 
             score += mfi_score
             details["mfi"] = mfi_score
@@ -570,8 +574,8 @@ class OpportunityScoring:
         - Quote volume ratio
         - Volume buildup periods
         """
-        details = {}
-        issues = []
+        details: dict[str, float] = {}
+        issues: list[str] = []
         score = 0.0
 
         # 1. Relative Volume (25 points max)
@@ -580,23 +584,23 @@ class OpportunityScoring:
 
         # Volume spike prioritaire
         if vol_spike > 3.0:
-            vol_score = 25
+            vol_score = 25.0
         elif vol_spike > 2.5:
-            vol_score = 22
+            vol_score = 22.0
         elif vol_spike > 2.0:
-            vol_score = 18
+            vol_score = 18.0
         elif rel_volume > 2.0:
-            vol_score = 15
+            vol_score = 15.0
         elif rel_volume > 1.5:
-            vol_score = 12
+            vol_score = 12.0
         elif rel_volume > 1.2:
-            vol_score = 8
+            vol_score = 8.0
         elif rel_volume > 1.0:
-            vol_score = 5
+            vol_score = 5.0
         elif rel_volume > 0.8:
-            vol_score = 2
+            vol_score = 2.0
         else:
-            vol_score = 0
+            vol_score = 0.0
             issues.append(f"Volume faible ({rel_volume:.2f}x)")
 
         score += vol_score
@@ -605,35 +609,35 @@ class OpportunityScoring:
         # 2. Volume Context (25 points max)
         vol_context = ad.get("volume_context", "").upper()
         context_scores = {
-            "BREAKOUT": 25,
-            "PUMP_START": 25,
-            "CONSOLIDATION_BREAK": 20,
-            "TREND_CONTINUATION": 18,
-            "OVERSOLD_BOUNCE": 15,
-            "HIGH_VOLATILITY": 12,
-            "NEUTRAL": 8,
-            "LOW_VOLATILITY": 5,
-            "MODERATE_OVERSOLD": 5,
-            "DEEP_OVERSOLD": 0,
-            "REVERSAL_PATTERN": 0,
+            "BREAKOUT": 25.0,
+            "PUMP_START": 25.0,
+            "CONSOLIDATION_BREAK": 20.0,
+            "TREND_CONTINUATION": 18.0,
+            "OVERSOLD_BOUNCE": 15.0,
+            "HIGH_VOLATILITY": 12.0,
+            "NEUTRAL": 8.0,
+            "LOW_VOLATILITY": 5.0,
+            "MODERATE_OVERSOLD": 5.0,
+            "DEEP_OVERSOLD": 0.0,
+            "REVERSAL_PATTERN": 0.0,
         }
-        context_score = context_scores.get(vol_context, 5)
+        context_score = context_scores.get(vol_context, 5.0)
         score += context_score
         details["context"] = context_score
 
-        if context_score == 0:
+        if context_score == 0.0:
             issues.append(f"Context {vol_context}")
 
         # 3. Volume Pattern (15 points max)
         vol_pattern = ad.get("volume_pattern", "").upper()
         pattern_scores = {
-            "SPIKE": 15,
-            "SUSTAINED_HIGH": 12,
-            "BUILDUP": 10,
-            "NORMAL": 5,
-            "DECLINING": 0,
+            "SPIKE": 15.0,
+            "SUSTAINED_HIGH": 12.0,
+            "BUILDUP": 10.0,
+            "NORMAL": 5.0,
+            "DECLINING": 0.0,
         }
-        pattern_score = pattern_scores.get(vol_pattern, 5)
+        pattern_score = pattern_scores.get(vol_pattern, 5.0)
         score += pattern_score
         details["pattern"] = pattern_score
 
@@ -649,17 +653,17 @@ class OpportunityScoring:
         if obv_osc > 0:
             # OBV positif = buying pressure
             if obv_osc > 300:
-                obv_score = 10
+                obv_score = 10.0
             elif obv_osc > 200:
-                obv_score = 8
+                obv_score = 8.0
             elif obv_osc > 100:
-                obv_score = 6
+                obv_score = 6.0
             elif obv_osc > 50:
-                obv_score = 4
+                obv_score = 4.0
             else:
-                obv_score = 2
+                obv_score = 2.0
         else:
-            obv_score = 0
+            obv_score = 0.0
             if obv_osc < -200:
                 issues.append(f"OBV négatif ({obv_osc:.0f})")
 
@@ -670,11 +674,11 @@ class OpportunityScoring:
         trade_intensity = self.safe_float(ad.get("trade_intensity"))
         if trade_intensity > 0:
             if trade_intensity > 1.5:
-                intensity_score = 5
+                intensity_score = 5.0
             elif trade_intensity > 1.2:
-                intensity_score = 3
+                intensity_score = 3.0
             else:
-                intensity_score = 1
+                intensity_score = 1.0
 
             score += intensity_score
             details["intensity"] = intensity_score
@@ -682,7 +686,7 @@ class OpportunityScoring:
         # 7. Volume Buildup (5 points max)
         buildup_periods = ad.get("volume_buildup_periods", 0)
         if buildup_periods > 0:
-            buildup_score = min(buildup_periods, 5)
+            buildup_score = float(min(buildup_periods, 5))
             score += buildup_score
             details["buildup"] = buildup_score
 
@@ -709,19 +713,19 @@ class OpportunityScoring:
         - Bollinger Squeeze/Expansion
         - Keltner Channels
         """
-        details = {}
-        issues = []
+        details: dict[str, float] = {}
+        issues: list[str] = []
         score = 0.0
 
         # 1. Volatility Regime (40 points max)
         vol_regime = ad.get("volatility_regime", "").lower()
         regime_scores = {
-            "normal": 40,  # Optimal pour trading
-            "high": 30,  # Acceptable mais plus risqué
-            "low": 20,  # Peu de mouvement
-            "extreme": 10,  # Trop risqué
+            "normal": 40.0,  # Optimal pour trading
+            "high": 30.0,  # Acceptable mais plus risqué
+            "low": 20.0,  # Peu de mouvement
+            "extreme": 10.0,  # Trop risqué
         }
-        regime_score = regime_scores.get(vol_regime, 20)
+        regime_score = regime_scores.get(vol_regime, 20.0)
         score += regime_score
         details["regime"] = regime_score
 
@@ -735,13 +739,13 @@ class OpportunityScoring:
         if atr_pct > 0:
             # Percentile optimal: 40-70 (ni trop bas ni trop haut)
             if 40 <= atr_pct <= 70:
-                atr_score = 30
+                atr_score = 30.0
             elif 30 <= atr_pct < 40 or 70 < atr_pct <= 80:
-                atr_score = 20
+                atr_score = 20.0
             elif 20 <= atr_pct < 30 or 80 < atr_pct <= 90:
-                atr_score = 10
+                atr_score = 10.0
             else:
-                atr_score = 5
+                atr_score = 5.0
 
             score += atr_score
             details["atr_percentile"] = atr_score
@@ -751,14 +755,14 @@ class OpportunityScoring:
         bb_expansion = ad.get("bb_expansion", False)
         bb_width = self.safe_float(ad.get("bb_width"))
 
-        bb_score = 0
+        bb_score = 0.0
         if bb_expansion:
-            bb_score = 20  # Expansion = mouvement en cours
+            bb_score = 20.0  # Expansion = mouvement en cours
         elif bb_squeeze:
-            bb_score = 10  # Squeeze = préparation mouvement
+            bb_score = 10.0  # Squeeze = préparation mouvement
         elif bb_width > 0:
             # Width normal
-            bb_score = 12
+            bb_score = 12.0
 
         score += bb_score
         details["bollinger"] = bb_score
@@ -768,11 +772,11 @@ class OpportunityScoring:
         if natr > 0:
             # NATR optimal: 1.0-2.5%
             if 1.0 <= natr <= 2.5:
-                natr_score = 10
+                natr_score = 10.0
             elif 0.5 <= natr < 1.0 or 2.5 < natr <= 3.5:
-                natr_score = 7
+                natr_score = 7.0
             else:
-                natr_score = 3
+                natr_score = 3.0
 
             score += natr_score
             details["natr"] = natr_score
@@ -807,8 +811,8 @@ class OpportunityScoring:
             current_price: Prix actuel (REQUIS - ne pas utiliser nearest_support comme proxy!)
             weight: Pondération de la catégorie
         """
-        details = {}
-        issues = []
+        details: dict[str, float] = {}
+        issues: list[str] = []
         score = 0.0
 
         # 1. Distance à la résistance (40 points max)
@@ -816,48 +820,51 @@ class OpportunityScoring:
         break_prob = self.safe_float(ad.get("break_probability"))
 
         # NOUVEAU: Si nearest_resistance est NULL/0 = PAS DE PLAFOND = BULLISH!
-        # Cela signifie qu'aucune résistance n'a été détectée dans les 100 dernières périodes
+        # Cela signifie qu'aucune résistance n'a été détectée dans les 100
+        # dernières périodes
         if nearest_resistance == 0 or nearest_resistance is None:
             # Pas de résistance = bonus maximal + extra
-            score += 50  # 50 au lieu de 40 car c'est TRÈS bullish
-            details["resistance_distance"] = 50
-            details["no_resistance_detected"] = True
+            score += 50.0  # 50 au lieu de 40 car c'est TRÈS bullish
+            details["resistance_distance"] = 50.0
+            details["no_resistance_detected"] = 1.0
             issues.append("✅ Pas de résistance détectée = Ciel dégagé!")
         elif nearest_resistance > 0 and current_price > 0:
-            dist_pct = ((nearest_resistance - current_price) / current_price) * 100
+            dist_pct = (
+                (nearest_resistance - current_price) / current_price) * 100
 
             # NOUVEAU: Si break_probability élevée, tolérer résistance proche
-            # Une résistance à 0.1% avec break_prob 60%+ est un SETUP, pas un problème
+            # Une résistance à 0.1% avec break_prob 60%+ est un SETUP, pas un
+            # problème
             if break_prob > 0.6 and dist_pct < 1.0:
                 # Résistance proche MAIS cassable = score basé sur break_prob
-                dist_score = min(40, int(break_prob * 50))  # break_prob 0.7 → 35pts
-                details["breakout_setup"] = True
+                dist_score = min(40.0, float(break_prob * 50)
+                                 )  # break_prob 0.7 → 35pts
+                details["breakout_setup"] = 1.0
                 issues.append(
                     f"Résistance proche ({dist_pct:.1f}%) mais cassable ({break_prob*100:.0f}%)"
                 )
+            # Scoring normal
+            elif dist_pct > 3.0:
+                dist_score = 40.0
+            elif dist_pct > 2.0:
+                dist_score = 30.0
+            elif dist_pct > 1.5:
+                dist_score = 20.0
+            elif dist_pct > 1.0:
+                dist_score = 10.0
+            elif dist_pct > 0.5:
+                dist_score = 5.0
+            elif dist_pct > 0.2:
+                # Résistance 0.2-0.5% = OK si momentum fort
+                dist_score = 3.0
+                # Pas de warning si momentum fort (sera géré dans validator)
             else:
-                # Scoring normal
-                if dist_pct > 3.0:
-                    dist_score = 40
-                elif dist_pct > 2.0:
-                    dist_score = 30
-                elif dist_pct > 1.5:
-                    dist_score = 20
-                elif dist_pct > 1.0:
-                    dist_score = 10
-                elif dist_pct > 0.5:
-                    dist_score = 5
-                elif dist_pct > 0.2:
-                    # Résistance 0.2-0.5% = OK si momentum fort
-                    dist_score = 3
-                    # Pas de warning si momentum fort (sera géré dans validator)
-                else:
-                    # < 0.2% = vraiment collé
-                    dist_score = 1
-                    # Pas de warning ici (sera contextuel dans validator)
+                # < 0.2% = vraiment collé
+                dist_score = 1.0
+                # Pas de warning ici (sera contextuel dans validator)
 
             score += dist_score
-            details["resistance_distance"] = dist_score
+            details["resistance_distance"] = float(dist_score)
 
         # 2. Break Probability (30 points max)
         if break_prob > 0:
@@ -869,14 +876,14 @@ class OpportunityScoring:
         # 3. Resistance Strength (15 points max) - INVERSE
         res_strength = ad.get("resistance_strength", "").upper()
         strength_scores = {
-            "WEAK": 15,  # Résistance faible = bon pour acheter
-            "MODERATE": 10,
-            "STRONG": 5,
-            "MAJOR": 0,  # Résistance majeure = risqué
+            "WEAK": 15.0,  # Résistance faible = bon pour acheter
+            "MODERATE": 10.0,
+            "STRONG": 5.0,
+            "MAJOR": 0.0,  # Résistance majeure = risqué
         }
-        res_score = strength_scores.get(res_strength, 7)
+        res_score = strength_scores.get(res_strength, 7.0)
         score += res_score
-        details["resistance_strength"] = res_score
+        details["resistance_strength"] = float(res_score)
 
         if res_strength == "MAJOR":
             issues.append("Résistance MAJOR")
@@ -884,20 +891,20 @@ class OpportunityScoring:
         # 4. Support Strength (10 points max)
         sup_strength = ad.get("support_strength", "").upper()
         sup_scores = {
-            "MAJOR": 10,  # Support majeur = sécurité
-            "STRONG": 8,
-            "MODERATE": 5,
-            "WEAK": 2,
+            "MAJOR": 10.0,  # Support majeur = sécurité
+            "STRONG": 8.0,
+            "MODERATE": 5.0,
+            "WEAK": 2.0,
         }
-        sup_score = sup_scores.get(sup_strength, 5)
+        sup_score = sup_scores.get(sup_strength, 5.0)
         score += sup_score
-        details["support_strength"] = sup_score
+        details["support_strength"] = float(sup_score)
 
         # 5. Pivot Count (5 points max)
         pivot_count = ad.get("pivot_count", 0)
         if pivot_count > 0:
             # Plus de pivots = structure claire
-            pivot_score = min(pivot_count * 0.5, 5)
+            pivot_score = float(min(pivot_count * 0.5, 5))
             score += pivot_score
             details["pivots"] = pivot_score
 
@@ -922,8 +929,8 @@ class OpportunityScoring:
 
         PUMP TOLERANCE: PRICE_SPIKE_DOWN et LIQUIDITY_SWEEP OK si pump
         """
-        details = {}
-        issues = []
+        details: dict[str, float] = {}
+        issues: list[str] = []
         score = 0.0
 
         pattern = ad.get("pattern_detected", "").upper()
@@ -936,37 +943,42 @@ class OpportunityScoring:
         vol_context = ad.get("volume_context", "").upper()
 
         is_pump = (
-            (vol_spike > 2.5 or rel_volume > 2.5)
-            and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]
-            and vol_context
-            in ["CONSOLIDATION_BREAK", "BREAKOUT", "PUMP_START", "HIGH_VOLATILITY"]
-        )
+            (vol_spike > 2.5 or rel_volume > 2.5) and market_regime in [
+                "TRENDING_BULL",
+                "BREAKOUT_BULL"] and vol_context in [
+                "CONSOLIDATION_BREAK",
+                "BREAKOUT",
+                "PUMP_START",
+                "HIGH_VOLATILITY"])
 
         # Patterns bullish
-        bullish_patterns = ["PRICE_SPIKE_UP", "COMBINED_SPIKE", "VOLUME_SPIKE_UP"]
+        bullish_patterns = [
+            "PRICE_SPIKE_UP",
+            "COMBINED_SPIKE",
+            "VOLUME_SPIKE_UP"]
 
         if pattern in bullish_patterns:
-            base_score = 60
+            base_score = 60.0
         elif pattern == "NORMAL" or not pattern:
             # NORMAL = marché calme en TRENDING_BULL = OK, pas négatif
-            base_score = 50  # Augmenté de 30 → 50 (neutre positif)
+            base_score = 50.0  # Augmenté de 30 → 50 (neutre positif)
         elif pattern == "PRICE_SPIKE_DOWN" and is_pump:
             # Pendant un pump, PRICE_SPIKE_DOWN = pullback sain
-            base_score = 40
+            base_score = 40.0
             issues.append(f"Pattern pullback pump ({pattern})")
         elif pattern == "LIQUIDITY_SWEEP" and market_regime in [
             "TRENDING_BULL",
             "BREAKOUT_BULL",
         ]:
             # LIQUIDITY_SWEEP en bull = sweep des shorts = bullish
-            base_score = 50
+            base_score = 50.0
             issues.append(f"Pattern sweep shorts ({pattern})")
         elif pattern in ["PRICE_SPIKE_DOWN", "LIQUIDITY_SWEEP"]:
             # Vraiment baissier si pas de pump context
-            base_score = 0
+            base_score = 0.0
             issues.append(f"Pattern {pattern}")
         else:
-            base_score = 20
+            base_score = 20.0
 
         # Ajuster par confiance
         if pattern_conf > 0:
@@ -994,8 +1006,8 @@ class OpportunityScoring:
         - Confluence score (calculé par market_analyzer)
         - Signal strength
         """
-        details = {}
-        issues = []
+        details: dict[str, float] = {}
+        issues: list[str] = []
         score = 0.0
 
         # 1. Confluence Score (60 points max)
@@ -1008,13 +1020,13 @@ class OpportunityScoring:
         # 2. Signal Strength (40 points max)
         signal_str = ad.get("signal_strength", "").upper()
         strength_scores = {
-            "VERY_STRONG": 40,
-            "STRONG": 30,
-            "MODERATE": 20,
-            "WEAK": 10,
-            "VERY_WEAK": 5,
+            "VERY_STRONG": 40.0,
+            "STRONG": 30.0,
+            "MODERATE": 20.0,
+            "WEAK": 10.0,
+            "VERY_WEAK": 5.0,
         }
-        sig_score = strength_scores.get(signal_str, 15)
+        sig_score = strength_scores.get(signal_str, 15.0)
         score += sig_score
         details["signal_strength"] = sig_score
 
@@ -1034,16 +1046,15 @@ class OpportunityScoring:
         """Calcule le grade S/A/B/C/D/F."""
         if score >= 90:
             return "S"
-        elif score >= 80:
+        if score >= 80:
             return "A"
-        elif score >= 70:
+        if score >= 70:
             return "B"
-        elif score >= 60:
+        if score >= 60:
             return "C"
-        elif score >= 50:
+        if score >= 50:
             return "D"
-        else:
-            return "F"
+        return "F"
 
     def _calculate_risk_level(self, ad: dict, score: float) -> str:
         """Calcule le niveau de risque."""
@@ -1067,10 +1078,10 @@ class OpportunityScoring:
 
     def _calculate_recommendation(
         self, score: float, confidence: float, category_scores: dict, ad: dict
-    ) -> Tuple[str, list[str], list[str]]:
+    ) -> tuple[str, list[str], list[str]]:
         """Calcule la recommandation finale."""
-        reasons = []
-        warnings = []
+        reasons: list[str] = []
+        warnings: list[str] = []
 
         # Récupérer scores clés
         trend_score = category_scores[ScoreCategory.TREND].score
@@ -1151,7 +1162,7 @@ class OpportunityScoring:
         return OpportunityScore(
             total_score=0.0,
             grade="F",
-            category_scores={cat: zero_category for cat in ScoreCategory},
+            category_scores=dict.fromkeys(ScoreCategory, zero_category),
             confidence=0.0,
             risk_level="EXTREME",
             recommendation="AVOID",

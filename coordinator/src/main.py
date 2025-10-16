@@ -3,21 +3,26 @@ Point d'entrée principal pour le microservice Coordinator.
 Valide et transmet les signaux de trading au service Trader.
 """
 
+from shared.src.redis_client import RedisClient
+from coordinator import Coordinator  # type: ignore
 import logging
+import os
 import signal
 import sys
-import time
-import os
 import threading
-from flask import Flask, jsonify
-import requests  # type: ignore
+import time
 from urllib.parse import urljoin
 
-# Ajouter le répertoire parent au path pour les imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+import requests  # type: ignore
+from flask import Flask, jsonify
 
-from coordinator import Coordinator  # type: ignore
-from shared.src.redis_client import RedisClient
+# Ajouter le répertoire parent au path pour les imports
+sys.path.append(
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "../../")))
+
 
 # Configuration du logging
 logging.basicConfig(
@@ -99,7 +104,9 @@ class CoordinatorService:
             "status": "operational" if self.running else "stopped",
             "timestamp": time.time(),
             "uptime": time.time() - self.start_time,
-            "services": {"trader": trader_health, "portfolio": portfolio_health},
+            "services": {
+                "trader": trader_health,
+                "portfolio": portfolio_health},
             "stats": self.coordinator.get_stats() if self.coordinator else {},
         }
 
@@ -134,14 +141,15 @@ class CoordinatorService:
         """
         Récupère l'univers tradable actuel et les statistiques.
         """
-        if not self.coordinator or not hasattr(self.coordinator, "universe_manager"):
+        if not self.coordinator or not hasattr(
+                self.coordinator, "universe_manager"):
             return jsonify({"status": "not_initialized"}), 503
 
         try:
             universe_stats = self.coordinator.get_universe_stats()
             return jsonify(universe_stats)
         except Exception as e:
-            logger.error(f"Erreur récupération univers: {e}")
+            logger.exception("Erreur récupération univers")
             return jsonify({"status": "error", "error": str(e)}), 500
 
     def _check_service_health(self, service_url):
@@ -168,8 +176,7 @@ class CoordinatorService:
                         else None
                     ),
                 }
-            else:
-                return {"status": "unhealthy", "status_code": response.status_code}
+            return {"status": "unhealthy", "status_code": response.status_code}
 
         except Exception as e:
             return {"status": "error", "error": str(e)}
@@ -188,15 +195,14 @@ class CoordinatorService:
             if response.status_code == 200:
                 # Log de santé réussi supprimé pour réduire la verbosité
                 return True
-            else:
-                logger.warning(
-                    f"⚠️ Service Portfolio a retourné un code d'état non-OK: {response.status_code}"
-                )
-                return False
+            logger.warning(
+                f"⚠️ Service Portfolio a retourné un code d'état non-OK: {response.status_code}"
+            )
+            return False
 
         except Exception as e:
-            logger.error(
-                f"❌ Erreur lors de la vérification de santé du service Portfolio: {str(e)}"
+            logger.exception(
+                f"❌ Erreur lors de la vérification de santé du service Portfolio: {e!s}"
             )
             return False
 
@@ -240,7 +246,8 @@ class CoordinatorService:
                 time.sleep(5)
 
             if portfolio_health_checks >= 5:
-                logger.error("❌ Service Portfolio non disponible après 5 tentatives")
+                logger.error(
+                    "❌ Service Portfolio non disponible après 5 tentatives")
                 logger.info(
                     "💡 Le Coordinator attendra que le Portfolio soit disponible..."
                 )
@@ -272,8 +279,8 @@ class CoordinatorService:
 
             logger.info("✅ Service Coordinator démarré")
 
-        except Exception as e:
-            logger.error(f"❌ Erreur critique lors du démarrage: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur critique lors du démarrage")
             self.running = False
             raise
 
@@ -293,11 +300,12 @@ class CoordinatorService:
             if current_time - last_health_check >= 60:
                 try:
                     if not self.check_portfolio_health():
-                        logger.warning("Le service Portfolio n'est pas en bonne santé.")
+                        logger.warning(
+                            "Le service Portfolio n'est pas en bonne santé.")
                     last_health_check = current_time
                 except Exception as e:
-                    logger.error(
-                        f"❌ Erreur lors de la vérification de santé du portfolio: {str(e)}"
+                    logger.exception(
+                        f"❌ Erreur lors de la vérification de santé du portfolio: {e!s}"
                     )
 
     def stop(self):
@@ -313,18 +321,19 @@ class CoordinatorService:
         # Arrêter les composants proprement
         if self.coordinator:
             try:
-                # Utiliser la méthode shutdown du coordinator pour un arrêt propre
+                # Utiliser la méthode shutdown du coordinator pour un arrêt
+                # propre
                 self.coordinator.shutdown()
-            except Exception as e:
-                logger.error(f"Erreur arrêt coordinator: {e}")
+            except Exception:
+                logger.exception("Erreur arrêt coordinator")
             finally:
                 self.coordinator = None
 
         if self.redis_client:
             try:
                 self.redis_client.close()
-            except Exception as e:
-                logger.error(f"Erreur fermeture Redis: {e}")
+            except Exception:
+                logger.exception("Erreur fermeture Redis")
             finally:
                 self.redis_client = None
 
@@ -355,8 +364,8 @@ def main():
 
     except KeyboardInterrupt:
         logger.info("Programme interrompu par l'utilisateur")
-    except Exception as e:
-        logger.error(f"❌ Erreur critique dans le service Coordinator: {str(e)}")
+    except Exception:
+        logger.exception("❌ Erreur critique dans le service Coordinator")
     finally:
         # Arrêter le service
         coordinator.stop()

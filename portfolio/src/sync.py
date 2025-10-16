@@ -4,11 +4,13 @@ Gère les tâches de synchronisation continue avec Binance et la base de donnée
 """
 
 import asyncio
-import threading
 import logging
-from .models import PortfolioModel, DBManager, SharedCache
-from .binance_account_manager import BinanceAccountManager
+import threading
+
 from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY
+
+from .binance_account_manager import BinanceAccountManager
+from .models import DBManager, PortfolioModel, SharedCache
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +41,8 @@ async def sync_binance_forever():
     """
     while True:
         try:
-            account_manager = BinanceAccountManager(BINANCE_API_KEY, BINANCE_SECRET_KEY)
+            account_manager = BinanceAccountManager(
+                BINANCE_API_KEY, BINANCE_SECRET_KEY)
             balances = account_manager.calculate_asset_values()
 
             db = DBManager()
@@ -57,9 +60,10 @@ async def sync_binance_forever():
 
             portfolio.close()
             db.close()
-            logger.debug(f"🔄 Balances Binance synchronisées ({len(balances)} actifs)")
-        except Exception as e:
-            logger.error(f"❌ Erreur sync Binance: {e}")
+            logger.debug(
+                f"🔄 Balances Binance synchronisées ({len(balances)} actifs)")
+        except Exception:
+            logger.exception("❌ Erreur sync Binance")
         await asyncio.sleep(60)
 
 
@@ -99,8 +103,9 @@ async def sync_db_forever():
 
                     # Trier les balances par valeur décroissante
                     balances_sorted = sorted(
-                        summary.balances, key=lambda x: x.value_usdc or 0, reverse=True
-                    )
+                        summary.balances,
+                        key=lambda x: x.value_usdc or 0,
+                        reverse=True)
 
                     for balance in balances_sorted:
                         if balance.total > 0:
@@ -122,11 +127,12 @@ async def sync_db_forever():
 
                 sync_count += 1
             else:
-                logger.warning("⚠️ Impossible de récupérer le résumé du portfolio")
+                logger.warning(
+                    "⚠️ Impossible de récupérer le résumé du portfolio")
 
             portfolio.close()
             db.close()
             logger.debug("🔄 Synchronisation des poches DB terminée")
-        except Exception as e:
-            logger.error(f"❌ Erreur sync DB: {e}")
+        except Exception:
+            logger.exception("❌ Erreur sync DB")
         await asyncio.sleep(60)

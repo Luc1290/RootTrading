@@ -5,8 +5,8 @@ Cache intelligent pour les contraintes de symboles Binance.
 """
 import logging
 import time
-from typing import Dict, Any, Optional
 from threading import Lock
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +24,14 @@ class SymbolConstraintsCache:
             ttl_seconds: Durée de vie des entrées en cache (défaut: 600s = 10min)
         """
         self.ttl_seconds = ttl_seconds
-        self._cache: Dict[str, Dict[str, Any]] = {}
-        self._timestamps: Dict[str, float] = {}
+        self._cache: dict[str, dict[str, Any]] = {}
+        self._timestamps: dict[str, float] = {}
         self._lock = Lock()
 
-        logger.info(f"✅ Cache contraintes symboles initialisé (TTL: {ttl_seconds}s)")
+        logger.info(
+            f"✅ Cache contraintes symboles initialisé (TTL: {ttl_seconds}s)")
 
-    def get(self, symbol: str) -> Optional[Dict[str, Any]]:
+    def get(self, symbol: str) -> dict[str, Any] | None:
         """
         Récupère les contraintes d'un symbole depuis le cache.
 
@@ -64,7 +65,7 @@ class SymbolConstraintsCache:
             )
             return self._cache[symbol].copy()
 
-    def set(self, symbol: str, constraints: Dict[str, Any]) -> None:
+    def set(self, symbol: str, constraints: dict[str, Any]) -> None:
         """
         Met en cache les contraintes d'un symbole.
 
@@ -76,7 +77,8 @@ class SymbolConstraintsCache:
             self._cache[symbol] = constraints.copy()
             self._timestamps[symbol] = time.time()
 
-            logger.debug(f"💾 Contraintes mises en cache pour {symbol}: {constraints}")
+            logger.debug(
+                f"💾 Contraintes mises en cache pour {symbol}: {constraints}")
 
     def invalidate(self, symbol: str) -> bool:
         """
@@ -133,7 +135,7 @@ class SymbolConstraintsCache:
 
             return len(expired_symbols)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Retourne les statistiques du cache.
 
@@ -143,7 +145,7 @@ class SymbolConstraintsCache:
         with self._lock:
             current_time = time.time()
 
-            stats: Dict[str, Any] = {
+            stats: dict[str, Any] = {
                 "total_entries": len(self._cache),
                 "ttl_seconds": self.ttl_seconds,
                 "symbols": list(self._cache.keys()),
@@ -157,7 +159,10 @@ class SymbolConstraintsCache:
                 stats["entries_by_age"][symbol] = {
                     "age_seconds": age_seconds,
                     "age_minutes": age_minutes,
-                    "expires_in_seconds": max(0, self.ttl_seconds - age_seconds),
+                    "expires_in_seconds": max(
+                        0,
+                        self.ttl_seconds -
+                        age_seconds),
                 }
 
             return stats

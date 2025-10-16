@@ -2,14 +2,14 @@
 Tests pour BaseStrategy - classe de base de toutes les stratégies.
 """
 
-import pytest
-import sys
+from analyzer.strategies.base_strategy import BaseStrategy
 import os
+import sys
+
+import pytest
 
 # Ajouter le chemin racine pour les imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-
-from analyzer.strategies.base_strategy import BaseStrategy
 
 
 class TestBaseStrategy:
@@ -29,7 +29,8 @@ class TestBaseStrategy:
                     "metadata": {},
                 }
 
-        strategy = ConcreteStrategy("BTCUSDC", sample_db_data, sample_indicators)
+        strategy = ConcreteStrategy(
+            "BTCUSDC", sample_db_data, sample_indicators)
 
         assert strategy.symbol == "BTCUSDC"
         assert strategy.data == sample_db_data
@@ -43,7 +44,8 @@ class TestBaseStrategy:
             def generate_signal(self):
                 return {}
 
-        strategy = ConcreteStrategy("BTCUSDC", sample_db_data, sample_indicators)
+        strategy = ConcreteStrategy(
+            "BTCUSDC", sample_db_data, sample_indicators)
         assert strategy.validate_data() is True
 
     def test_validate_data_invalid_no_data(self, sample_indicators):
@@ -74,8 +76,9 @@ class TestBaseStrategy:
                 return {}
 
         strategy = ConcreteStrategy(
-            "BTCUSDC", mock_strategy_data["data"], mock_strategy_data["indicators"]
-        )
+            "BTCUSDC",
+            mock_strategy_data["data"],
+            mock_strategy_data["indicators"])
 
         # Test avec facteurs positifs
         confidence = strategy.calculate_confidence(0.5, 1.2, 1.1)
@@ -98,8 +101,9 @@ class TestBaseStrategy:
                 return {}
 
         strategy = ConcreteStrategy(
-            "BTCUSDC", mock_strategy_data["data"], mock_strategy_data["indicators"]
-        )
+            "BTCUSDC",
+            mock_strategy_data["data"],
+            mock_strategy_data["indicators"])
 
         # Test des différents seuils
         assert strategy.get_strength_from_confidence(0.9) == "very_strong"

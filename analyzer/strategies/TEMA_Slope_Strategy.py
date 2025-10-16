@@ -2,9 +2,10 @@
 TEMA_Slope_Strategy - Stratégie basée sur la pente du TEMA (Triple Exponential Moving Average).
 """
 
-from typing import Dict, Any, Optional
-from .base_strategy import BaseStrategy
 import logging
+from typing import Any
+
+from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
     - SELL: TEMA pente négative forte + prix en-dessous TEMA + confirmations
     """
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres TEMA Slope ANTI-SPAM - STRICTEMENT RENFORCÉS
         self.min_slope_threshold = (
@@ -36,15 +38,17 @@ class TEMA_Slope_Strategy(BaseStrategy):
         self.very_strong_slope_threshold = (
             0.008  # Pente très forte plus stricte (signaux premium)
         )
-        self.price_tema_alignment_bonus = 0.12  # Bonus réduit (éviter sur-optimisme)
+        # Bonus réduit (éviter sur-optimisme)
+        self.price_tema_alignment_bonus = 0.12
 
         # NOUVEAUX FILTRES ANTI-SPAM
         self.min_confluence_required = 60  # Confluence minimum OBLIGATOIRE
         self.min_volume_required = 1.25  # Volume minimum DURCI
         self.min_confirmations = 2  # Confirmations minimum requises
-        self.max_distance_tema = 0.015  # Distance max prix/TEMA (éviter divergences)
+        # Distance max prix/TEMA (éviter divergences)
+        self.max_distance_tema = 0.015
 
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs TEMA et contexte."""
         return {
             # TEMA principal
@@ -53,8 +57,10 @@ class TEMA_Slope_Strategy(BaseStrategy):
             "ema_12": self.indicators.get("ema_12"),
             "ema_26": self.indicators.get("ema_26"),
             "ema_50": self.indicators.get("ema_50"),
-            "dema_12": self.indicators.get("dema_12"),  # Double EMA pour comparaison
-            "hull_20": self.indicators.get("hull_20"),  # Hull MA (aussi réactive)
+            # Double EMA pour comparaison
+            "dema_12": self.indicators.get("dema_12"),
+            # Hull MA (aussi réactive)
+            "hull_20": self.indicators.get("hull_20"),
             # Tendance et momentum
             "trend_strength": self.indicators.get("trend_strength"),
             "trend_angle": self.indicators.get("trend_angle"),
@@ -102,7 +108,7 @@ class TEMA_Slope_Strategy(BaseStrategy):
             "confluence_score": self.indicators.get("confluence_score"),
         }
 
-    def _get_current_price(self) -> Optional[float]:
+    def _get_current_price(self) -> float | None:
         """Récupère le prix actuel depuis les données OHLCV."""
         try:
             if self.data and "close" in self.data and self.data["close"]:
@@ -111,16 +117,17 @@ class TEMA_Slope_Strategy(BaseStrategy):
             pass
         return None
 
-    def _get_recent_prices(self) -> Optional[list]:
+    def _get_recent_prices(self) -> list | None:
         """Récupère les derniers prix pour calculer la pente TEMA."""
         try:
-            if self.data and "close" in self.data and len(self.data["close"]) >= 3:
+            if self.data and "close" in self.data and len(
+                    self.data["close"]) >= 3:
                 return [float(p) for p in self.data["close"][-3:]]
         except (IndexError, ValueError, TypeError):
             pass
         return None
 
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """
         Génère un signal basé sur la pente du TEMA.
         """
@@ -147,7 +154,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name},
             }
 
-        tema_analysis = self._analyze_tema_slope(values, current_price, recent_prices)
+        tema_analysis = self._analyze_tema_slope(
+            values, current_price, recent_prices)
         if tema_analysis is None:
             return {
                 "side": None,
@@ -170,14 +178,15 @@ class TEMA_Slope_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name},
             }
 
-        # Créer le signal avec confirmations (current_price déjà validé non-None)
+        # Créer le signal avec confirmations (current_price déjà validé
+        # non-None)
         return self._create_tema_slope_signal(
             values, current_price, tema_analysis, signal_condition
         )
 
     def _analyze_tema_slope(
-        self, values: Dict[str, Any], current_price: float, recent_prices: list
-    ) -> Optional[Dict[str, Any]]:
+        self, values: dict[str, Any], current_price: float, recent_prices: list
+    ) -> dict[str, Any] | None:
         """Analyse la pente du TEMA et sa relation avec le prix."""
         tema_12 = values.get("tema_12")
 
@@ -190,7 +199,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
             return None
 
         # Calculer une approximation de la pente TEMA
-        # En l'absence de valeurs TEMA historiques, utiliser trend_angle ou approximer
+        # En l'absence de valeurs TEMA historiques, utiliser trend_angle ou
+        # approximer
         tema_slope = None
         slope_strength = "unknown"
 
@@ -204,7 +214,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
                 pass
 
         # Méthode 2 AMÉLIORÉE: Fallback EMA plus stable que prix brut
-        if tema_slope is None and recent_prices is not None and len(recent_prices) >= 3:
+        if tema_slope is None and recent_prices is not None and len(
+                recent_prices) >= 3:
             try:
                 # Essayer fallback EMA_12 d'abord (plus stable)
                 ema_12 = values.get("ema_12")
@@ -217,8 +228,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
                     # Fallback prix brut si pas d'EMA
                     price_change = recent_prices[-1] - recent_prices[0]
                     price_slope = (
-                        price_change / recent_prices[0] if recent_prices[0] != 0 else 0
-                    )
+                        price_change /
+                        recent_prices[0] if recent_prices[0] != 0 else 0)
                     price_tema_ratio = current_price / tema_val if tema_val != 0 else 1
                     tema_slope = price_slope * price_tema_ratio
             except (ValueError, TypeError, ZeroDivisionError, IndexError):
@@ -239,9 +250,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
             slope_strength = "weak"
 
         # Direction de la pente
-        slope_direction = (
-            "bullish" if tema_slope > 0 else "bearish" if tema_slope < 0 else "neutral"
-        )
+        slope_direction = ("bullish" if tema_slope >
+                           0 else "bearish" if tema_slope < 0 else "neutral")
 
         # Relation prix/TEMA
         price_above_tema = current_price > tema_val
@@ -265,9 +275,11 @@ class TEMA_Slope_Strategy(BaseStrategy):
         # Raisons de rejet potentielles
         rejection_reasons = []
         if slope_strength == "weak":
-            rejection_reasons.append(f"Pente TEMA trop faible ({abs_slope:.6f})")
+            rejection_reasons.append(
+                f"Pente TEMA trop faible ({abs_slope:.6f})")
         if alignment in ["bullish_divergent", "bearish_divergent"]:
-            rejection_reasons.append(f"Prix et pente TEMA divergents ({alignment})")
+            rejection_reasons.append(
+                f"Prix et pente TEMA divergents ({alignment})")
 
         return {
             "tema_value": tema_val,
@@ -283,8 +295,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
         }
 
     def _check_tema_signal_conditions(
-        self, tema_analysis: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, tema_analysis: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """Vérifie si les conditions de signal TEMA sont remplies."""
         slope_strength = tema_analysis["slope_strength"]
         slope_direction = tema_analysis["slope_direction"]
@@ -304,7 +316,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
         if slope_direction == "neutral":
             return None
 
-        # NOUVEAU: Rejeter si distance prix/TEMA trop importante (éviter faux signaux)
+        # NOUVEAU: Rejeter si distance prix/TEMA trop importante (éviter faux
+        # signaux)
         if tema_analysis["price_tema_distance"] > self.max_distance_tema:
             return None
 
@@ -325,11 +338,11 @@ class TEMA_Slope_Strategy(BaseStrategy):
 
     def _create_tema_slope_signal(
         self,
-        values: Dict[str, Any],
+        values: dict[str, Any],
         current_price: float,
-        tema_analysis: Dict[str, Any],
-        signal_condition: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        tema_analysis: dict[str, Any],
+        signal_condition: dict[str, Any],
+    ) -> dict[str, Any]:
         """Crée le signal TEMA slope avec confirmations."""
         signal_side = signal_condition["signal_side"]
         slope_strength = signal_condition["slope_strength"]
@@ -374,7 +387,9 @@ class TEMA_Slope_Strategy(BaseStrategy):
                     "confidence": 0.0,
                     "strength": "weak",
                     "reason": "Rejet TEMA: BUY interdit en TRENDING_BEAR",
-                    "metadata": {"strategy": self.name, "market_regime": market_regime},
+                    "metadata": {
+                        "strategy": self.name,
+                        "market_regime": market_regime},
                 }
             if str(directional_bias).upper() == "BEARISH":
                 return {
@@ -394,7 +409,9 @@ class TEMA_Slope_Strategy(BaseStrategy):
                     "confidence": 0.0,
                     "strength": "weak",
                     "reason": "Rejet TEMA: SELL interdit en TRENDING_BULL",
-                    "metadata": {"strategy": self.name, "market_regime": market_regime},
+                    "metadata": {
+                        "strategy": self.name,
+                        "market_regime": market_regime},
                 }
             if str(directional_bias).upper() == "BULLISH":
                 return {
@@ -416,7 +433,9 @@ class TEMA_Slope_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Volume insuffisant ({volume_ratio}) < {self.min_volume_required} - signal TEMA rejeté",
-                "metadata": {"strategy": self.name, "rejected_reason": "low_volume"},
+                "metadata": {
+                    "strategy": self.name,
+                    "rejected_reason": "low_volume"},
             }
 
         # Bonus selon la force de la pente (RÉDUITS pour éviter sur-confiance)
@@ -440,7 +459,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
         confirmations_count = 0
         required_confirmations = []
 
-        # Confirmation avec autres moyennes mobiles (PREMIÈRE CONFIRMATION OBLIGATOIRE)
+        # Confirmation avec autres moyennes mobiles (PREMIÈRE CONFIRMATION
+        # OBLIGATOIRE)
         ema_12 = values.get("ema_12")
         ema_26 = values.get("ema_26")
         ema_confirmed = False
@@ -470,9 +490,9 @@ class TEMA_Slope_Strategy(BaseStrategy):
         if hull_20 is not None:
             try:
                 hull_val = float(hull_20)
-                hull_aligned = (signal_side == "BUY" and current_price > hull_val) or (
-                    signal_side == "SELL" and current_price < hull_val
-                )
+                hull_aligned = (
+                    signal_side == "BUY" and current_price > hull_val) or (
+                    signal_side == "SELL" and current_price < hull_val)
 
                 if hull_aligned:
                     confidence_boost += 0.10
@@ -485,9 +505,9 @@ class TEMA_Slope_Strategy(BaseStrategy):
         if dema_12 is not None:
             try:
                 dema_val = float(dema_12)
-                dema_aligned = (signal_side == "BUY" and current_price > dema_val) or (
-                    signal_side == "SELL" and current_price < dema_val
-                )
+                dema_aligned = (
+                    signal_side == "BUY" and current_price > dema_val) or (
+                    signal_side == "SELL" and current_price < dema_val)
 
                 if dema_aligned:
                     confidence_boost += 0.08
@@ -495,7 +515,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
 
-        # Confirmation avec momentum indicators (DEUXIÈME CONFIRMATION OBLIGATOIRE)
+        # Confirmation avec momentum indicators (DEUXIÈME CONFIRMATION
+        # OBLIGATOIRE)
         momentum_score = values.get("momentum_score")
         momentum_confirmed = False
         if momentum_score is not None:
@@ -536,7 +557,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
 
         required_confirmations.append(("Momentum", momentum_confirmed))
 
-        # CORRECTION: Confirmation avec ROC - seuils directionnels adaptatifs (format décimal)
+        # CORRECTION: Confirmation avec ROC - seuils directionnels adaptatifs
+        # (format décimal)
         roc_10 = values.get("roc_10")
         if roc_10 is not None:
             try:
@@ -584,9 +606,9 @@ class TEMA_Slope_Strategy(BaseStrategy):
             try:
                 macd_val = float(macd_line)
                 macd_sig = float(macd_signal)
-                macd_aligned = (signal_side == "BUY" and macd_val > macd_sig) or (
-                    signal_side == "SELL" and macd_val < macd_sig
-                )
+                macd_aligned = (
+                    signal_side == "BUY" and macd_val > macd_sig) or (
+                    signal_side == "SELL" and macd_val < macd_sig)
 
                 if macd_aligned:
                     confirmations_count += 1  # COMPTE maintenant
@@ -695,7 +717,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
             }
 
         # Volume confirmation (DÉJÀ VALIDÉ PLUS HAUT - juste bonus ici)
-        # volume_ratio déjà vérifié comme obligatoire, ici juste bonus additionnel
+        # volume_ratio déjà vérifié comme obligatoire, ici juste bonus
+        # additionnel
         try:
             vol_ratio = float(volume_ratio)
             if vol_ratio >= 1.4:  # Seuil relevé pour bonus
@@ -712,9 +735,9 @@ class TEMA_Slope_Strategy(BaseStrategy):
         if vwap_10 is not None:
             try:
                 vwap = float(vwap_10)
-                vwap_aligned = (signal_side == "BUY" and current_price > vwap) or (
-                    signal_side == "SELL" and current_price < vwap
-                )
+                vwap_aligned = (
+                    signal_side == "BUY" and current_price > vwap) or (
+                    signal_side == "SELL" and current_price < vwap)
 
                 if vwap_aligned:
                     confidence_boost += 0.08
@@ -728,7 +751,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
             if nearest_support is not None:
                 try:
                     support = float(nearest_support)
-                    distance_to_support = abs(current_price - support) / current_price
+                    distance_to_support = abs(
+                        current_price - support) / current_price
                     if distance_to_support <= 0.02:
                         confidence_boost += 0.10
                         reason += " + près support"
@@ -758,7 +782,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
             confidence_boost -= 0.05  # TEMA slope moins fiable en ranging
             reason += " (marché ranging)"
 
-        # CORRECTION: Volatility context - adaptation selon force pente et direction
+        # CORRECTION: Volatility context - adaptation selon force pente et
+        # direction
         volatility_regime = values.get("volatility_regime")
         if volatility_regime == "normal":
             confidence_boost += 0.08  # Volatilité normale toujours favorable
@@ -801,7 +826,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
                 reason += " mais volatilité extrême"
 
         # Confluence score (DÉJÀ VALIDÉ COMME OBLIGATOIRE - juste bonus ici)
-        # confluence_score déjà vérifié comme obligatoire, ici juste bonus additionnel
+        # confluence_score déjà vérifié comme obligatoire, ici juste bonus
+        # additionnel
         try:
             confluence = float(confluence_score)
             if confluence > 80:  # Seuil élevé pour bonus
@@ -833,9 +859,9 @@ class TEMA_Slope_Strategy(BaseStrategy):
 
         # Clamp explicite de la confiance pour homogénéité
         confidence = min(
-            1.0,
-            max(0.0, self.calculate_confidence(base_confidence, 1 + confidence_boost)),
-        )
+            1.0, max(
+                0.0, self.calculate_confidence(
+                    base_confidence, 1 + confidence_boost)), )
         strength = self.get_strength_from_confidence(confidence)
 
         return {
@@ -885,13 +911,13 @@ class TEMA_Slope_Strategy(BaseStrategy):
             "volume_ratio",
             "momentum_score",
         ]
-        optional_but_preferred = ["ema_12", "ema_26", "trend_strength"]
 
         missing_essential = 0
         for indicator in essential_indicators:
             if indicator not in self.indicators or self.indicators[indicator] is None:
                 missing_essential += 1
-                logger.debug(f"{self.name}: Indicateur essentiel manquant: {indicator}")
+                logger.debug(
+                    f"{self.name}: Indicateur essentiel manquant: {indicator}")
 
         # Au moins 3/4 indicateurs essentiels requis
         if missing_essential > 1:
@@ -902,8 +928,7 @@ class TEMA_Slope_Strategy(BaseStrategy):
 
         # Vérifier qualité minimale des données critiques
         if (
-            "confluence_score" in self.indicators
-            and self.indicators["confluence_score"]
+            self.indicators.get("confluence_score")
         ):
             try:
                 conf_val = float(self.indicators["confluence_score"])

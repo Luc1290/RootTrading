@@ -2,9 +2,11 @@
 ROC_Threshold_Strategy - Stratégie basée sur les seuils du Rate of Change (ROC).
 """
 
-from typing import Dict, Any, Optional
-from .base_strategy import BaseStrategy
+import contextlib
 import logging
+from typing import Any
+
+from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +25,8 @@ class ROC_Threshold_Strategy(BaseStrategy):
     - SELL: ROC dépasse seuil baissier + confirmations momentum
     """
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres ROC - Valeurs déjà en pourcentage
         self.bullish_threshold = 0.8  # ROC > +0.8% pour signal haussier
@@ -46,7 +49,8 @@ class ROC_Threshold_Strategy(BaseStrategy):
         # Récupérer le timeframe depuis les données
         timeframe = self.data.get("timeframe", "3m")
 
-        # Caps par timeframe - adaptés pour la crypto (mouvements plus violents possibles)
+        # Caps par timeframe - adaptés pour la crypto (mouvements plus violents
+        # possibles)
         caps = {
             "1m": 10.0,  # Max ±10% en 1 minute (flash crash/pump possible)
             "3m": 15.0,  # Max ±15% en 3 minutes
@@ -63,13 +67,14 @@ class ROC_Threshold_Strategy(BaseStrategy):
         # Appliquer le cap dans les deux directions
         return max(-max_cap, min(max_cap, roc))
 
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs ROC et momentum."""
         return {
             # ROC pour différentes périodes
             "roc_10": self.indicators.get("roc_10"),
             "roc_20": self.indicators.get("roc_20"),
-            "momentum_10": self.indicators.get("momentum_10"),  # Momentum classique
+            # Momentum classique
+            "momentum_10": self.indicators.get("momentum_10"),
             "momentum_score": self.indicators.get(
                 "momentum_score"
             ),  # Score momentum global
@@ -124,7 +129,7 @@ class ROC_Threshold_Strategy(BaseStrategy):
             "confluence_score": self.indicators.get("confluence_score"),
         }
 
-    def _get_current_price(self) -> Optional[float]:
+    def _get_current_price(self) -> float | None:
         """Récupère le prix actuel depuis les données OHLCV."""
         try:
             if self.data and "close" in self.data and self.data["close"]:
@@ -133,7 +138,7 @@ class ROC_Threshold_Strategy(BaseStrategy):
             pass
         return None
 
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """
         Génère un signal basé sur les seuils ROC.
         """
@@ -176,7 +181,8 @@ class ROC_Threshold_Strategy(BaseStrategy):
             values, current_price or 0.0, roc_analysis, threshold_result
         )
 
-    def _analyze_roc_values(self, values: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _analyze_roc_values(
+            self, values: dict[str, Any]) -> dict[str, Any] | None:
         """Analyse les valeurs ROC disponibles et choisit la principale."""
         roc_data = {}
 
@@ -187,12 +193,11 @@ class ROC_Threshold_Strategy(BaseStrategy):
             roc_value = values.get("roc_20")  # Fallback vers ROC 20 périodes
 
         if roc_value is not None:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 roc_data["10"] = float(roc_value)
-            except (ValueError, TypeError):
-                pass
 
-        # Ajouter momentum_score s'il est disponible (existe dans analyzer_data)
+        # Ajouter momentum_score s'il est disponible (existe dans
+        # analyzer_data)
         momentum_score = values.get("momentum_score")
         if momentum_score is not None:
             try:
@@ -228,8 +233,8 @@ class ROC_Threshold_Strategy(BaseStrategy):
         }
 
     def _check_thresholds(
-        self, roc_analysis: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, roc_analysis: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """Vérifie si les seuils ROC sont dépassés."""
         primary_roc = roc_analysis["primary_roc"]
 
@@ -275,11 +280,11 @@ class ROC_Threshold_Strategy(BaseStrategy):
 
     def _create_roc_signal(
         self,
-        values: Dict[str, Any],
+        values: dict[str, Any],
         current_price: float,
-        roc_analysis: Dict[str, Any],
-        threshold_result: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        roc_analysis: dict[str, Any],
+        threshold_result: dict[str, Any],
+    ) -> dict[str, Any]:
         """Crée le signal ROC avec confirmations."""
         signal_type = threshold_result["signal_type"]
         threshold_level = threshold_result["threshold_level"]
@@ -319,7 +324,8 @@ class ROC_Threshold_Strategy(BaseStrategy):
 
         # Bonus selon l'excès par rapport au seuil - BOOSTÉS pour vrais moves
         exceeded_by = threshold_result["exceeded_by"]
-        if exceeded_by > 5:  # Dépasse LARGEMENT le seuil (>5%) - vrai move marché
+        # Dépasse LARGEMENT le seuil (>5%) - vrai move marché
+        if exceeded_by > 5:
             confidence_boost += 0.25  # Doublé pour signaux exceptionnels
             reason += f" + excès MAJEUR ({exceeded_by:.1f}%)"
         elif exceeded_by > 3:  # Excès important (>3%)
@@ -340,7 +346,8 @@ class ROC_Threshold_Strategy(BaseStrategy):
                 momentum = float(momentum_score)
 
                 # MOMENTUM VALIDATION ULTRA STRICTE pour winrate
-                # IMPORTANT: momentum_score est en échelle 0-100, PAS normalisé ici!
+                # IMPORTANT: momentum_score est en échelle 0-100, PAS normalisé
+                # ici!
                 if signal_side == "BUY":
                     # Pour BUY, on veut un momentum > 50 (haussier)
                     if momentum > 80:  # Momentum EXCEPTIONNEL requis
@@ -411,16 +418,15 @@ class ROC_Threshold_Strategy(BaseStrategy):
                     elif rsi < 30:  # Oversold = momentum peut continuer
                         confidence_boost += 0.05
                         reason += " + RSI oversold"
-                else:  # SELL
-                    if rsi < 40:  # RSI confirme momentum baissier
-                        confidence_boost += 0.12
-                        reason += " + RSI confirme"
-                    elif rsi < 45:  # RSI favorable durci
-                        confidence_boost += 0.08
-                        reason += " + RSI favorable"
-                    elif rsi > 70:  # Overbought = momentum peut continuer
-                        confidence_boost += 0.05
-                        reason += " + RSI overbought"
+                elif rsi < 40:  # RSI confirme momentum baissier
+                    confidence_boost += 0.12
+                    reason += " + RSI confirme"
+                elif rsi < 45:  # RSI favorable durci
+                    confidence_boost += 0.08
+                    reason += " + RSI favorable"
+                elif rsi > 70:  # Overbought = momentum peut continuer
+                    confidence_boost += 0.05
+                    reason += " + RSI overbought"
             except (ValueError, TypeError):
                 pass
 
@@ -489,7 +495,8 @@ class ROC_Threshold_Strategy(BaseStrategy):
         if williams_r is not None:
             try:
                 wr = float(williams_r)
-                # BUY : Williams %R favorise sortie d'oversold et momentum haussier
+                # BUY : Williams %R favorise sortie d'oversold et momentum
+                # haussier
                 if signal_side == "BUY":
                     if wr > -20:  # Williams R overbought = momentum haussier fort
                         confidence_boost += 0.12
@@ -506,7 +513,8 @@ class ROC_Threshold_Strategy(BaseStrategy):
                         confidence_boost += 0.03
                         reason += f" + Williams R oversold ({wr:.0f})"
 
-                # SELL : Williams %R favorise entrée en oversold et momentum baissier
+                # SELL : Williams %R favorise entrée en oversold et momentum
+                # baissier
                 elif signal_side == "SELL":
                     if wr < -80:  # Williams R oversold = momentum baissier fort
                         confidence_boost += 0.12
@@ -536,7 +544,9 @@ class ROC_Threshold_Strategy(BaseStrategy):
                         "confidence": 0.0,
                         "strength": "weak",
                         "reason": f"Rejet ROC: volume insuffisant ({vol_ratio:.1f}x)",
-                        "metadata": {"strategy": self.name, "volume_ratio": vol_ratio},
+                        "metadata": {
+                            "strategy": self.name,
+                            "volume_ratio": vol_ratio},
                     }
 
                 # BUY : momentum haussier EXIGE volume fort
@@ -608,9 +618,11 @@ class ROC_Threshold_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Rejet ROC {signal_side}: régime contradictoire ({market_regime})",
-                "metadata": {"strategy": self.name, "market_regime": market_regime},
+                "metadata": {
+                    "strategy": self.name,
+                    "market_regime": market_regime},
             }
-        elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
+        if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
             confidence_boost += 0.10
             reason += " (marché trending)"
         elif market_regime == "RANGING":
@@ -650,7 +662,7 @@ class ROC_Threshold_Strategy(BaseStrategy):
                             "confluence_score": confluence,
                         },
                     }
-                elif confluence > 70:
+                if confluence > 70:
                     confidence_boost += 0.12
                     reason += " + confluence élevée"
                 elif confluence > 60:
@@ -684,7 +696,8 @@ class ROC_Threshold_Strategy(BaseStrategy):
                 },
             }
 
-        confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
+        confidence = self.calculate_confidence(
+            base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
 
         return {
@@ -734,5 +747,6 @@ class ROC_Threshold_Strategy(BaseStrategy):
             if indicator in self.indicators and self.indicators[indicator] is not None:
                 return True
 
-        logger.warning(f"{self.name}: Aucun indicateur ROC/momentum disponible")
+        logger.warning(
+            f"{self.name}: Aucun indicateur ROC/momentum disponible")
         return False

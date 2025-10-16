@@ -2,21 +2,19 @@
 Tests pour les moyennes mobiles du market_analyzer.
 """
 
-import pytest
-import sys
 import os
+import sys
+
 import numpy as np
 import pandas as pd
+import pytest
 
 # Ajouter le chemin racine pour les imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 
 try:
     from market_analyzer.indicators.trend.moving_averages import (
-        calculate_sma,
-        calculate_sma_series,
-        calculate_ema,
-    )
+        calculate_ema, calculate_sma, calculate_sma_series)
 except ImportError:
     # Fallback si market_analyzer pas disponible
     def calculate_sma(prices, period):
@@ -36,7 +34,7 @@ except ImportError:
             if i < period - 1:
                 sma_series.append(None)
             else:
-                sma = float(np.mean(prices_array[i - period + 1 : i + 1]))
+                sma = float(np.mean(prices_array[i - period + 1: i + 1]))
                 sma_series.append(sma)
         return sma_series
 
@@ -150,7 +148,8 @@ class TestMovingAverages:
 
         assert result is not None
         assert sma_result is not None
-        # EMA et SMA peuvent être proches mais pas identiques pour des données variables
+        # EMA et SMA peuvent être proches mais pas identiques pour des données
+        # variables
 
     def test_calculate_ema_insufficient_data(self):
         """Test EMA avec données insuffisantes."""

@@ -1,13 +1,12 @@
 """Universe Manager - Sélection dynamique des cryptos à trader"""
 
+import json
 import logging
 import time
-from datetime import datetime, timedelta
-from typing import Dict, List, Set, Optional, Tuple
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+
 import numpy as np
-from scipy import stats  # type: ignore[import-untyped]
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +22,7 @@ class PairScore:
     volume_ratio: float
     is_ranging: bool
     timestamp: datetime
-    components: Dict[str, float] = field(default_factory=dict)
+    components: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -32,10 +31,10 @@ class PairState:
 
     symbol: str
     is_selected: bool
-    score_history: List[float] = field(default_factory=list)
-    last_selected: Optional[datetime] = None
-    last_deselected: Optional[datetime] = None
-    cooldown_until: Optional[datetime] = None
+    score_history: list[float] = field(default_factory=list)
+    last_selected: datetime | None = None
+    last_deselected: datetime | None = None
+    cooldown_until: datetime | None = None
     consecutive_above_threshold: int = 0
     consecutive_below_threshold: int = 0
 
@@ -43,29 +42,30 @@ class PairState:
 class UniverseManager:
     """Gestionnaire de l'univers tradable avec sélection dynamique"""
 
-    def __init__(self, redis_client, db_pool=None, config: Optional[Dict] = None):
+    def __init__(self, redis_client, db_pool=None, config: dict | None = None):
         self.redis = redis_client
         self.db_pool = db_pool
         self.config = config or self._default_config()
 
         # État des paires
-        self.pair_states: Dict[str, PairState] = {}
-        self.selected_universe: Set[str] = set()
-        self.core_pairs: Set[str] = set(self.config["core_pairs"])
+        self.pair_states: dict[str, PairState] = {}
+        self.selected_universe: set[str] = set()
+        self.core_pairs: set[str] = set(self.config["core_pairs"])
 
         # Cache des données de marché
-        self.market_data_cache: Dict[str, Dict] = {}
+        self.market_data_cache: dict[str, dict] = {}
         self.last_update = datetime.now()
 
         # Vérifier le pool DB
         if not self.db_pool:
-            logger.warning("Pas de pool DB fourni, utilisation de Redis uniquement")
+            logger.warning(
+                "Pas de pool DB fourni, utilisation de Redis uniquement")
 
         logger.info(
             f"UniverseManager initialisé avec {len(self.core_pairs)} paires core"
         )
 
-    def _default_config(self) -> Dict:
+    def _default_config(self) -> dict:
         """Configuration par défaut"""
         return {
             # Paires toujours actives (format USDC pour Binance)
@@ -119,22 +119,22 @@ class UniverseManager:
             },
         }
 
-    def update_market_data(self, symbol: str, data: Dict) -> None:
+    def update_market_data(self, symbol: str, data: dict) -> None:
         """Met à jour les données de marché pour une paire"""
         self.market_data_cache[symbol] = {**data, "timestamp": datetime.now()}
 
     def calculate_score(self, symbol: str) -> PairScore:
         """Calcule le score de tradeabilité d'une paire en utilisant les données de la DB"""
         try:
-            # Utiliser la DB si disponible (priorité car données déjà calculées)
+            # Utiliser la DB si disponible (priorité car données déjà
+            # calculées)
             if self.db_pool:
                 return self._calculate_score_from_db(symbol)
-            else:
-                # Fallback sur Redis/calculs manuels si pas de DB
-                return self._calculate_score_from_redis(symbol)
+            # Fallback sur Redis/calculs manuels si pas de DB
+            return self._calculate_score_from_redis(symbol)
 
-        except Exception as e:
-            logger.error(f"Erreur calcul score {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur calcul score {symbol}")
             return PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now())
 
     def _calculate_score_from_db(self, symbol: str) -> PairScore:
@@ -154,7 +154,8 @@ class UniverseManager:
 
                 if not data:
                     logger.warning(f"Pas de données analyzer pour {symbol}")
-                    return PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now())
+                    return PairScore(
+                        symbol, -1.0, 0, 0, 0, True, datetime.now())
 
                 # Extraire métriques (tout est déjà calculé !)
                 atr_pct = float(data["natr"]) if data["natr"] else 0
@@ -164,11 +165,10 @@ class UniverseManager:
                     else 0
                 )
                 volume_ratio = (
-                    float(data["volume_ratio"]) if data["volume_ratio"] else 1.0
-                )
+                    float(
+                        data["volume_ratio"]) if data["volume_ratio"] else 1.0)
                 is_ranging = (
-                    data["bb_squeeze"] if data["bb_squeeze"] is not None else False
-                )
+                    data["bb_squeeze"] if data["bb_squeeze"] is not None else False)
 
                 # Calculer trend_score depuis données DB
                 trend_score = self._calculate_trend_score_from_db(data)
@@ -186,7 +186,8 @@ class UniverseManager:
                     z_atr = self._calculate_zscore(
                         atr_pct, [s.atr_pct for s in all_scores]
                     )
-                    z_roc = self._calculate_zscore(roc, [s.roc for s in all_scores])
+                    z_roc = self._calculate_zscore(
+                        roc, [s.roc for s in all_scores])
                     z_volume = self._calculate_zscore(
                         volume_ratio, [s.volume_ratio for s in all_scores]
                     )
@@ -236,11 +237,11 @@ class UniverseManager:
                     },
                 )
 
-        except Exception as e:
-            logger.error(f"Erreur récupération données DB pour {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur récupération données DB pour {symbol}")
             return self._calculate_score_from_redis(symbol)
 
-    def _get_all_scores_from_db(self) -> List[PairScore]:
+    def _get_all_scores_from_db(self) -> list[PairScore]:
         """Récupère les scores récents de toutes les paires depuis la DB"""
         scores = []
 
@@ -248,7 +249,8 @@ class UniverseManager:
             from shared.src.db_pool import real_dict_cursor
 
             with real_dict_cursor() as cursor:
-                # Récupérer les données de toutes les paires des 15 dernières minutes
+                # Récupérer les données de toutes les paires des 15 dernières
+                # minutes
                 query = """
                     SELECT DISTINCT ON (a.symbol)
                         a.symbol,
@@ -276,11 +278,10 @@ class UniverseManager:
                         else 0
                     )
                     volume_ratio = (
-                        float(data["volume_ratio"]) if data["volume_ratio"] else 1.0
-                    )
+                        float(
+                            data["volume_ratio"]) if data["volume_ratio"] else 1.0)
                     is_ranging = (
-                        data["bb_squeeze"] if data["bb_squeeze"] is not None else False
-                    )
+                        data["bb_squeeze"] if data["bb_squeeze"] is not None else False)
 
                     # Créer un PairScore basique pour la normalisation
                     score = PairScore(
@@ -308,7 +309,10 @@ class UniverseManager:
         )
         return PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now())
 
-    def _calculate_zscore(self, value: float, population: List[float]) -> float:
+    def _calculate_zscore(
+            self,
+            value: float,
+            population: list[float]) -> float:
         """Calcule le z-score d'une valeur par rapport à la population"""
         if len(population) < 2:
             return 0.0
@@ -345,7 +349,7 @@ class UniverseManager:
 
         return min(base_penalty * adx_multiplier * atr_adjustment, 0.4)
 
-    def _get_forced_pairs(self) -> List[str]:
+    def _get_forced_pairs(self) -> list[str]:
         """Récupère les paires forcées (consensus fort) non expirées"""
         forced_pairs = []
         current_time = time.time()
@@ -353,7 +357,8 @@ class UniverseManager:
         try:
             # Chercher toutes les clés forced_pair:*
             forced_keys = []
-            # Redis scan pattern pour trouver les clés - utiliser redis directement
+            # Redis scan pattern pour trouver les clés - utiliser redis
+            # directement
             for key in self.redis.redis.scan_iter(match="forced_pair:*"):
                 if isinstance(key, bytes):
                     key = key.decode("utf-8")
@@ -372,17 +377,17 @@ class UniverseManager:
                             # Expirer la clé manuellement
                             self.redis.delete(key)
                             logger.debug(f"Forçage expiré supprimé: {key}")
-                except Exception as e:
-                    logger.error(f"Erreur traitement forçage {key}: {e}")
+                except Exception:
+                    logger.exception("Erreur traitement forçage {key}")
 
-        except Exception as e:
-            logger.error(f"Erreur récupération paires forcées: {e}")
+        except Exception:
+            logger.exception("Erreur récupération paires forcées")
 
         return forced_pairs
 
     def _batch_calculate_scores_from_db(
-        self, symbols: List[str]
-    ) -> Dict[str, PairScore]:
+        self, symbols: list[str]
+    ) -> dict[str, PairScore]:
         """Calcule tous les scores depuis analyzer_data en batch"""
         scores = {}
 
@@ -405,7 +410,8 @@ class UniverseManager:
                 results = cursor.fetchall()
 
                 # Extraire toutes les métriques pour z-scores
-                all_atr = [float(r["natr"]) if r["natr"] else 0 for r in results]
+                all_atr = [float(r["natr"]) if r["natr"]
+                           else 0 for r in results]
                 all_roc = [
                     (
                         (float(r["roc_10"]) + float(r["roc_20"])) / 2
@@ -426,8 +432,7 @@ class UniverseManager:
                     roc = all_roc[i]
                     volume_ratio = all_volume[i]
                     is_ranging = (
-                        data["bb_squeeze"] if data["bb_squeeze"] is not None else False
-                    )
+                        data["bb_squeeze"] if data["bb_squeeze"] is not None else False)
 
                     # Z-scores
                     z_atr = self._calculate_zscore(atr_pct, all_atr)
@@ -456,7 +461,8 @@ class UniverseManager:
                         and float(data["confluence_score"]) > 70
                     ):
                         score += 0.3
-                    if data.get("volume_context") in ["BREAKOUT", "PUMP_START"]:
+                    if data.get("volume_context") in [
+                            "BREAKOUT", "PUMP_START"]:
                         score += 0.2
 
                     scores[symbol] = PairScore(
@@ -472,7 +478,9 @@ class UniverseManager:
                             "z_roc": z_roc,
                             "z_volume": z_volume,
                             "trend_bias": trend_score,
-                            "market_regime": data.get("market_regime", "UNKNOWN"),
+                            "market_regime": data.get(
+                                "market_regime",
+                                "UNKNOWN"),
                         },
                     )
 
@@ -489,15 +497,16 @@ class UniverseManager:
                             symbol, -1.0, 0, 0, 0, True, datetime.now()
                         )
 
-        except Exception as e:
-            logger.error(f"Erreur batch calculate scores: {e}")
+        except Exception:
+            logger.exception("Erreur batch calculate scores")
             # Fallback : score par défaut pour tous
             for symbol in symbols:
-                scores[symbol] = PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now())
+                scores[symbol] = PairScore(
+                    symbol, -1.0, 0, 0, 0, True, datetime.now())
 
         return scores
 
-    def _calculate_trend_score_from_db(self, data: Dict) -> float:
+    def _calculate_trend_score_from_db(self, data: dict) -> float:
         """Calcule le score de tendance depuis les données DB existantes"""
         trend_score = 0.0
 
@@ -543,9 +552,9 @@ class UniverseManager:
 
         return max(-1, min(1, trend_score))
 
-    def _get_all_recent_scores(self) -> List[PairScore]:
+    def _get_all_recent_scores(self) -> list[PairScore]:
         """Récupère les scores récents de toutes les paires"""
-        scores: List[PairScore] = []
+        scores: list[PairScore] = []
 
         # Récupérer la liste des symboles depuis Redis
         symbols_data = self.redis.get("trading:symbols")
@@ -567,7 +576,8 @@ class UniverseManager:
     def apply_hysteresis(self, symbol: str, current_score: float) -> bool:
         """Applique l'hystérésis pour éviter le ping-pong"""
         if symbol not in self.pair_states:
-            self.pair_states[symbol] = PairState(symbol=symbol, is_selected=False)
+            self.pair_states[symbol] = PairState(
+                symbol=symbol, is_selected=False)
 
         state = self.pair_states[symbol]
 
@@ -597,29 +607,28 @@ class UniverseManager:
                     return True
             else:
                 state.consecutive_above_threshold = 0
-        else:
-            # Pour sortir : score < seuil pendant M périodes
-            if current_score < self.config["score_threshold_exit"]:
-                state.consecutive_below_threshold += 1
-                state.consecutive_above_threshold = 0
+        # Pour sortir : score < seuil pendant M périodes
+        elif current_score < self.config["score_threshold_exit"]:
+            state.consecutive_below_threshold += 1
+            state.consecutive_above_threshold = 0
 
-                if (
-                    state.consecutive_below_threshold
-                    >= self.config["periods_below_to_exit"]
-                ):
-                    state.is_selected = False
-                    state.last_deselected = datetime.now()
-                    state.cooldown_until = datetime.now() + timedelta(
-                        minutes=self.config["cooldown_minutes"]
-                    )
-                    state.consecutive_below_threshold = 0
-                    return False
-            else:
+            if (
+                state.consecutive_below_threshold
+                >= self.config["periods_below_to_exit"]
+            ):
+                state.is_selected = False
+                state.last_deselected = datetime.now()
+                state.cooldown_until = datetime.now() + timedelta(
+                    minutes=self.config["cooldown_minutes"]
+                )
                 state.consecutive_below_threshold = 0
+                return False
+        else:
+            state.consecutive_below_threshold = 0
 
         return state.is_selected
 
-    def update_universe(self) -> Tuple[Set[str], Dict[str, PairScore]]:
+    def update_universe(self) -> tuple[set[str], dict[str, PairScore]]:
         """Met à jour l'univers tradable - TOUS LES SYMBOLES EN PERMANENCE"""
         try:
             # Récupérer tous les symboles
@@ -634,7 +643,8 @@ class UniverseManager:
             else:
                 all_symbols = symbols_data
 
-            # Calculer les scores depuis analyzer_data (pour le monitoring seulement)
+            # Calculer les scores depuis analyzer_data (pour le monitoring
+            # seulement)
             scores = {}
             if self.db_pool:
                 scores = self._batch_calculate_scores_from_db(all_symbols)
@@ -671,8 +681,8 @@ class UniverseManager:
 
             return selected, scores
 
-        except Exception as e:
-            logger.error(f"Erreur update_universe: {e}")
+        except Exception:
+            logger.exception("Erreur update_universe")
             return set(), {}
 
     def is_pair_tradable(self, symbol: str) -> bool:
@@ -711,11 +721,11 @@ class UniverseManager:
             # Toutes les conditions doivent être vraies
             return atr_spike and spread_high and slippage_high
 
-        except Exception as e:
-            logger.error(f"Erreur check_hard_risk {symbol}: {e}")
+        except Exception:
+            logger.exception("Erreur check_hard_risk {symbol}")
             return False
 
-    def get_universe_stats(self) -> Dict:
+    def get_universe_stats(self) -> dict:
         """Retourne les statistiques de l'univers"""
         stats = {
             "selected_count": len(self.selected_universe),
@@ -726,7 +736,7 @@ class UniverseManager:
             "pair_states": {},
         }
 
-        pair_states_dict: Dict[str, Dict] = {}
+        pair_states_dict: dict[str, dict] = {}
         for symbol, state in self.pair_states.items():
             pair_states_dict[symbol] = {
                 "is_selected": state.is_selected,
@@ -742,14 +752,20 @@ class UniverseManager:
 
         return stats
 
-    def force_pair_selection(self, symbol: str, duration_minutes: int = 60) -> None:
+    def force_pair_selection(
+            self,
+            symbol: str,
+            duration_minutes: int = 60) -> None:
         """Force la sélection d'une paire pour consensus fort"""
         # Stocker le forçage avec expiration
         forced_until = time.time() + (duration_minutes * 60)
         forced_key = f"forced_pair:{symbol}"
         self.redis.set(
-            forced_key, str(forced_until), expiration=duration_minutes * 60 + 60
-        )  # +60s marge
+            forced_key,
+            str(forced_until),
+            expiration=duration_minutes *
+            60 +
+            60)  # +60s marge
 
         # Ajouter à l'univers actuel
         self.selected_universe.add(symbol)

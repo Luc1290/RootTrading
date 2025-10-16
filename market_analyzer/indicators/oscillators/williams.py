@@ -5,10 +5,10 @@ This module provides Williams %R calculation for momentum analysis.
 Williams %R is a momentum oscillator that measures overbought and oversold levels.
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
-from typing import List, Optional, Union
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +22,11 @@ except ImportError:
 
 
 def calculate_williams_r(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 14,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate Williams %R.
 
@@ -68,19 +68,21 @@ def calculate_williams_r(
             williams_r = talib.WILLR(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return float(williams_r[-1]) if not np.isnan(williams_r[-1]) else None
+            return float(
+                williams_r[-1]) if not np.isnan(williams_r[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib Williams %R error: {e}, using fallback")
 
-    return _calculate_williams_r_manual(highs_array, lows_array, closes_array, period)
+    return _calculate_williams_r_manual(
+        highs_array, lows_array, closes_array, period)
 
 
 def calculate_williams_r_series(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 14,
-) -> List[Optional[float]]:
+) -> list[float | None]:
     """
     Calculate Williams %R for entire price series.
 
@@ -108,9 +110,11 @@ def calculate_williams_r_series(
             williams_r = talib.WILLR(
                 highs_array, lows_array, closes_array, timeperiod=period
             )
-            return [float(val) if not np.isnan(val) else None for val in williams_r]
+            return [float(val) if not np.isnan(
+                val) else None for val in williams_r]
         except Exception as e:
-            logger.warning(f"TA-Lib Williams %R series error: {e}, using fallback")
+            logger.warning(
+                f"TA-Lib Williams %R series error: {e}, using fallback")
 
     # Manual calculation
     return _calculate_williams_r_series_manual(
@@ -119,7 +123,7 @@ def calculate_williams_r_series(
 
 
 def williams_r_signal(
-    current_value: Optional[float], previous_value: Optional[float] = None
+    current_value: float | None, previous_value: float | None = None
 ) -> str:
     """
     Generate trading signal based on Williams %R levels.
@@ -137,7 +141,7 @@ def williams_r_signal(
     # Basic overbought/oversold levels
     if current_value >= -20:
         return "overbought"
-    elif current_value <= -80:
+    if current_value <= -80:
         return "oversold"
 
     # Check for reversal signals if previous value is provided
@@ -154,12 +158,12 @@ def williams_r_signal(
 
 
 def calculate_williams_r_smooth(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 14,
     smooth_period: int = 3,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate smoothed Williams %R.
 
@@ -191,9 +195,9 @@ def calculate_williams_r_smooth(
 
 
 def calculate_williams_r_bands(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     period: int = 14,
     overbought_level: float = -20,
     oversold_level: float = -80,
@@ -230,9 +234,9 @@ def calculate_williams_r_bands(
 
 
 def calculate_williams_r_divergence(
-    prices: Union[List[float], np.ndarray, pd.Series],
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
     lookback: int = 20,
 ) -> str:
     """
@@ -316,7 +320,8 @@ def calculate_williams_r_divergence(
         ):
             return "bullish_divergence"
 
-    # Bearish divergence: Price makes higher highs, Williams %R makes lower highs
+    # Bearish divergence: Price makes higher highs, Williams %R makes lower
+    # highs
     if len(price_highs) >= 2 and len(williams_highs) >= 2:
         price_val1, price_val2 = price_highs[-1][1], price_highs[-2][1]
         williams_val1, williams_val2 = williams_highs[-1][1], williams_highs[-2][1]
@@ -333,7 +338,8 @@ def calculate_williams_r_divergence(
     return "none"
 
 
-def williams_r_trend_strength(values: List[Optional[float]], period: int = 10) -> str:
+def williams_r_trend_strength(
+        values: list[float | None], period: int = 10) -> str:
     """
     Assess trend strength based on Williams %R persistence.
 
@@ -355,39 +361,38 @@ def williams_r_trend_strength(values: List[Optional[float]], period: int = 10) -
     # Count values in different zones
     overbought_count = sum(1 for x in recent_values if x >= -20)
     oversold_count = sum(1 for x in recent_values if x <= -80)
-    neutral_count = len(recent_values) - overbought_count - oversold_count
+    len(recent_values) - overbought_count - oversold_count
 
     total = len(recent_values)
 
     # Strong trends: > 70% in one zone
     if overbought_count / total > 0.7:
         return "strong_uptrend"
-    elif oversold_count / total > 0.7:
+    if oversold_count / total > 0.7:
         return "strong_downtrend"
     # Moderate trends: > 50% in one zone
-    elif overbought_count / total > 0.5:
+    if overbought_count / total > 0.5:
         return "moderate_uptrend"
-    elif oversold_count / total > 0.5:
+    if oversold_count / total > 0.5:
         return "moderate_downtrend"
-    else:
-        return "sideways"
+    return "sideways"
 
 
 # ============ Helper Functions ============
 
 
-def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
+def _to_numpy_array(data: list[float] | np.ndarray | pd.Series) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
         return np.asarray(data.values, dtype=float)
-    elif isinstance(data, list):
+    if isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
 
 
 def _calculate_williams_r_manual(
     highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int
-) -> Optional[float]:
+) -> float | None:
     """Manual Williams %R calculation."""
     if len(highs) < period:
         return None
@@ -405,24 +410,25 @@ def _calculate_williams_r_manual(
     if highest_high == lowest_low:
         return 0.0  # No range, neutral
 
-    williams_r = ((highest_high - current_close) / (highest_high - lowest_low)) * -100
+    williams_r = ((highest_high - current_close) /
+                  (highest_high - lowest_low)) * -100
 
     return float(williams_r)
 
 
 def _calculate_williams_r_series_manual(
     highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int
-) -> List[Optional[float]]:
+) -> list[float | None]:
     """Manual Williams %R series calculation."""
-    williams_series: List[Optional[float]] = []
+    williams_series: list[float | None] = []
 
     for i in range(len(highs)):
         if i < period - 1:
             williams_series.append(None)
         else:
             # Get window for calculation
-            high_window = highs[i - period + 1 : i + 1]
-            low_window = lows[i - period + 1 : i + 1]
+            high_window = highs[i - period + 1: i + 1]
+            low_window = lows[i - period + 1: i + 1]
             current_close = closes[i]
 
             # Calculate highest high and lowest low
@@ -433,9 +439,8 @@ def _calculate_williams_r_series_manual(
             if highest_high == lowest_low:
                 williams_r = 0.0  # No range
             else:
-                williams_r = (
-                    (highest_high - current_close) / (highest_high - lowest_low)
-                ) * -100
+                williams_r = ((highest_high - current_close) /
+                              (highest_high - lowest_low)) * -100
 
             williams_series.append(float(williams_r))
 

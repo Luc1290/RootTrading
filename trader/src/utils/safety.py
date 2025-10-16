@@ -3,12 +3,13 @@ Fonctions de sécurité et de protection pour le trader.
 Fournit des mécanismes pour éviter les erreurs et problèmes.
 """
 
-import logging
-import time
 import functools
-from typing import Dict, Any, Callable, Optional, TypeVar, List, Type
-import traceback
+import logging
 import threading
+import time
+import traceback
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from shared.src.redis_client import RedisClient
 
@@ -23,7 +24,7 @@ def retry(
     max_attempts: int = 3,
     delay: float = 1.0,
     backoff: float = 2.0,
-    exceptions: List[Type[Exception]] = [Exception],
+    exceptions: list[type[Exception]] | None = None,
 ) -> Callable:
     """
     Décorateur pour retenter une fonction en cas d'échec.
@@ -38,6 +39,9 @@ def retry(
         Fonction décorée
     """
 
+    if exceptions is None:
+        exceptions = [Exception]
+
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -50,18 +54,20 @@ def retry(
                 except tuple(exceptions) as e:
                     attempt += 1
                     if attempt == max_attempts:
-                        logger.error(
-                            f"Échec de la fonction {func.__name__} après {attempt} tentatives: {str(e)}"
+                        logger.exception(
+                            f"Échec de la fonction {func.__name__} après {attempt} tentatives: {e!s}"
                         )
                         raise
 
                     logger.warning(
-                        f"Échec de la fonction {func.__name__} (tentative {attempt}/{max_attempts}): {str(e)}"
+                        f"Échec de la fonction {func.__name__} (tentative {attempt}/{max_attempts}): {e!s}"
                     )
-                    logger.warning(f"Nouvelle tentative dans {current_delay:.2f}s")
+                    logger.warning(
+                        f"Nouvelle tentative dans {current_delay:.2f}s")
 
                     time.sleep(current_delay)
                     current_delay *= backoff
+            return None
 
         return wrapper
 
@@ -83,7 +89,8 @@ def circuit_breaker(
         Fonction décorée
     """
     # État du circuit breaker
-    state: Dict[str, Any] = {"failures": 0, "open": False, "last_failure": 0.0, "lock": threading.RLock()}
+    state: dict[str, Any] = {"failures": 0, "open": False,
+                             "last_failure": 0.0, "lock": threading.RLock()}
 
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
@@ -106,7 +113,8 @@ def circuit_breaker(
                         logger.warning(
                             f"Circuit breaker ouvert pour {func.__name__}, réinitialisation dans {remaining:.2f}s"
                         )
-                        raise Exception(f"Circuit breaker ouvert pour {func.__name__}")
+                        raise Exception(
+                            f"Circuit breaker ouvert pour {func.__name__}")
 
             try:
                 # Exécuter la fonction
@@ -131,7 +139,7 @@ def circuit_breaker(
                     # Ouvrir le circuit si le seuil est atteint
                     if state["failures"] >= failure_threshold:
                         state["open"] = True
-                        logger.error(
+                        logger.exception(
                             f"Circuit breaker ouvert pour {func.__name__} après {state['failures']} échecs"
                         )
 
@@ -167,13 +175,15 @@ def redis_lock(lock_name: str, timeout: int = 30) -> Callable:
             redis_client = RedisClient()
 
             # Essayer d'acquérir le verrou (utiliser la méthode native Redis)
-            acquired = redis_client.redis.set(lock_key, lock_id, nx=True, ex=timeout)
+            acquired = redis_client.redis.set(
+                lock_key, lock_id, nx=True, ex=timeout)
 
             if not acquired:
                 logger.warning(
                     f"Impossible d'acquérir le verrou Redis pour {func.__name__}"
                 )
-                raise Exception(f"Verrou Redis déjà acquis pour {func.__name__}")
+                raise Exception(
+                    f"Verrou Redis déjà acquis pour {func.__name__}")
 
             try:
                 # Exécuter la fonction
@@ -184,10 +194,11 @@ def redis_lock(lock_name: str, timeout: int = 30) -> Callable:
                     current_value = redis_client.get(lock_key)
                     if current_value == lock_id:
                         redis_client.delete(lock_key)
-                        logger.debug(f"Verrou Redis libéré pour {func.__name__}")
+                        logger.debug(
+                            f"Verrou Redis libéré pour {func.__name__}")
                 except Exception as e:
-                    logger.error(
-                        f"Erreur lors de la libération du verrou Redis: {str(e)}"
+                    logger.exception(
+                        f"Erreur lors de la libération du verrou Redis: {e!s}"
                     )
 
         return wrapper
@@ -195,7 +206,7 @@ def redis_lock(lock_name: str, timeout: int = 30) -> Callable:
     return decorator
 
 
-def safe_execute(func: Callable, *args, **kwargs) -> Optional[Any]:
+def safe_execute(func: Callable, *args, **kwargs) -> Any | None:
     """
     Exécute une fonction en toute sécurité, en capturant les exceptions.
 
@@ -209,14 +220,14 @@ def safe_execute(func: Callable, *args, **kwargs) -> Optional[Any]:
     """
     try:
         return func(*args, **kwargs)
-    except Exception as e:
-        logger.error(f"❌ Erreur lors de l'exécution de {func.__name__}: {str(e)}")
-        logger.error(traceback.format_exc())
+    except Exception:
+        logger.exception("❌ Erreur lors de l'exécution de {func.__name__}")
+        logger.exception(traceback.format_exc())
         return None
 
 
 def notify_error(
-    message: str, additional_info: Optional[Dict[str, Any]] = None
+    message: str, additional_info: dict[str, Any] | None = None
 ) -> None:
     """
     Notifie une erreur via Redis.
@@ -240,11 +251,14 @@ def notify_error(
 
         redis.publish("roottrading:notifications", data)
         logger.debug(f"Notification d'erreur envoyée: {message}")
-    except Exception as e:
-        logger.error(f"❌ Erreur lors de l'envoi de la notification: {str(e)}")
+    except Exception:
+        logger.exception("❌ Erreur lors de l'envoi de la notification")
 
 
-def validate_price(symbol: str, price: float, max_deviation: float = 0.1) -> bool:
+def validate_price(
+        symbol: str,
+        price: float,
+        max_deviation: float = 0.1) -> bool:
     """
     Valide un prix par rapport au prix du marché.
 
@@ -263,7 +277,8 @@ def validate_price(symbol: str, price: float, max_deviation: float = 0.1) -> boo
     try:
         # Récupérer le prix actuel via Redis
         redis = RedisClient()
-        market_data = redis.get(f"roottrading:market:last_price:{symbol.lower()}")
+        market_data = redis.get(
+            f"roottrading:market:last_price:{symbol.lower()}")
 
         if not market_data:
             logger.warning(f"⚠️ Pas de prix récent pour {symbol}")
@@ -282,6 +297,6 @@ def validate_price(symbol: str, price: float, max_deviation: float = 0.1) -> boo
 
         return True
 
-    except Exception as e:
-        logger.error(f"❌ Erreur lors de la validation du prix: {str(e)}")
+    except Exception:
+        logger.exception("❌ Erreur lors de la validation du prix")
         return True  # En cas d'erreur, accepter le prix

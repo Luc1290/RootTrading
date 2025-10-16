@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(python:*)",
+      "Bash(isort:*)",
+      "Bash(autopep8:*)",
+      "Bash(pip install:*)"
     ],
     "deny": [],
     "ask": []

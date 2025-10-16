@@ -7,15 +7,13 @@ This module provides MACD calculation including:
 - MACD Histogram (difference between MACD and Signal)
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Union, Tuple
-import logging
-from .moving_averages import (
-    calculate_ema,
-    calculate_ema_incremental,
-    calculate_ema_series,
-)
+
+from .moving_averages import (calculate_ema, calculate_ema_incremental,
+                              calculate_ema_series)
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +27,12 @@ except ImportError:
 
 
 def calculate_macd(
-    prices: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
     fast_period: int = 12,
     slow_period: int = 26,
     signal_period: int = 9,
     normalize_high_price: bool = True,
-) -> Dict[str, Optional[float]]:
+) -> dict[str, float | None]:
     """
     Calculate MACD indicator values.
 
@@ -88,16 +86,19 @@ def calculate_macd(
             logger.warning(f"TA-Lib MACD error: {e}, using fallback")
 
     return _calculate_macd_manual(
-        prices_array, fast_period, slow_period, signal_period, normalize_high_price
-    )
+        prices_array,
+        fast_period,
+        slow_period,
+        signal_period,
+        normalize_high_price)
 
 
 def calculate_macd_series(
-    prices: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
     fast_period: int = 12,
     slow_period: int = 26,
     signal_period: int = 9,
-) -> Dict[str, List[Optional[float]]]:
+) -> dict[str, list[float | None]]:
     """
     Calculate MACD values for entire price series.
 
@@ -123,14 +124,11 @@ def calculate_macd_series(
 
             return {
                 "macd_line": [
-                    float(val) if not np.isnan(val) else None for val in macd_line
-                ],
+                    float(val) if not np.isnan(val) else None for val in macd_line],
                 "macd_signal": [
-                    float(val) if not np.isnan(val) else None for val in macd_signal
-                ],
+                    float(val) if not np.isnan(val) else None for val in macd_signal],
                 "macd_histogram": [
-                    float(val) if not np.isnan(val) else None for val in macd_hist
-                ],
+                    float(val) if not np.isnan(val) else None for val in macd_hist],
             }
         except Exception as e:
             logger.warning(f"TA-Lib MACD series error: {e}, using fallback")
@@ -143,13 +141,13 @@ def calculate_macd_series(
 
 def calculate_macd_incremental(
     current_price: float,
-    prev_ema_fast: Optional[float],
-    prev_ema_slow: Optional[float],
-    prev_macd_signal: Optional[float],
+    prev_ema_fast: float | None,
+    prev_ema_slow: float | None,
+    prev_macd_signal: float | None,
     fast_period: int = 12,
     slow_period: int = 26,
     signal_period: int = 9,
-) -> Dict[str, Optional[float]]:
+) -> dict[str, float | None]:
     """
     Calculate MACD incrementally using previous values.
 
@@ -169,8 +167,10 @@ def calculate_macd_incremental(
         Dictionary with new MACD values and updated EMAs
     """
     # Calculate new EMAs
-    new_ema_fast = calculate_ema_incremental(current_price, prev_ema_fast, fast_period)
-    new_ema_slow = calculate_ema_incremental(current_price, prev_ema_slow, slow_period)
+    new_ema_fast = calculate_ema_incremental(
+        current_price, prev_ema_fast, fast_period)
+    new_ema_slow = calculate_ema_incremental(
+        current_price, prev_ema_slow, slow_period)
 
     # Calculate MACD line
     macd_line = new_ema_fast - new_ema_slow
@@ -196,11 +196,11 @@ def calculate_macd_incremental(
 
 
 def calculate_ppo(
-    prices: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
     fast_period: int = 12,
     slow_period: int = 26,
     signal_period: int = 9,
-) -> Dict[str, Optional[float]]:
+) -> dict[str, float | None]:
     """
     Calculate Percentage Price Oscillator (PPO).
 
@@ -248,14 +248,13 @@ def calculate_ppo(
                         else None
                     ),
                 }
-            else:
-                return {
-                    "ppo_line": (
-                        float(ppo_line[-1]) if not np.isnan(ppo_line[-1]) else None
-                    ),
-                    "ppo_signal": None,
-                    "ppo_histogram": None,
-                }
+            return {
+                "ppo_line": (
+                    float(ppo_line[-1]) if not np.isnan(ppo_line[-1]) else None
+                ),
+                "ppo_signal": None,
+                "ppo_histogram": None,
+            }
         except Exception as e:
             logger.warning(f"TA-Lib PPO error: {e}, using fallback")
 
@@ -270,7 +269,7 @@ def calculate_ppo(
     ppo_line: float = float(((ema_fast - ema_slow) / ema_slow) * 100)
 
     # Need to calculate PPO series for signal line
-    ppo_series: List[float] = []
+    ppo_series: list[float] = []
     ema_fast_series = calculate_ema_series(prices_array, fast_period)
     ema_slow_series = calculate_ema_series(prices_array, slow_period)
 
@@ -284,10 +283,14 @@ def calculate_ppo(
             ppo_series.append(0.0)
 
     # Signal line (EMA of PPO)
-    ppo_signal: Optional[float] = calculate_ema([x for x in ppo_series if x is not None], signal_period)
+    ppo_signal: float | None = calculate_ema(
+        [x for x in ppo_series if x is not None], signal_period)
 
     if ppo_signal is None:
-        return {"ppo_line": ppo_line, "ppo_signal": None, "ppo_histogram": None}
+        return {
+            "ppo_line": ppo_line,
+            "ppo_signal": None,
+            "ppo_histogram": None}
 
     ppo_histogram: float = float(ppo_line - ppo_signal)
 
@@ -299,8 +302,8 @@ def calculate_ppo(
 
 
 def macd_signal_cross(
-    macd_values: Dict[str, Optional[float]],
-    prev_macd_values: Dict[str, Optional[float]],
+    macd_values: dict[str, float | None],
+    prev_macd_values: dict[str, float | None],
 ) -> str:
     """
     Detect MACD signal line crossovers.
@@ -350,8 +353,8 @@ def macd_signal_cross(
 
 
 def macd_zero_cross(
-    macd_values: Dict[str, Optional[float]],
-    prev_macd_values: Dict[str, Optional[float]],
+    macd_values: dict[str, float | None],
+    prev_macd_values: dict[str, float | None],
 ) -> str:
     """
     Detect MACD zero line crossovers.
@@ -388,8 +391,8 @@ def macd_zero_cross(
 
 
 def calculate_macd_trend(
-    macd_values: Dict[str, Optional[float]],
-    prev_macd_values: Optional[Dict[str, Optional[float]]] = None,
+    macd_values: dict[str, float | None],
+    prev_macd_values: dict[str, float | None] | None = None,
 ) -> str:
     """
     Determine MACD trend direction based on MACD line and signal line.
@@ -467,20 +470,19 @@ def calculate_macd_trend(
     # Determine trend based on signal strength
     if bullish_signals > bearish_signals + 1:  # Need clear majority
         return "BULLISH"
-    elif bearish_signals > bullish_signals + 1:
+    if bearish_signals > bullish_signals + 1:
         return "BEARISH"
-    else:
-        return "NEUTRAL"
+    return "NEUTRAL"
 
 
 # ============ Helper Functions ============
 
 
-def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
+def _to_numpy_array(data: list[float] | np.ndarray | pd.Series) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
         return np.asarray(data.values, dtype=float)
-    elif isinstance(data, list):
+    if isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
 
@@ -491,7 +493,7 @@ def _calculate_macd_manual(
     slow_period: int,
     signal_period: int,
     normalize_high_price: bool = True,
-) -> Dict[str, Optional[float]]:
+) -> dict[str, float | None]:
     """Manual MACD calculation."""
     # Calculate EMAs
     ema_fast = calculate_ema(prices, fast_period)
@@ -507,7 +509,7 @@ def _calculate_macd_manual(
     normalization_factor = 1.0
     if normalize_high_price and len(prices) > 0:
         avg_price = np.mean(
-            prices[-min(50, len(prices)) :]
+            prices[-min(50, len(prices)):]
         )  # Moyenne des 50 derniers prix
         if avg_price > 10000:  # Pour BTC et autres cryptos à prix élevé
             normalization_factor = avg_price / 1000  # Ramener à une échelle raisonnable
@@ -555,14 +557,14 @@ def _calculate_macd_manual(
 
 def _calculate_macd_series_manual(
     prices: np.ndarray, fast_period: int, slow_period: int, signal_period: int
-) -> Dict[str, List[Optional[float]]]:
+) -> dict[str, list[float | None]]:
     """Manual MACD series calculation."""
     # Calculate EMA series
     ema_fast_series = calculate_ema_series(prices, fast_period)
     ema_slow_series = calculate_ema_series(prices, slow_period)
 
     # Calculate MACD line series
-    macd_line_series: List[Optional[float]] = []
+    macd_line_series: list[float | None] = []
     for i in range(len(prices)):
         fast_val = ema_fast_series[i]
         slow_val = ema_slow_series[i]
@@ -572,8 +574,9 @@ def _calculate_macd_series_manual(
             macd_line_series.append(0.0)
 
     # Calculate signal line series
-    macd_signal_series: List[Optional[float]] = [0.0] * len(prices)
-    valid_macd = [(i, x) for i, x in enumerate(macd_line_series) if x is not None]
+    macd_signal_series: list[float | None] = [0.0] * len(prices)
+    valid_macd = [(i, x)
+                  for i, x in enumerate(macd_line_series) if x is not None]
 
     if len(valid_macd) >= signal_period:
         # Extract valid MACD values
@@ -591,7 +594,7 @@ def _calculate_macd_series_manual(
                 macd_signal_series[idx] = 0.0
 
     # Calculate histogram series
-    macd_histogram_series: List[Optional[float]] = []
+    macd_histogram_series: list[float | None] = []
     for i in range(len(prices)):
         line_val = macd_line_series[i]
         signal_val = macd_signal_series[i]

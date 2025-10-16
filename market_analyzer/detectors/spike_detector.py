@@ -10,13 +10,12 @@ This module detects anomalous price and volume movements that may indicate:
 - Technical breakouts with high conviction
 """
 
-import numpy as np
-import pandas as pd
-from typing import Dict, List, Optional, Union, Tuple, NamedTuple, Any
+import logging
 from dataclasses import dataclass
 from enum import Enum
-from datetime import datetime, timedelta
-import logging
+from typing import Any
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -69,15 +68,15 @@ class SpikeEvent:
     z_score_price: float  # Z-score pour le prix
     z_score_volume: float  # Z-score pour le volume
     pre_spike_trend: str  # Tendance avant le spike
-    post_spike_behavior: Optional[str] = None  # Comportement après
-    related_levels: Optional[List[float]] = None  # Niveaux S/R impliqués
+    post_spike_behavior: str | None = None  # Comportement après
+    related_levels: list[float] | None = None  # Niveaux S/R impliqués
     liquidity_impact: float = 0.0  # Impact sur la liquidité
 
     def __post_init__(self):
         if self.related_levels is None:
             self.related_levels = []
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convertit en dictionnaire pour export."""
         return {
             "timestamp": self.timestamp,
@@ -132,16 +131,16 @@ class SpikeDetector:
         self.min_spike_duration = min_spike_duration
 
         # Cache pour optimisation
-        self._cache: Dict[str, Any] = {}
+        self._cache: dict[str, Any] = {}
 
     def detect_spikes(
         self,
-        highs: Union[List[float], np.ndarray],
-        lows: Union[List[float], np.ndarray],
-        closes: Union[List[float], np.ndarray],
-        volumes: Union[List[float], np.ndarray],
-        timestamps: Optional[List[str]] = None,
-    ) -> List[SpikeEvent]:
+        highs: list[float] | np.ndarray,
+        lows: list[float] | np.ndarray,
+        closes: list[float] | np.ndarray,
+        volumes: list[float] | np.ndarray,
+        timestamps: list[str] | None = None,
+    ) -> list[SpikeEvent]:
         """
         Détecte tous les spikes dans les données.
 
@@ -171,11 +170,13 @@ class SpikeDetector:
             all_spikes = []
 
             # 1. Détecter les spikes de prix
-            price_spikes = self._detect_price_spikes(highs, lows, closes, timestamps)
+            price_spikes = self._detect_price_spikes(
+                highs, lows, closes, timestamps)
             all_spikes.extend(price_spikes)
 
             # 2. Détecter les spikes de volume
-            volume_spikes = self._detect_volume_spikes(volumes, closes, timestamps)
+            volume_spikes = self._detect_volume_spikes(
+                volumes, closes, timestamps)
             all_spikes.extend(volume_spikes)
 
             # 3. Détecter les spikes combinés (prix + volume)
@@ -200,15 +201,16 @@ class SpikeDetector:
             consolidated_spikes = self._consolidate_spikes(all_spikes)
 
             # 7. Analyser l'impact post-spike
-            final_spikes = self._analyze_post_spike_impact(consolidated_spikes, closes)
+            final_spikes = self._analyze_post_spike_impact(
+                consolidated_spikes, closes)
 
             # Trier par timestamp (plus récents d'abord)
             final_spikes.sort(key=lambda x: x.timestamp, reverse=True)
 
             return final_spikes[:50]  # Limiter pour performance
 
-        except Exception as e:
-            logger.error(f"Erreur détection spikes: {e}")
+        except Exception:
+            logger.exception("Erreur détection spikes")
             return []
 
     def _detect_price_spikes(
@@ -216,8 +218,8 @@ class SpikeDetector:
         highs: np.ndarray,
         lows: np.ndarray,
         closes: np.ndarray,
-        timestamps: List[str],
-    ) -> List[SpikeEvent]:
+        timestamps: list[str],
+    ) -> list[SpikeEvent]:
         """Détecte les spikes de prix basés sur les variations anormales."""
         spikes = []
 
@@ -227,7 +229,7 @@ class SpikeDetector:
 
             # Rolling statistics pour normaliser
             for i in range(self.lookback_window, len(price_changes)):
-                window = price_changes[i - self.lookback_window : i]
+                window = price_changes[i - self.lookback_window: i]
                 mean_change = np.mean(window)
                 std_change = np.std(window)
 
@@ -266,7 +268,8 @@ class SpikeDetector:
                             spike_type=spike_type,
                             intensity=intensity,
                             impact=impact,
-                            price_change=float(current_change * 100),  # En pourcentage
+                            price_change=float(
+                                current_change * 100),  # En pourcentage
                             volume_ratio=1.0,  # Sera mis à jour si volume spike aussi
                             duration_bars=1,
                             confidence=min(abs(z_score) * 15, 95),
@@ -282,14 +285,14 @@ class SpikeDetector:
         return spikes
 
     def _detect_volume_spikes(
-        self, volumes: np.ndarray, closes: np.ndarray, timestamps: List[str]
-    ) -> List[SpikeEvent]:
+        self, volumes: np.ndarray, closes: np.ndarray, timestamps: list[str]
+    ) -> list[SpikeEvent]:
         """Détecte les spikes de volume anormaux."""
         spikes = []
 
         try:
             for i in range(self.lookback_window, len(volumes)):
-                window = volumes[i - self.lookback_window : i]
+                window = volumes[i - self.lookback_window: i]
                 mean_volume = np.mean(window)
                 std_volume = np.std(window)
 
@@ -303,7 +306,8 @@ class SpikeDetector:
                 # Détecter les spikes de volume significatifs
                 if z_score > self.volume_z_threshold and volume_ratio > 2.0:
                     # Calculer l'intensité basée sur le ratio et z-score
-                    intensity = self._calculate_volume_intensity(volume_ratio, z_score)
+                    intensity = self._calculate_volume_intensity(
+                        volume_ratio, z_score)
 
                     # Analyser la corrélation avec le prix
                     price_change = (
@@ -317,7 +321,8 @@ class SpikeDetector:
                         spike_type = SpikeType.VOLUME_SPIKE
 
                     # Impact basé sur la corrélation prix-volume
-                    impact = self._predict_volume_impact(volume_ratio, price_change)
+                    impact = self._predict_volume_impact(
+                        volume_ratio, price_change)
 
                     spikes.append(
                         SpikeEvent(
@@ -348,8 +353,8 @@ class SpikeDetector:
         lows: np.ndarray,
         closes: np.ndarray,
         volumes: np.ndarray,
-        timestamps: List[str],
-    ) -> List[SpikeEvent]:
+        timestamps: list[str],
+    ) -> list[SpikeEvent]:
         """Détecte les spikes combinés prix + volume (très significatifs)."""
         spikes = []
 
@@ -358,8 +363,8 @@ class SpikeDetector:
 
             for i in range(self.lookback_window, len(closes) - 1):
                 # Fenêtres d'analyse
-                price_window = price_changes[i - self.lookback_window : i]
-                volume_window = volumes[i - self.lookback_window : i]
+                price_window = price_changes[i - self.lookback_window: i]
+                volume_window = volumes[i - self.lookback_window: i]
 
                 # Statistiques prix
                 price_mean = np.mean(price_window)
@@ -390,8 +395,7 @@ class SpikeDetector:
                 if price_significant and volume_significant:
                     # Analyser le pattern pour déterminer le type
                     spike_type = self._classify_combined_spike(
-                        current_price_change, volume_ratio, highs[i], lows[i], closes[i]
-                    )
+                        current_price_change, volume_ratio, highs[i], lows[i], closes[i])
 
                     # Intensité combinée
                     intensity = self._calculate_combined_intensity(
@@ -435,18 +439,19 @@ class SpikeDetector:
         lows: np.ndarray,
         closes: np.ndarray,
         volumes: np.ndarray,
-        timestamps: List[str],
-    ) -> List[SpikeEvent]:
+        timestamps: list[str],
+    ) -> list[SpikeEvent]:
         """Détecte les patterns de manipulation (pump/dump)."""
         spikes = []
 
         try:
-            for i in range(10, len(closes) - 5):  # Besoin de contexte avant/après
+            for i in range(
+                    10, len(closes) - 5):  # Besoin de contexte avant/après
                 # Analyser une fenêtre de 15 barres (10 avant + 5 après)
-                window_closes = closes[i - 10 : i + 5]
-                window_volumes = volumes[i - 10 : i + 5]
-                window_highs = highs[i - 10 : i + 5]
-                window_lows = lows[i - 10 : i + 5]
+                window_closes = closes[i - 10: i + 5]
+                window_volumes = volumes[i - 10: i + 5]
+                highs[i - 10: i + 5]
+                lows[i - 10: i + 5]
 
                 # Pattern pump: montée rapide puis chute
                 pump_pattern = self._detect_pump_pattern(
@@ -456,8 +461,7 @@ class SpikeDetector:
                     spikes.append(
                         SpikeEvent(
                             timestamp=(
-                                timestamps[i] if i < len(timestamps) else f"bar_{i}"
-                            ),
+                                timestamps[i] if i < len(timestamps) else f"bar_{i}"),
                             spike_type=SpikeType.PUMP,
                             intensity=pump_pattern["intensity"],
                             impact=SpikeImpact.REVERSAL,
@@ -469,8 +473,7 @@ class SpikeDetector:
                             z_score_volume=pump_pattern["volume_z"],
                             pre_spike_trend="neutral",
                             liquidity_impact=pump_pattern["liquidity_impact"],
-                        )
-                    )
+                        ))
 
                 # Pattern dump: chute rapide avec volume
                 dump_pattern = self._detect_dump_pattern(
@@ -480,8 +483,7 @@ class SpikeDetector:
                     spikes.append(
                         SpikeEvent(
                             timestamp=(
-                                timestamps[i] if i < len(timestamps) else f"bar_{i}"
-                            ),
+                                timestamps[i] if i < len(timestamps) else f"bar_{i}"),
                             spike_type=SpikeType.DUMP,
                             intensity=dump_pattern["intensity"],
                             impact=SpikeImpact.REVERSAL,
@@ -493,8 +495,7 @@ class SpikeDetector:
                             z_score_volume=dump_pattern["volume_z"],
                             pre_spike_trend="bearish",
                             liquidity_impact=dump_pattern["liquidity_impact"],
-                        )
-                    )
+                        ))
 
         except Exception as e:
             logger.warning(f"Erreur détection manipulation: {e}")
@@ -507,16 +508,16 @@ class SpikeDetector:
         lows: np.ndarray,
         closes: np.ndarray,
         volumes: np.ndarray,
-        timestamps: List[str],
-    ) -> List[SpikeEvent]:
+        timestamps: list[str],
+    ) -> list[SpikeEvent]:
         """Détecte les sweeps de liquidité (balayage des stops)."""
         spikes = []
 
         try:
             for i in range(20, len(closes)):
                 # Analyser les 20 dernières barres pour trouver des niveaux
-                recent_highs = highs[i - 20 : i]
-                recent_lows = lows[i - 20 : i]
+                recent_highs = highs[i - 20: i]
+                recent_lows = lows[i - 20: i]
 
                 # Trouver les niveaux potentiels de liquidité
                 resistance_level = np.max(recent_highs)
@@ -528,24 +529,25 @@ class SpikeDetector:
 
                 # Moyenne du volume récent
                 avg_volume = (
-                    np.mean(volumes[i - 10 : i]) if i >= 10 else np.mean(volumes[:i])
+                    np.mean(volumes[i - 10: i]) if i >= 10 else np.mean(volumes[:i])
                 )
                 volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1
 
                 # Sweep au-dessus de la résistance
                 if (
                     current_high > resistance_level * 1.001  # Dépassement de 0.1%
-                    and closes[i] < resistance_level  # Mais fermeture en dessous
+                    # Mais fermeture en dessous
+                    and closes[i] < resistance_level
                     and volume_ratio > 1.5
                 ):  # Avec volume élevé
 
-                    price_change = (current_high - closes[i - 1]) / closes[i - 1] * 100
+                    price_change = (
+                        current_high - closes[i - 1]) / closes[i - 1] * 100
 
                     spikes.append(
                         SpikeEvent(
                             timestamp=(
-                                timestamps[i] if i < len(timestamps) else f"bar_{i}"
-                            ),
+                                timestamps[i] if i < len(timestamps) else f"bar_{i}"),
                             spike_type=SpikeType.LIQUIDITY_SWEEP,
                             intensity=SpikeIntensity.MODERATE,
                             impact=SpikeImpact.REVERSAL,
@@ -554,12 +556,14 @@ class SpikeDetector:
                             duration_bars=1,
                             confidence=70.0,
                             z_score_price=2.0,
-                            z_score_volume=float(volume_ratio - 1),
+                            z_score_volume=float(
+                                volume_ratio - 1),
                             pre_spike_trend="bullish",
-                            related_levels=[float(resistance_level)],
-                            liquidity_impact=float(volume_ratio * 0.3),
-                        )
-                    )
+                            related_levels=[
+                                float(resistance_level)],
+                            liquidity_impact=float(
+                                volume_ratio * 0.3),
+                        ))
 
                 # Sweep en dessous du support
                 elif (
@@ -568,13 +572,13 @@ class SpikeDetector:
                     and volume_ratio > 1.5
                 ):  # Avec volume élevé
 
-                    price_change = (current_low - closes[i - 1]) / closes[i - 1] * 100
+                    price_change = (
+                        current_low - closes[i - 1]) / closes[i - 1] * 100
 
                     spikes.append(
                         SpikeEvent(
                             timestamp=(
-                                timestamps[i] if i < len(timestamps) else f"bar_{i}"
-                            ),
+                                timestamps[i] if i < len(timestamps) else f"bar_{i}"),
                             spike_type=SpikeType.LIQUIDITY_SWEEP,
                             intensity=SpikeIntensity.MODERATE,
                             impact=SpikeImpact.REVERSAL,
@@ -583,12 +587,14 @@ class SpikeDetector:
                             duration_bars=1,
                             confidence=70.0,
                             z_score_price=-2.0,
-                            z_score_volume=float(volume_ratio - 1),
+                            z_score_volume=float(
+                                volume_ratio - 1),
                             pre_spike_trend="bearish",
-                            related_levels=[float(support_level)],
-                            liquidity_impact=float(volume_ratio * 0.3),
-                        )
-                    )
+                            related_levels=[
+                                float(support_level)],
+                            liquidity_impact=float(
+                                volume_ratio * 0.3),
+                        ))
 
         except Exception as e:
             logger.warning(f"Erreur détection liquidity sweeps: {e}")
@@ -601,12 +607,11 @@ class SpikeDetector:
         """Calcule l'intensité basée sur le Z-score prix."""
         if z_score > 4.0:
             return SpikeIntensity.EXTREME
-        elif z_score > 3.0:
+        if z_score > 3.0:
             return SpikeIntensity.HIGH
-        elif z_score > 2.0:
+        if z_score > 2.0:
             return SpikeIntensity.MODERATE
-        else:
-            return SpikeIntensity.LOW
+        return SpikeIntensity.LOW
 
     def _calculate_volume_intensity(
         self, volume_ratio: float, z_score: float
@@ -616,12 +621,11 @@ class SpikeDetector:
 
         if composite_score > 8.0 or volume_ratio > 10:
             return SpikeIntensity.EXTREME
-        elif composite_score > 5.0 or volume_ratio > 5:
+        if composite_score > 5.0 or volume_ratio > 5:
             return SpikeIntensity.HIGH
-        elif composite_score > 3.0 or volume_ratio > 3:
+        if composite_score > 3.0 or volume_ratio > 3:
             return SpikeIntensity.MODERATE
-        else:
-            return SpikeIntensity.LOW
+        return SpikeIntensity.LOW
 
     def _calculate_combined_intensity(
         self, price_z: float, volume_z: float, volume_ratio: float
@@ -631,12 +635,11 @@ class SpikeDetector:
 
         if combined_score > 10.0:
             return SpikeIntensity.EXTREME
-        elif combined_score > 7.0:
+        if combined_score > 7.0:
             return SpikeIntensity.HIGH
-        elif combined_score > 4.0:
+        if combined_score > 4.0:
             return SpikeIntensity.MODERATE
-        else:
-            return SpikeIntensity.LOW
+        return SpikeIntensity.LOW
 
     def _analyze_pre_trend(self, closes: np.ndarray) -> str:
         """Analyse la tendance précédant le spike."""
@@ -648,10 +651,9 @@ class SpikeDetector:
 
         if slope > closes[-1] * 0.001:  # 0.1% par barre
             return "bullish"
-        elif slope < -closes[-1] * 0.001:
+        if slope < -closes[-1] * 0.001:
             return "bearish"
-        else:
-            return "neutral"
+        return "neutral"
 
     def _predict_price_impact(
         self, price_change: float, pre_trend: str, z_score: float
@@ -662,12 +664,10 @@ class SpikeDetector:
                 price_change < 0 and pre_trend == "bullish"
             ):
                 return SpikeImpact.REVERSAL
-            else:
-                return SpikeImpact.BREAKOUT
-        elif abs(z_score) > 2.0:
+            return SpikeImpact.BREAKOUT
+        if abs(z_score) > 2.0:
             return SpikeImpact.CONTINUATION
-        else:
-            return SpikeImpact.UNKNOWN
+        return SpikeImpact.UNKNOWN
 
     def _predict_volume_impact(
         self, volume_ratio: float, price_change: float
@@ -677,10 +677,9 @@ class SpikeDetector:
             volume_ratio > 5 and abs(price_change) > 0.02
         ):  # Volume énorme + mouvement prix
             return SpikeImpact.BREAKOUT
-        elif volume_ratio > 3:
+        if volume_ratio > 3:
             return SpikeImpact.CONTINUATION
-        else:
-            return SpikeImpact.UNKNOWN
+        return SpikeImpact.UNKNOWN
 
     def _predict_combined_impact(
         self, price_change: float, volume_ratio: float, price_z: float
@@ -688,10 +687,9 @@ class SpikeDetector:
         """Prédit l'impact pour spikes combinés."""
         if volume_ratio > 5 and abs(price_z) > 3:
             return SpikeImpact.BREAKOUT
-        elif volume_ratio > 3 and abs(price_z) > 2:
+        if volume_ratio > 3 and abs(price_z) > 2:
             return SpikeImpact.CONTINUATION
-        else:
-            return SpikeImpact.UNKNOWN
+        return SpikeImpact.UNKNOWN
 
     def _classify_combined_spike(
         self,
@@ -704,16 +702,15 @@ class SpikeDetector:
         """Classifie le type de spike combiné."""
         if price_change > 0.03 and volume_ratio > 5:  # 3% + gros volume
             return SpikeType.PUMP
-        elif price_change < -0.03 and volume_ratio > 5:
+        if price_change < -0.03 and volume_ratio > 5:
             return SpikeType.DUMP
-        elif abs(price_change) > 0.02:
+        if abs(price_change) > 0.02:
             return SpikeType.BREAKOUT_SPIKE
-        else:
-            return SpikeType.COMBINED_SPIKE
+        return SpikeType.COMBINED_SPIKE
 
     def _detect_pump_pattern(
         self, closes: np.ndarray, volumes: np.ndarray, offset: int
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         """Détecte un pattern de pump."""
         if len(closes) < 15:
             return None
@@ -724,8 +721,8 @@ class SpikeDetector:
         if peak_idx < 5 or peak_idx > len(closes) - 3:  # Pas assez de contexte
             return None
 
-        pre_pump = closes[:peak_idx]
-        post_pump = closes[peak_idx:]
+        closes[:peak_idx]
+        closes[peak_idx:]
 
         # Critères pump
         pump_rise = (closes[peak_idx] - closes[0]) / closes[0]
@@ -753,7 +750,7 @@ class SpikeDetector:
 
     def _detect_dump_pattern(
         self, closes: np.ndarray, volumes: np.ndarray, offset: int
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         """Détecte un pattern de dump."""
         if len(closes) < 10:
             return None
@@ -765,7 +762,7 @@ class SpikeDetector:
             return None
 
         dump_fall = (closes[min_idx] - closes[0]) / closes[0]
-        recovery = (
+        (
             (closes[-1] - closes[min_idx]) / closes[min_idx]
             if closes[min_idx] != 0
             else 0
@@ -789,7 +786,9 @@ class SpikeDetector:
 
         return None
 
-    def _consolidate_spikes(self, spikes: List[SpikeEvent]) -> List[SpikeEvent]:
+    def _consolidate_spikes(
+            self,
+            spikes: list[SpikeEvent]) -> list[SpikeEvent]:
         """Consolide les spikes proches dans le temps."""
         if not spikes:
             return []
@@ -825,10 +824,13 @@ class SpikeDetector:
 
         return consolidated
 
-    def _merge_spikes(self, spikes: List[SpikeEvent]) -> SpikeEvent:
+    def _merge_spikes(self, spikes: list[SpikeEvent]) -> SpikeEvent:
         """Fusionne plusieurs spikes de la même période."""
         # Prendre le plus intense comme base
-        primary = max(spikes, key=lambda x: self._intensity_to_number(x.intensity))
+        primary = max(
+            spikes,
+            key=lambda x: self._intensity_to_number(
+                x.intensity))
 
         # Combiner les caractéristiques
         combined_confidence = min(
@@ -838,11 +840,9 @@ class SpikeDetector:
         max_price_change = max(abs(s.price_change) for s in spikes)
 
         # Type combiné si différents types
-        unique_types = set(s.spike_type for s in spikes)
-        if len(unique_types) > 1:
-            combined_type = SpikeType.COMBINED_SPIKE
-        else:
-            combined_type = primary.spike_type
+        unique_types = {s.spike_type for s in spikes}
+        combined_type = SpikeType.COMBINED_SPIKE if len(
+            unique_types) > 1 else primary.spike_type
 
         return SpikeEvent(
             timestamp=primary.timestamp,
@@ -865,8 +865,8 @@ class SpikeDetector:
         )
 
     def _analyze_post_spike_impact(
-        self, spikes: List[SpikeEvent], closes: np.ndarray
-    ) -> List[SpikeEvent]:
+        self, spikes: list[SpikeEvent], closes: np.ndarray
+    ) -> list[SpikeEvent]:
         """Analyse le comportement post-spike pour ajuster les prédictions."""
         # Implémentation simplifiée - peut être étendue
         for spike in spikes:
@@ -886,19 +886,19 @@ class SpikeDetector:
         return mapping.get(intensity, 1)
 
     def get_recent_spikes(
-        self, spikes: List[SpikeEvent], max_age: int = 10
-    ) -> List[SpikeEvent]:
+        self, spikes: list[SpikeEvent], max_age: int = 10
+    ) -> list[SpikeEvent]:
         """Retourne les spikes récents selon l'âge maximal."""
         # Implémentation simplifiée
         return spikes[:max_age]
 
-    def get_spike_summary(self, spikes: List[SpikeEvent]) -> Dict:
+    def get_spike_summary(self, spikes: list[SpikeEvent]) -> dict:
         """Retourne un résumé des spikes détectés."""
         if not spikes:
             return {"total": 0, "by_type": {}, "by_intensity": {}}
 
-        by_type: Dict[str, int] = {}
-        by_intensity: Dict[str, int] = {}
+        by_type: dict[str, int] = {}
+        by_intensity: dict[str, int] = {}
 
         for spike in spikes:
             # Compter par type
@@ -907,7 +907,8 @@ class SpikeDetector:
 
             # Compter par intensité
             intensity_key = spike.intensity.value
-            by_intensity[intensity_key] = by_intensity.get(intensity_key, 0) + 1
+            by_intensity[intensity_key] = by_intensity.get(
+                intensity_key, 0) + 1
 
         return {
             "total": len(spikes),

@@ -2,11 +2,12 @@
 Tests pour valider le format des indicateurs techniques en DB.
 """
 
-import pytest
-import sys
 import os
+import sys
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any, Dict
+
+import pytest
 
 # Ajouter le chemin racine pour les imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
@@ -126,7 +127,8 @@ class TestIndicatorsFormat:
         stoch_d = indicators["stoch_d"]
 
         # %D est généralement une moyenne mobile de %K, donc plus lisse
-        # Pas de relation stricte mais vérifier qu'ils sont dans la même zone générale
+        # Pas de relation stricte mais vérifier qu'ils sont dans la même zone
+        # générale
         diff = abs(stoch_k - stoch_d)
         assert diff <= 50, f"Stochastic %K et %D trop éloignés: {stoch_k} vs {stoch_d}"
 
@@ -200,7 +202,8 @@ class TestIndicatorsFormat:
         """Test types compatibles avec la base de données."""
         indicators = indicators_db_format["indicators"]
 
-        # Tous les indicateurs doivent être des types numériques compatibles SQL
+        # Tous les indicateurs doivent être des types numériques compatibles
+        # SQL
         for name, value in indicators.items():
             assert isinstance(
                 value, (int, float)
@@ -208,8 +211,10 @@ class TestIndicatorsFormat:
 
             # Vérifier que ce n'est pas NaN ou infinity
             if isinstance(value, float):
-                assert not (value != value), f"Indicateur {name} est NaN"  # NaN != NaN
-                assert abs(value) != float("inf"), f"Indicateur {name} est infini"
+                assert not (
+                    value != value), f"Indicateur {name} est NaN"  # NaN != NaN
+                assert abs(value) != float(
+                    "inf"), f"Indicateur {name} est infini"
 
     def test_indicators_computation_dependency(self):
         """Test dépendances entre indicateurs calculés."""

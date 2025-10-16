@@ -3,8 +3,8 @@ Configuration du logging pour le trader.
 """
 
 import logging
-import sys
 import os
+import sys
 from logging.handlers import RotatingFileHandler
 
 
@@ -72,7 +72,8 @@ def setup_logging(log_level_str="INFO"):
     # Logger les informations de configuration
     logger = logging.getLogger("trader")
     logger.info(f"Niveau de log configuré à {log_level_str}")
-    logger.info(f"Logs enregistrés dans le dossier {os.path.abspath(logs_dir)}")
+    logger.info(
+        f"Logs enregistrés dans le dossier {os.path.abspath(logs_dir)}")
 
 
 def get_logger(name):

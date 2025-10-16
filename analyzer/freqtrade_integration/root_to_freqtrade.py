@@ -3,23 +3,27 @@ RootToFreqtradeAdapter - Convertit stratégies ROOT vers format Freqtrade.
 Permet de backtester des stratégies ROOT avec l'engine Freqtrade.
 """
 
-import sys
-import os
-from typing import Dict, Any, Optional, Type
-import pandas as pd
+from .data_converter import DataConverter
+from strategies.base_strategy import BaseStrategy
 import logging
+import os
+import sys
+from typing import Any, Dict, Optional, Type
+
+import pandas as pd
 
 # Ajouter le path pour imports ROOT
-analyzer_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+analyzer_root = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "../../"))
 sys.path.append(analyzer_root)
 
-from strategies.base_strategy import BaseStrategy
-from .data_converter import DataConverter
 
 # Import conditionnel Freqtrade (peut ne pas être installé)
 try:
-    from freqtrade.strategy import IStrategy
     import talib.abstract as ta
+    from freqtrade.strategy import IStrategy
 
     FREQTRADE_AVAILABLE = True
 except ImportError:
@@ -44,8 +48,8 @@ class RootToFreqtradeAdapter:
         """
         if not FREQTRADE_AVAILABLE:
             raise ImportError(
-                "Freqtrade n'est pas installé. " "Installez avec: pip install freqtrade"
-            )
+                "Freqtrade n'est pas installé. "
+                "Installez avec: pip install freqtrade")
 
         self.root_strategy_class = root_strategy_class
         self.strategy_name = root_strategy_class.__name__
@@ -113,13 +117,15 @@ class RootToFreqtradeAdapter:
                 for period in [7, 12, 26, 50, 99, 200]:
                     col_name = f"ema_{period}"
                     if col_name not in dataframe.columns:
-                        dataframe[col_name] = ta.EMA(dataframe, timeperiod=period)
+                        dataframe[col_name] = ta.EMA(
+                            dataframe, timeperiod=period)
 
                 # SMA
                 for period in [20, 50, 100, 200]:
                     col_name = f"sma_{period}"
                     if col_name not in dataframe.columns:
-                        dataframe[col_name] = ta.SMA(dataframe, timeperiod=period)
+                        dataframe[col_name] = ta.SMA(
+                            dataframe, timeperiod=period)
 
                 # RSI
                 if "rsi" not in dataframe.columns:
@@ -193,13 +199,15 @@ class RootToFreqtradeAdapter:
 
                             # Filtrer signaux faibles (confidence < 0.4)
                             if confidence >= 0.4:
-                                dataframe.loc[dataframe.index[idx], "enter_long"] = 1
+                                dataframe.loc[dataframe.index[idx],
+                                              "enter_long"] = 1
                                 dataframe.loc[dataframe.index[idx], "enter_tag"] = (
                                     f"{strategy_name}_{signal.get('strength', 'moderate')}"
                                 )
 
                     except Exception as e:
-                        logger.debug(f"Erreur évaluation stratégie ROOT idx {idx}: {e}")
+                        logger.debug(
+                            f"Erreur évaluation stratégie ROOT idx {idx}: {e}")
                         continue
 
                 return dataframe
@@ -238,7 +246,8 @@ class RootToFreqtradeAdapter:
 
                             # Filtrer signaux faibles
                             if confidence >= 0.4:
-                                dataframe.loc[dataframe.index[idx], "exit_long"] = 1
+                                dataframe.loc[dataframe.index[idx],
+                                              "exit_long"] = 1
                                 dataframe.loc[dataframe.index[idx], "exit_tag"] = (
                                     f"{strategy_name}_{signal.get('strength', 'moderate')}"
                                 )

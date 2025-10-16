@@ -7,10 +7,10 @@ This module provides Stochastic oscillator calculation including:
 - Fast and Slow variations
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Union, Tuple
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +24,13 @@ except ImportError:
 
 
 def calculate_stochastic(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     k_period: int = 14,
     k_smooth: int = 1,
     d_period: int = 3,
-) -> Dict[str, Optional[float]]:
+) -> dict[str, float | None]:
     """
     Calculate Stochastic Oscillator.
 
@@ -95,12 +95,12 @@ def calculate_stochastic(
 
 
 def calculate_stochastic_fast(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     k_period: int = 14,
     d_period: int = 3,
-) -> Dict[str, Optional[float]]:
+) -> dict[str, float | None]:
     """
     Calculate Fast Stochastic Oscillator.
 
@@ -135,7 +135,8 @@ def calculate_stochastic_fast(
                 "fast_d": float(d_values[-1]) if not np.isnan(d_values[-1]) else None,
             }
         except Exception as e:
-            logger.warning(f"TA-Lib Fast Stochastic error: {e}, using fallback")
+            logger.warning(
+                f"TA-Lib Fast Stochastic error: {e}, using fallback")
 
     # Use regular stochastic with k_smooth=1
     result = calculate_stochastic(highs, lows, closes, k_period, 1, d_period)
@@ -143,13 +144,13 @@ def calculate_stochastic_fast(
 
 
 def calculate_stochastic_series(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     k_period: int = 14,
     k_smooth: int = 1,
     d_period: int = 3,
-) -> Dict[str, List[Optional[float]]]:
+) -> dict[str, list[float | None]]:
     """
     Calculate Stochastic values for entire price series.
 
@@ -186,11 +187,12 @@ def calculate_stochastic_series(
             )
 
             return {
-                "k": [float(val) if not np.isnan(val) else None for val in k_values],
-                "d": [float(val) if not np.isnan(val) else None for val in d_values],
-            }
+                "k": [
+                    float(val) if not np.isnan(val) else None for val in k_values], "d": [
+                    float(val) if not np.isnan(val) else None for val in d_values], }
         except Exception as e:
-            logger.warning(f"TA-Lib Stochastic series error: {e}, using fallback")
+            logger.warning(
+                f"TA-Lib Stochastic series error: {e}, using fallback")
 
     # Manual calculation
     return _calculate_stochastic_series_manual(
@@ -199,10 +201,10 @@ def calculate_stochastic_series(
 
 
 def stochastic_signal(
-    k_current: Optional[float],
-    d_current: Optional[float],
-    k_previous: Optional[float],
-    d_previous: Optional[float],
+    k_current: float | None,
+    d_current: float | None,
+    k_previous: float | None,
+    d_previous: float | None,
 ) -> str:
     """
     Generate trading signal based on Stochastic crossovers.
@@ -228,7 +230,7 @@ def stochastic_signal(
     # Check for overbought/oversold conditions
     if k_current >= 80 and d_current >= 80:
         return "overbought"
-    elif k_current <= 20 and d_current <= 20:
+    if k_current <= 20 and d_current <= 20:
         return "oversold"
 
     # Check for crossovers
@@ -244,9 +246,9 @@ def stochastic_signal(
 
 
 def calculate_stochastic_divergence(
-    prices: Union[List[float], np.ndarray, pd.Series],
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
     lookback: int = 20,
 ) -> str:
     """
@@ -331,7 +333,8 @@ def calculate_stochastic_divergence(
         ):
             return "bullish_divergence"
 
-    # Bearish divergence: Price makes higher highs, Stochastic makes lower highs
+    # Bearish divergence: Price makes higher highs, Stochastic makes lower
+    # highs
     if len(price_highs) >= 2 and len(stoch_highs) >= 2:
         price_val1, price_val2 = price_highs[-1][1], price_highs[-2][1]
         stoch_val1, stoch_val2 = stoch_highs[-1][1], stoch_highs[-2][1]
@@ -351,28 +354,28 @@ def calculate_stochastic_divergence(
 # ============ Helper Functions ============
 
 
-def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
+def _to_numpy_array(data: list[float] | np.ndarray | pd.Series) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
         return np.asarray(data.values, dtype=float)
-    elif isinstance(data, list):
+    if isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
 
 
 def _calculate_raw_k(
     highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int
-) -> List[Optional[float]]:
+) -> list[float | None]:
     """Calculate raw %K values."""
-    k_values: List[Optional[float]] = []
+    k_values: list[float | None] = []
 
     for i in range(len(closes)):
         if i < period - 1:
             k_values.append(None)
         else:
             # Get window
-            high_window = highs[i - period + 1 : i + 1]
-            low_window = lows[i - period + 1 : i + 1]
+            high_window = highs[i - period + 1: i + 1]
+            low_window = lows[i - period + 1: i + 1]
             current_close = closes[i]
 
             # Calculate %K
@@ -382,16 +385,18 @@ def _calculate_raw_k(
             if highest_high == lowest_low:
                 k = 50.0  # Neutral when no range
             else:
-                k = ((current_close - lowest_low) / (highest_high - lowest_low)) * 100
+                k = ((current_close - lowest_low) /
+                     (highest_high - lowest_low)) * 100
 
             k_values.append(float(k))
 
     return k_values
 
 
-def _smooth_series(values: List[Optional[float]], period: int) -> List[Optional[float]]:
+def _smooth_series(values: list[float | None],
+                   period: int) -> list[float | None]:
     """Apply SMA smoothing to a series."""
-    smoothed: List[Optional[float]] = []
+    smoothed: list[float | None] = []
 
     for i in range(len(values)):
         if values[i] is None:
@@ -400,7 +405,8 @@ def _smooth_series(values: List[Optional[float]], period: int) -> List[Optional[
             smoothed.append(values[i])  # Not enough data to smooth
         else:
             # Calculate SMA
-            window_values = [x for x in values[i - period + 1 : i + 1] if x is not None]
+            window_values = [x for x in values[i - \
+                period + 1: i + 1] if x is not None]
             if len(window_values) == period:
                 smoothed.append(float(np.mean(window_values)))
             else:
@@ -416,16 +422,13 @@ def _calculate_stochastic_manual(
     k_period: int,
     k_smooth: int,
     d_period: int,
-) -> Dict[str, Optional[float]]:
+) -> dict[str, float | None]:
     """Manual Stochastic calculation."""
     # Calculate raw %K
     raw_k = _calculate_raw_k(highs, lows, closes, k_period)
 
     # Smooth %K if needed
-    if k_smooth > 1:
-        smoothed_k = _smooth_series(raw_k, k_smooth)
-    else:
-        smoothed_k = raw_k
+    smoothed_k = _smooth_series(raw_k, k_smooth) if k_smooth > 1 else raw_k
 
     # Calculate %D (smoothed %K)
     d_values = _smooth_series(smoothed_k, d_period)
@@ -454,16 +457,13 @@ def _calculate_stochastic_series_manual(
     k_period: int,
     k_smooth: int,
     d_period: int,
-) -> Dict[str, List[Optional[float]]]:
+) -> dict[str, list[float | None]]:
     """Manual Stochastic series calculation."""
     # Calculate raw %K
     raw_k = _calculate_raw_k(highs, lows, closes, k_period)
 
     # Smooth %K if needed
-    if k_smooth > 1:
-        smoothed_k = _smooth_series(raw_k, k_smooth)
-    else:
-        smoothed_k = raw_k
+    smoothed_k = _smooth_series(raw_k, k_smooth) if k_smooth > 1 else raw_k
 
     # Calculate %D (smoothed %K)
     d_values = _smooth_series(smoothed_k, d_period)
@@ -472,9 +472,9 @@ def _calculate_stochastic_series_manual(
 
 
 def calculate_stochastic_signal(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
     k_period: int = 14,
     d_period: int = 3,
 ) -> str:
@@ -495,7 +495,8 @@ def calculate_stochastic_signal(
         return "NEUTRAL"
 
     # Calculate stochastic values
-    stoch_data = calculate_stochastic(highs, lows, closes, k_period, 1, d_period)
+    stoch_data = calculate_stochastic(
+        highs, lows, closes, k_period, 1, d_period)
 
     if not stoch_data or stoch_data["k"] is None or stoch_data["d"] is None:
         return "NEUTRAL"
@@ -531,12 +532,12 @@ def calculate_stochastic_signal(
     ):
         # Bullish crossover in oversold territory
         return "BULLISH"
-    elif current_k > current_d and prev_k <= prev_d and current_k < 50:
+    if current_k > current_d and prev_k <= prev_d and current_k < 50:
         # Bullish crossover below midline
         return "BULLISH"
 
     # Bearish signals
-    elif (
+    if (
         current_k > overbought_level
         and current_d > overbought_level
         and current_k < current_d
@@ -544,7 +545,7 @@ def calculate_stochastic_signal(
     ):
         # Bearish crossover in overbought territory
         return "BEARISH"
-    elif current_k < current_d and prev_k >= prev_d and current_k > 50:
+    if current_k < current_d and prev_k >= prev_d and current_k > 50:
         # Bearish crossover above midline
         return "BEARISH"
 

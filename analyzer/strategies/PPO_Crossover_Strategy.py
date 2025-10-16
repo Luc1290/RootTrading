@@ -3,9 +3,10 @@ PPO_Crossover_Strategy - Stratégie basée sur le PPO (Percentage Price Oscillat
 Le PPO est similaire au MACD mais normalisé en pourcentage, permettant des comparaisons entre actifs.
 """
 
-from typing import Dict, Any, Optional
-from .base_strategy import BaseStrategy
 import logging
+from typing import Any
+
+from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -21,16 +22,18 @@ class PPO_Crossover_Strategy(BaseStrategy):
     - SELL: PPO croisant en-dessous de 0 avec momentum défavorable
     """
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Seuils PPO OPTIMISÉS WINRATE - Filtrage qualité
         self.bullish_threshold = 0.25  # PPO > 0.25% = signal haussier SIGNIFICATIF
         self.bearish_threshold = -0.25  # PPO < -0.25% = signal baissier SIGNIFICATIF
-        self.neutral_zone = 0.08  # Zone neutre ±0.08% (réduite pour plus de signaux)
+        # Zone neutre ±0.08% (réduite pour plus de signaux)
+        self.neutral_zone = 0.08
         self.strong_signal_threshold = 0.5  # PPO > 0.5% = signal fort CONFIRMÉ
         self.extreme_threshold = 1.0  # PPO > 1.0% = signal EXTRÊME rare
 
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
         return {
             "ppo": self.indicators.get("ppo"),
@@ -45,7 +48,7 @@ class PPO_Crossover_Strategy(BaseStrategy):
             "pattern_confidence": self.indicators.get("pattern_confidence"),
         }
 
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """
         Génère un signal basé sur PPO et indicateurs pré-calculés.
         """
@@ -102,7 +105,7 @@ class PPO_Crossover_Strategy(BaseStrategy):
                 },
             }
 
-        elif ppo_val >= self.bullish_threshold:
+        if ppo_val >= self.bullish_threshold:
             # PPO haussier significatif
             signal_side = "BUY"
 
@@ -186,7 +189,8 @@ class PPO_Crossover_Strategy(BaseStrategy):
                 except (ValueError, TypeError):
                     pass
 
-            # Ajustement avec trend_strength (VARCHAR: weak/moderate/strong/very_strong/extreme)
+            # Ajustement avec trend_strength (VARCHAR:
+            # weak/moderate/strong/very_strong/extreme)
             trend_strength = values.get("trend_strength")
             if trend_strength is not None:
                 trend_str = str(trend_strength).lower()
@@ -204,8 +208,7 @@ class PPO_Crossover_Strategy(BaseStrategy):
             directional_bias = values.get("directional_bias")
             if directional_bias:
                 if (signal_side == "BUY" and directional_bias == "BULLISH") or (
-                    signal_side == "SELL" and directional_bias == "BEARISH"
-                ):
+                        signal_side == "SELL" and directional_bias == "BEARISH"):
                     confidence_boost += 0.1
                     reason += " confirmé par bias directionnel"
                 elif (signal_side == "BUY" and directional_bias == "BEARISH") or (
@@ -232,7 +235,8 @@ class PPO_Crossover_Strategy(BaseStrategy):
                     elif confluence_val > 60:
                         confidence_boost += 0.05  # Réduit
                         reason += f" avec confluence correcte ({confluence_val:.0f})"
-                    # Seuils de rejet différenciés BUY/SELL (basés sur P10 réel)
+                    # Seuils de rejet différenciés BUY/SELL (basés sur P10
+                    # réel)
                     elif (signal_side == "BUY" and confluence_val < 45) or (
                         signal_side == "SELL" and confluence_val < 40
                     ):
@@ -253,7 +257,8 @@ class PPO_Crossover_Strategy(BaseStrategy):
                 except (ValueError, TypeError):
                     pass
 
-            # Ajustement avec signal_strength pré-calculé (VARCHAR: WEAK/MODERATE/STRONG)
+            # Ajustement avec signal_strength pré-calculé (VARCHAR:
+            # WEAK/MODERATE/STRONG)
             signal_strength_calc = values.get("signal_strength")
             if signal_strength_calc is not None:
                 sig_str = str(signal_strength_calc).upper()
@@ -265,7 +270,8 @@ class PPO_Crossover_Strategy(BaseStrategy):
                     reason += " + signal modéré"
 
             # Régime marché - PÉNALITÉ au lieu de rejet pour équilibrer SELL
-            if hasattr(values, "market_regime") and values.get("market_regime"):
+            if hasattr(values, "market_regime") and values.get(
+                    "market_regime"):
                 regime = str(values["market_regime"]).upper()
                 if signal_side == "BUY" and regime == "TRENDING_BEAR":
                     # BUY en bear = rejet (dangereux)
@@ -274,10 +280,13 @@ class PPO_Crossover_Strategy(BaseStrategy):
                         "confidence": 0.0,
                         "strength": "weak",
                         "reason": f"Rejet PPO {signal_side}: régime bear fort",
-                        "metadata": {"strategy": self.name, "market_regime": regime},
+                        "metadata": {
+                            "strategy": self.name,
+                            "market_regime": regime},
                     }
-                elif signal_side == "SELL" and regime == "TRENDING_BULL":
-                    # SELL en bull = pénalité légère (pas rejet total - take profit valide)
+                if signal_side == "SELL" and regime == "TRENDING_BULL":
+                    # SELL en bull = pénalité légère (pas rejet total - take
+                    # profit valide)
                     confidence_boost -= 0.12
                     reason += f" mais régime bull ({regime})"
 
@@ -301,12 +310,9 @@ class PPO_Crossover_Strategy(BaseStrategy):
                 }
 
             confidence = max(
-                0.0,
-                min(
-                    self.calculate_confidence(base_confidence, 1.0 + confidence_boost),
-                    1.0,
-                ),
-            )
+                0.0, min(
+                    self.calculate_confidence(
+                        base_confidence, 1.0 + confidence_boost), 1.0, ), )
             strength = self.get_strength_from_confidence(confidence)
 
             return {
@@ -332,7 +338,10 @@ class PPO_Crossover_Strategy(BaseStrategy):
             "confidence": 0.0,
             "strength": "weak",
             "reason": f"PPO neutre ({ppo_val:.3f}%) - pas de crossover significatif",
-            "metadata": {"strategy": self.name, "symbol": self.symbol, "ppo": ppo_val},
+            "metadata": {
+                "strategy": self.name,
+                "symbol": self.symbol,
+                "ppo": ppo_val},
         }
 
     def validate_data(self) -> bool:
@@ -346,7 +355,8 @@ class PPO_Crossover_Strategy(BaseStrategy):
         # Utilisation de self.indicators directement (pattern du système)
         for indicator in required_indicators:
             if indicator not in self.indicators:
-                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
+                logger.warning(
+                    f"{self.name}: Indicateur manquant: {indicator}")
                 return False
             if self.indicators[indicator] is None:
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")

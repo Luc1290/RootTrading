@@ -3,9 +3,11 @@ MultiTF_ConfluentEntry_Strategy - Stratégie basée sur la confluence multi-time
 OPTIMISÉE POUR CRYPTO SPOT INTRADAY
 """
 
-from typing import Dict, Any, Optional
-from .base_strategy import BaseStrategy
+import contextlib
 import logging
+from typing import Any
+
+from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +28,16 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
     - SELL: Confluence baissière sur multiple timeframes + confirmations
     """
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres ASSOUPLIS pour plus de signaux premium
         self.min_confluence_score = 30  # Assoupli (40 -> 30)
         self.strong_confluence_score = 65  # Maintenu pour la qualité
         self.min_trend_alignment = 0.25  # Maintenu
         self.strong_trend_alignment = 0.45  # Maintenu
-        self.volume_confirmation_min = 0.5  # Assoupli (1.0 -> 0.5) - plus accessible
+        # Assoupli (1.0 -> 0.5) - plus accessible
+        self.volume_confirmation_min = 0.5
         self.volume_strong = 1.8  # Maintenu
 
         # FILTRES ASSOUPLIS
@@ -55,7 +59,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         self.min_adx_trend = 15  # Assoupli (20 -> 15)
         self.strong_adx_trend = 25  # Assoupli (30 -> 25)
 
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs multi-TF."""
         return {
             # Confluence et force du signal
@@ -115,7 +119,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             "momentum_10": self.indicators.get("momentum_10"),
         }
 
-    def _get_current_price(self) -> Optional[float]:
+    def _get_current_price(self) -> float | None:
         """Récupère le prix actuel depuis les données OHLCV."""
         try:
             if self.data and "close" in self.data and self.data["close"]:
@@ -125,8 +129,8 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         return None
 
     def _analyze_ma_alignment(
-        self, values: Dict[str, Optional[float]], current_price: float
-    ) -> Dict[str, Any]:
+        self, values: dict[str, float | None], current_price: float
+    ) -> dict[str, Any]:
         """Analyse l'alignement des moyennes mobiles pour détecter la tendance."""
         mas = {}
         ma_keys = [
@@ -193,10 +197,10 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                     alignment_score += 0.2
 
             # Configurations partielles
-            elif current_price > ema_7 and ema_7 > ema_26:
+            elif current_price > ema_7 > ema_26:
                 alignment_score += 0.2
                 direction = "bullish_weak"
-            elif current_price < ema_7 and ema_7 < ema_26:
+            elif current_price < ema_7 < ema_26:
                 alignment_score += 0.2
                 direction = "bearish_weak"
 
@@ -209,17 +213,15 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             if direction in ["bearish", "bearish_weak"] or direction is None:
                 direction = "bearish"
                 alignment_score = max(alignment_score + 0.2, 0.6)
-        else:
-            if direction is None:
-                direction = "neutral"
-                alignment_score = 0.3
+        elif direction is None:
+            direction = "neutral"
+            alignment_score = 0.3
 
         # Hull MA pour confirmation (très réactive)
         hull_20 = mas.get("hull_20")
         if hull_20:
-            if direction == "bullish" and current_price > hull_20:
-                alignment_score = min(alignment_score + 0.1, 0.95)
-            elif direction == "bearish" and current_price < hull_20:
+            if (direction == "bullish" and current_price > hull_20) or (
+                    direction == "bearish" and current_price < hull_20):
                 alignment_score = min(alignment_score + 0.1, 0.95)
 
         return {
@@ -233,8 +235,8 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         }
 
     def _analyze_oscillator_confluence(
-        self, values: Dict[str, Optional[float]]
-    ) -> Dict[str, Any]:
+        self, values: dict[str, float | None]
+    ) -> dict[str, Any]:
         """Analyse la confluence des oscillateurs avec seuils crypto."""
         oscillators = {}
 
@@ -318,28 +320,33 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             }
 
         # Calcul de la confluence avec pondération
-        oversold_count = sum(1 for v in oscillators.values() if v == "oversold")
-        overbought_count = sum(1 for v in oscillators.values() if v == "overbought")
+        oversold_count = sum(
+            1 for v in oscillators.values() if v == "oversold")
+        overbought_count = sum(
+            1 for v in oscillators.values() if v == "overbought")
         total_count = len(oscillators)
 
         # Seuils ASSOUPLIS pour plus de signaux (50%)
-        if oversold_count >= total_count * 0.5:  # 50% des oscillateurs (assoupli)
+        if oversold_count >= total_count * \
+                0.5:  # 50% des oscillateurs (assoupli)
             return {
                 "confluence": "oversold",
                 "strength": oversold_count / total_count,
                 "count": total_count,
             }
-        elif overbought_count >= total_count * 0.5:
+        if overbought_count >= total_count * 0.5:
             return {
                 "confluence": "overbought",
                 "strength": overbought_count / total_count,
                 "count": total_count,
             }
-        else:
-            # Pas de consensus majoritaire
-            return {"confluence": "insufficient", "strength": 0.0, "count": total_count}
+        # Pas de consensus majoritaire
+        return {
+            "confluence": "insufficient",
+            "strength": 0.0,
+            "count": total_count}
 
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """
         Génère un signal basé sur la confluence multi-timeframes.
         """
@@ -411,18 +418,18 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
 
         # Signal_strength ULTRA-ASSOUPLI avec fallback
         valid_strengths = ["WEAK", "MODERATE", "STRONG", "VERY_STRONG"]
-        signal_strength_str = str(signal_strength) if signal_strength is not None else ""
+        signal_strength_str = str(
+            signal_strength) if signal_strength is not None else ""
         if signal_strength_str not in valid_strengths:
-            signal_strength_str = "MODERATE"  # Default optimiste pour valeurs manquantes/invalides
+            # Default optimiste pour valeurs manquantes/invalides
+            signal_strength_str = "MODERATE"
 
         # Vérification ADX pour tendance suffisante (déplacée ici)
         adx_14 = values.get("adx_14")
         adx_value = None
         if adx_14 is not None:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 adx_value = float(adx_14)
-            except (ValueError, TypeError):
-                pass
 
         # Signal strength ASSOUPLI - Accepter WEAK avec pénalité
         weak_signal_penalty = 0.0
@@ -445,7 +452,9 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"ADX insuffisant ({adx_value:.1f} < {self.min_adx_trend}) - marché ranging",
-                "metadata": {"strategy": self.name, "adx": adx_value},
+                "metadata": {
+                    "strategy": self.name,
+                    "adx": adx_value},
             }
 
         # Analyse de l'alignement des moyennes mobiles
@@ -584,7 +593,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 signal_side == "SELL" and directional_bias == "BEARISH"
             ):
                 confidence_boost += 0.20  # Boost renforcé pour alignment parfait
-                reason += f" + bias PARFAITEMENT aligné"
+                reason += " + bias PARFAITEMENT aligné"
 
         # VALIDATION RÉGIME MARCHÉ - REJET si contradictoire
         market_regime = values.get("market_regime")
@@ -595,7 +604,8 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
 
             # Gestion par force du régime (STRONG/MODERATE/WEAK)
             if regime_str == "STRONG":
-                # PÉNALITÉS au lieu de rejets stricts sur régimes contradictoires FORTS
+                # PÉNALITÉS au lieu de rejets stricts sur régimes
+                # contradictoires FORTS
                 if (
                     signal_side == "BUY"
                     and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]
@@ -733,7 +743,13 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         # Plus de rejet dur pour indicateurs manquants au boot
 
         # Vérifier qu'on a au moins quelques moyennes mobiles (ASSOUPLI)
-        ma_indicators = ["ema_7", "ema_12", "ema_26", "ema_50", "sma_20", "sma_50"]
+        ma_indicators = [
+            "ema_7",
+            "ema_12",
+            "ema_26",
+            "ema_50",
+            "sma_20",
+            "sma_50"]
         ma_available = sum(
             1
             for ma in ma_indicators
@@ -741,7 +757,8 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         )
 
         if ma_available < 1:  # Réduit de 3 à 1 - Une seule MA suffit au boot
-            logger.warning(f"{self.name}: Aucune moyenne mobile ({ma_available}/6)")
+            logger.warning(
+                f"{self.name}: Aucune moyenne mobile ({ma_available}/6)")
             return False
 
         return True

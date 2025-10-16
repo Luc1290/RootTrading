@@ -4,10 +4,10 @@ Momentum and Rate of Change (ROC) Indicators
 This module provides momentum-based indicators for measuring price velocity.
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
-from typing import List, Optional, Union
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +21,8 @@ except ImportError:
 
 
 def calculate_momentum(
-    prices: Union[List[float], np.ndarray, pd.Series], period: int = 10
-) -> Optional[float]:
+    prices: list[float] | np.ndarray | pd.Series, period: int = 10
+) -> float | None:
     """
     Calculate Momentum indicator.
 
@@ -66,8 +66,8 @@ def calculate_momentum(
 
 
 def calculate_roc(
-    prices: Union[List[float], np.ndarray, pd.Series], period: int = 10
-) -> Optional[float]:
+    prices: list[float] | np.ndarray | pd.Series, period: int = 10
+) -> float | None:
     """
     Calculate Rate of Change (ROC) indicator.
 
@@ -94,7 +94,8 @@ def calculate_roc(
     if TALIB_AVAILABLE:
         try:
             roc_values = talib.ROC(prices_array, timeperiod=period)
-            return float(roc_values[-1]) if not np.isnan(roc_values[-1]) else None
+            return float(
+                roc_values[-1]) if not np.isnan(roc_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib ROC error: {e}, using fallback")
 
@@ -110,8 +111,8 @@ def calculate_roc(
 
 
 def calculate_momentum_series(
-    prices: Union[List[float], np.ndarray, pd.Series], period: int = 10
-) -> List[Optional[float]]:
+    prices: list[float] | np.ndarray | pd.Series, period: int = 10
+) -> list[float | None]:
     """
     Calculate Momentum for entire price series.
 
@@ -127,14 +128,14 @@ def calculate_momentum_series(
     if TALIB_AVAILABLE:
         try:
             momentum_values = talib.MOM(prices_array, timeperiod=period)
-            return [
-                float(val) if not np.isnan(val) else None for val in momentum_values
-            ]
+            return [float(val) if not np.isnan(
+                val) else None for val in momentum_values]
         except Exception as e:
-            logger.warning(f"TA-Lib Momentum series error: {e}, using fallback")
+            logger.warning(
+                f"TA-Lib Momentum series error: {e}, using fallback")
 
     # Manual calculation
-    momentum_series: List[Optional[float]] = []
+    momentum_series: list[float | None] = []
 
     for i in range(len(prices_array)):
         if i < period:
@@ -149,8 +150,8 @@ def calculate_momentum_series(
 
 
 def calculate_roc_series(
-    prices: Union[List[float], np.ndarray, pd.Series], period: int = 10
-) -> List[Optional[float]]:
+    prices: list[float] | np.ndarray | pd.Series, period: int = 10
+) -> list[float | None]:
     """
     Calculate ROC for entire price series.
 
@@ -166,12 +167,13 @@ def calculate_roc_series(
     if TALIB_AVAILABLE:
         try:
             roc_values = talib.ROC(prices_array, timeperiod=period)
-            return [float(val) if not np.isnan(val) else None for val in roc_values]
+            return [float(val) if not np.isnan(
+                val) else None for val in roc_values]
         except Exception as e:
             logger.warning(f"TA-Lib ROC series error: {e}, using fallback")
 
     # Manual calculation
-    roc_series: List[Optional[float]] = []
+    roc_series: list[float | None] = []
 
     for i in range(len(prices_array)):
         if i < period:
@@ -190,10 +192,10 @@ def calculate_roc_series(
 
 
 def calculate_price_oscillator(
-    prices: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
     fast_period: int = 12,
     slow_period: int = 26,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate Price Oscillator (similar to MACD but using ROC).
 
@@ -217,8 +219,8 @@ def calculate_price_oscillator(
 
 
 def momentum_signal(
-    current_momentum: Optional[float],
-    previous_momentum: Optional[float] = None,
+    current_momentum: float | None,
+    previous_momentum: float | None = None,
     threshold: float = 0.0,
 ) -> str:
     """
@@ -247,15 +249,15 @@ def momentum_signal(
     if previous_momentum is not None:
         if current_momentum > previous_momentum and current_momentum > threshold:
             return "bullish_acceleration"
-        elif current_momentum < previous_momentum and current_momentum < -threshold:
+        if current_momentum < previous_momentum and current_momentum < -threshold:
             return "bearish_acceleration"
 
     return signal
 
 
 def roc_signal(
-    current_roc: Optional[float],
-    previous_roc: Optional[float] = None,
+    current_roc: float | None,
+    previous_roc: float | None = None,
     threshold: float = 1.0,
 ) -> str:
     """
@@ -275,18 +277,18 @@ def roc_signal(
     # Strong signals for higher ROC values
     if current_roc > threshold * 3:
         return "strong_bullish"
-    elif current_roc < -threshold * 3:
+    if current_roc < -threshold * 3:
         return "strong_bearish"
-    elif current_roc > threshold:
+    if current_roc > threshold:
         return "bullish"
-    elif current_roc < -threshold:
+    if current_roc < -threshold:
         return "bearish"
 
     return "neutral"
 
 
 def calculate_momentum_divergence(
-    prices: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
     period: int = 10,
     lookback: int = 20,
 ) -> str:
@@ -350,39 +352,35 @@ def calculate_momentum_divergence(
 
     # Check for divergence
     # Bullish divergence: Price makes lower lows, momentum makes higher lows
-    if len(price_lows) >= 2 and len(momentum_lows) >= 2:
-        if (
-            price_lows[-1][1] is not None
-            and price_lows[-2][1] is not None
-            and momentum_lows[-1][1] is not None
-            and momentum_lows[-2][1] is not None
-        ):
-            if (
-                price_lows[-1][1] < price_lows[-2][1]
-                and momentum_lows[-1][1] > momentum_lows[-2][1]
-            ):
-                return "bullish_divergence"
+    if len(price_lows) >= 2 and len(momentum_lows) >= 2 and (
+        price_lows[-1][1] is not None
+        and price_lows[-2][1] is not None
+        and momentum_lows[-1][1] is not None
+        and momentum_lows[-2][1] is not None
+    ) and (
+        price_lows[-1][1] < price_lows[-2][1]
+        and momentum_lows[-1][1] > momentum_lows[-2][1]
+    ):
+        return "bullish_divergence"
 
     # Bearish divergence: Price makes higher highs, momentum makes lower highs
-    if len(price_highs) >= 2 and len(momentum_highs) >= 2:
-        if (
-            price_highs[-1][1] is not None
-            and price_highs[-2][1] is not None
-            and momentum_highs[-1][1] is not None
-            and momentum_highs[-2][1] is not None
-        ):
-            if (
-                price_highs[-1][1] > price_highs[-2][1]
-                and momentum_highs[-1][1] < momentum_highs[-2][1]
-            ):
-                return "bearish_divergence"
+    if len(price_highs) >= 2 and len(momentum_highs) >= 2 and (
+        price_highs[-1][1] is not None
+        and price_highs[-2][1] is not None
+        and momentum_highs[-1][1] is not None
+        and momentum_highs[-2][1] is not None
+    ) and (
+        price_highs[-1][1] > price_highs[-2][1]
+        and momentum_highs[-1][1] < momentum_highs[-2][1]
+    ):
+        return "bearish_divergence"
 
     return "none"
 
 
 def calculate_trix(
-    prices: Union[List[float], np.ndarray, pd.Series], period: int = 14
-) -> Optional[float]:
+    prices: list[float] | np.ndarray | pd.Series, period: int = 14
+) -> float | None:
     """
     Calculate TRIX indicator.
 
@@ -399,7 +397,8 @@ def calculate_trix(
         try:
             prices_array = _to_numpy_array(prices)
             trix_values = talib.TRIX(prices_array, timeperiod=period)
-            return float(trix_values[-1]) if not np.isnan(trix_values[-1]) else None
+            return float(
+                trix_values[-1]) if not np.isnan(trix_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib TRIX error: {e}, using fallback")
 
@@ -409,7 +408,7 @@ def calculate_trix(
     return None
 
 
-def momentum_strength(values: List[Optional[float]], period: int = 10) -> str:
+def momentum_strength(values: list[float | None], period: int = 10) -> str:
     """
     Assess momentum strength based on recent values.
 
@@ -436,25 +435,24 @@ def momentum_strength(values: List[Optional[float]], period: int = 10) -> str:
     # Determine strength
     if avg_momentum > 2 and consistency > 0.8:
         return "very_strong"
-    elif avg_momentum > 1 and consistency > 0.7:
+    if avg_momentum > 1 and consistency > 0.7:
         return "strong"
-    elif avg_momentum > 0.5 and consistency > 0.6:
+    if avg_momentum > 0.5 and consistency > 0.6:
         return "moderate"
-    elif avg_momentum > 0.1:
+    if avg_momentum > 0.1:
         return "weak"
-    else:
-        return "neutral"
+    return "neutral"
 
 
 # ============ Helper Functions ============
 
 
-def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
+def _to_numpy_array(data: list[float] | np.ndarray | pd.Series) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
         if hasattr(data.values, "values"):  # ExtensionArray
             return np.asarray(data.values, dtype=float)
         return np.asarray(data.values, dtype=float)
-    elif isinstance(data, list):
+    if isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)

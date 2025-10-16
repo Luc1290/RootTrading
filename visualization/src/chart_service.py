@@ -1,8 +1,10 @@
 import logging
-from typing import Dict, List, Any, Optional
 from datetime import datetime
+from typing import Any
+
 import numpy as np
-from data_manager import DataManager
+
+from visualization.src.data_manager import DataManager
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +18,9 @@ class ChartService:
         symbol: str,
         interval: str = "1m",
         limit: int = 10000,  # Augmenté pour garder plus d'historique lors du dézoom
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        start_time: str | None = None,
+        end_time: str | None = None,
+    ) -> dict[str, Any]:
         """Generate market data chart (candlestick)"""
         start_dt = datetime.fromisoformat(start_time) if start_time else None
         end_dt = datetime.fromisoformat(end_time) if end_time else None
@@ -58,12 +60,13 @@ class ChartService:
     async def get_signals_chart(
         self,
         symbol: str,
-        strategy: Optional[str] = None,
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        strategy: str | None = None,
+        start_time: str | None = None,
+        end_time: str | None = None,
+    ) -> dict[str, Any]:
         """Generate chart with trading signals overlaid"""
-        # Ne pas limiter par défaut aux dernières 24h - laisser la DB retourner toutes les données
+        # Ne pas limiter par défaut aux dernières 24h - laisser la DB retourner
+        # toutes les données
         start_dt = datetime.fromisoformat(start_time) if start_time else None
         end_dt = datetime.fromisoformat(end_time) if end_time else None
 
@@ -101,12 +104,12 @@ class ChartService:
                 "close": [c["close"] for c in candles],
             },
             "signals": {"buy": buy_signals, "sell": sell_signals},
-            "strategies": list(set(s["strategy"] for s in signals)) if signals else [],
+            "strategies": list({s["strategy"] for s in signals}) if signals else [],
         }
 
     async def get_performance_chart(
         self, period: str = "24h", metric: str = "pnl"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate portfolio performance chart"""
         performance_data = await self.data_manager.get_portfolio_performance(period)
 
@@ -160,10 +163,10 @@ class ChartService:
     async def get_indicators_chart(
         self,
         symbol: str,
-        indicators: List[str],
+        indicators: list[str],
         interval: str = "1m",
         limit: int = 10000,  # Augmenté pour plus d'historique sur les indicateurs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate chart with technical indicators"""
         # Fetch market data with enriched indicators
         candles = await self.data_manager.get_market_data(symbol, interval, limit)
@@ -176,7 +179,8 @@ class ChartService:
                 "data": [],
             }
 
-        # Use pre-calculated indicators from database instead of calculating manually
+        # Use pre-calculated indicators from database instead of calculating
+        # manually
         indicator_data = {}
 
         for indicator in indicators:
@@ -193,28 +197,37 @@ class ChartService:
                 indicator_data["rsi_14"] = [c.get("rsi_14") for c in candles]
                 indicator_data["rsi_21"] = [c.get("rsi_21") for c in candles]
             elif indicator == "macd":
-                indicator_data["macd_line"] = [c.get("macd_line") for c in candles]
-                indicator_data["macd_signal"] = [c.get("macd_signal") for c in candles]
+                indicator_data["macd_line"] = [
+                    c.get("macd_line") for c in candles]
+                indicator_data["macd_signal"] = [
+                    c.get("macd_signal") for c in candles]
                 indicator_data["macd_histogram"] = [
                     c.get("macd_histogram") for c in candles
                 ]
             elif indicator == "bollinger_bands":
-                indicator_data["bb_upper"] = [c.get("bb_upper") for c in candles]
-                indicator_data["bb_middle"] = [c.get("bb_middle") for c in candles]
-                indicator_data["bb_lower"] = [c.get("bb_lower") for c in candles]
-                indicator_data["bb_position"] = [c.get("bb_position") for c in candles]
-                indicator_data["bb_width"] = [c.get("bb_width") for c in candles]
+                indicator_data["bb_upper"] = [
+                    c.get("bb_upper") for c in candles]
+                indicator_data["bb_middle"] = [
+                    c.get("bb_middle") for c in candles]
+                indicator_data["bb_lower"] = [
+                    c.get("bb_lower") for c in candles]
+                indicator_data["bb_position"] = [
+                    c.get("bb_position") for c in candles]
+                indicator_data["bb_width"] = [
+                    c.get("bb_width") for c in candles]
             elif indicator == "stochastic":
                 indicator_data["stoch_k"] = [c.get("stoch_k") for c in candles]
                 indicator_data["stoch_d"] = [c.get("stoch_d") for c in candles]
             elif indicator == "williams_r":
-                indicator_data["williams_r"] = [c.get("williams_r") for c in candles]
+                indicator_data["williams_r"] = [
+                    c.get("williams_r") for c in candles]
             elif indicator == "cci":
                 indicator_data["cci_20"] = [c.get("cci_20") for c in candles]
             elif indicator == "adx":
                 indicator_data["adx_14"] = [c.get("adx_14") for c in candles]
             elif indicator == "momentum":
-                indicator_data["momentum_10"] = [c.get("momentum_10") for c in candles]
+                indicator_data["momentum_10"] = [
+                    c.get("momentum_10") for c in candles]
                 indicator_data["roc_10"] = [c.get("roc_10") for c in candles]
                 indicator_data["roc_20"] = [c.get("roc_20") for c in candles]
             elif indicator == "volume":
@@ -281,7 +294,7 @@ class ChartService:
             "requested_indicators": indicators,
         }
 
-    def _calculate_price_change(self, candles: List[Dict]) -> float:
+    def _calculate_price_change(self, candles: list[dict]) -> float:
         """Calculate 24h price change percentage"""
         if len(candles) < 2:
             return 0
@@ -304,7 +317,7 @@ class ChartService:
 
         return change_percent
 
-    async def get_available_indicators(self) -> Dict[str, List[str]]:
+    async def get_available_indicators(self) -> dict[str, list[str]]:
         """Get list of all available indicators organized by category"""
         return {
             "trend": [
@@ -334,7 +347,7 @@ class ChartService:
             ],
         }
 
-    async def get_indicator_metadata(self) -> Dict[str, Dict[str, Any]]:
+    async def get_indicator_metadata(self) -> dict[str, dict[str, Any]]:
         """Get detailed metadata for each indicator"""
         return {
             "sma": {

@@ -12,17 +12,17 @@ Calculation:
 5. MFI = 100 - (100 / (1 + Money Flow Ratio))
 """
 
+
 import numpy as np
-from typing import Union, List, Optional
 
 
 def calculate_mfi(
-    highs: Union[List[float], np.ndarray],
-    lows: Union[List[float], np.ndarray],
-    closes: Union[List[float], np.ndarray],
-    volumes: Union[List[float], np.ndarray],
+    highs: list[float] | np.ndarray,
+    lows: list[float] | np.ndarray,
+    closes: list[float] | np.ndarray,
+    volumes: list[float] | np.ndarray,
     period: int = 14,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate Money Flow Index for the most recent period.
 
@@ -57,8 +57,8 @@ def calculate_mfi(
     money_flows = typical_prices * volumes_array
 
     # Get the last period+1 values (need period+1 to compare direction)
-    recent_typical = typical_prices[-(period + 1) :]
-    recent_flows = money_flows[-(period + 1) :]
+    recent_typical = typical_prices[-(period + 1):]
+    recent_flows = money_flows[-(period + 1):]
 
     # Separate positive and negative money flows
     positive_flow = 0
@@ -89,7 +89,7 @@ def calculate_mfi_series(
     closes: np.ndarray,
     volumes: np.ndarray,
     period: int = 14,
-) -> List[Optional[float]]:
+) -> list[float | None]:
     """
     Calculate MFI series for all data points.
 
@@ -106,7 +106,7 @@ def calculate_mfi_series(
     if len(highs) == 0:
         return []
 
-    result: List[Optional[float]] = []
+    result: list[float | None] = []
 
     for i in range(len(highs)):
         if i < period:
@@ -132,11 +132,10 @@ def interpret_mfi(mfi_value: float) -> str:
     """
     if mfi_value >= 80:
         return "OVERBOUGHT_STRONG"
-    elif mfi_value >= 70:
+    if mfi_value >= 70:
         return "OVERBOUGHT"
-    elif mfi_value <= 20:
+    if mfi_value <= 20:
         return "OVERSOLD_STRONG"
-    elif mfi_value <= 30:
+    if mfi_value <= 30:
         return "OVERSOLD"
-    else:
-        return "NEUTRAL"
+    return "NEUTRAL"

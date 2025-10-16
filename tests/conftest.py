@@ -2,14 +2,14 @@
 Configuration pytest et fixtures partagées pour tous les tests.
 """
 
-import sys
 import os
+import sys
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Any, Dict
 
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 
 # Ajouter le chemin racine pour les imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -114,7 +114,7 @@ def market_data_db_format():
         "id": 1,
         "symbol": "BTCUSDC",
         "time": datetime.now(),
-        "start_time": int(datetime.now().timestamp() * 1000),
+        "start_time": int(datetime.now(timezone.utc).timestamp() * 1000),
         "close_time": int((datetime.now() + timedelta(minutes=1)).timestamp() * 1000),
         "open": 50000.0,
         "high": 50100.0,

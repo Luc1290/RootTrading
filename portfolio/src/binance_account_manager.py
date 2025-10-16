@@ -4,15 +4,17 @@ Fournit des fonctions pour interagir avec l'API Binance et récupérer les donn�
 Version optimisée avec gestion d'erreur robuste, retry automatique et cache.
 """
 
-import logging
-import time
-import hmac
 import hashlib
-import requests  # type: ignore
-from typing import Dict, List, Any, Optional, Union
+import hmac
+import logging
+import sys
+import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
+from typing import Any
+
+import requests  # type: ignore
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
@@ -34,9 +36,8 @@ class BinanceAccountManager:
     Permet de récupérer les balances et autres informations du compte.
     """
 
-    def __init__(
-        self, api_key: str, api_secret: str, base_url: str = "https://api.binance.com"
-    ):
+    def __init__(self, api_key: str, api_secret: str,
+                 base_url: str = "https://api.binance.com"):
         """
         Initialise le gestionnaire de compte Binance.
 
@@ -51,11 +52,12 @@ class BinanceAccountManager:
         self.api_key = api_key
         self.api_secret = api_secret
         self.base_url = base_url
-        self.recvWindow = 10000  # Fenêtre de réception (ms) pour les requêtes signées
+        # Fenêtre de réception (ms) pour les requêtes signées
+        self.recvWindow = 10000
         self.request_timeout = 30  # Timeout en secondes pour les requêtes HTTP
 
         # Cache des prix
-        self._prices_cache: Dict[str, float] = {}
+        self._prices_cache: dict[str, float] = {}
         self._prices_cache_time = 0
         self._prices_cache_ttl = 60  # Durée de vie du cache en secondes
 
@@ -76,22 +78,20 @@ class BinanceAccountManager:
             logger.error("API Secret est vide ou invalide")
             raise ValueError("API Secret invalide")
 
-        signature = hmac.new(
+        return hmac.new(
             self.api_secret.encode("utf-8"),
             query_string.encode("utf-8"),
             hashlib.sha256,
         ).hexdigest()
-
-        return signature
 
     def _make_request(
         self,
         endpoint: str,
         method: str = "GET",
         signed: bool = False,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         max_retries: int = 3,
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+    ) -> dict[str, Any] | list[dict[str, Any]]:
         """
         Effectue une requête vers l'API Binance avec retry automatique.
 
@@ -124,7 +124,8 @@ class BinanceAccountManager:
                     params["recvWindow"] = self.recvWindow
 
                     # Construire la chaîne de requête
-                    query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+                    query_string = "&".join(
+                        [f"{k}={v}" for k, v in params.items()])
 
                     # Ajouter la signature
                     signature = self._generate_signature(query_string)
@@ -181,7 +182,8 @@ class BinanceAccountManager:
 
                 if retry and retry_count < max_retries - 1:
                     retry_count += 1
-                    wait_time = min(2**retry_count, 60)  # Backoff exponentiel, max 60s
+                    # Backoff exponentiel, max 60s
+                    wait_time = min(2**retry_count, 60)
                     logger.warning(
                         f"⚠️ {error_message}. Nouvelle tentative {retry_count}/{max_retries} dans {wait_time}s..."
                     )
@@ -205,33 +207,34 @@ class BinanceAccountManager:
                     retry_count += 1
                     wait_time = min(2**retry_count, 60)
                     logger.warning(
-                        f"⚠️ Erreur de connexion: {str(e)}. Nouvelle tentative {retry_count}/{max_retries} dans {wait_time}s..."
+                        f"⚠️ Erreur de connexion: {e!s}. Nouvelle tentative {retry_count}/{max_retries} dans {wait_time}s..."
                     )
                     time.sleep(wait_time)
                     continue
 
                 last_exception = BinanceApiError(
-                    f"Erreur de connexion après {max_retries} tentatives: {str(e)}"
+                    f"Erreur de connexion après {max_retries} tentatives: {e!s}"
                 )
                 break
 
             except Exception as e:
                 # Ne pas réessayer les autres erreurs
-                last_exception = BinanceApiError(f"Erreur inattendue: {str(e)}")
-                logger.error(traceback.format_exc())
+                last_exception = BinanceApiError(f"Erreur inattendue: {e!s}")
+                logger.exception(traceback.format_exc())
                 break
 
         # Si on arrive ici, c'est que toutes les tentatives ont échoué
         if last_exception:
             logger.error(
-                f"❌ Échec de la requête à l'API Binance après {retry_count + 1} tentatives: {str(last_exception)}"
+                f"❌ Échec de la requête à l'API Binance après {retry_count + 1} tentatives: {last_exception!s}"
             )
             raise last_exception
 
         # Ce code ne devrait jamais être atteint
-        raise BinanceApiError("Erreur inconnue lors de la requête à l'API Binance")
+        raise BinanceApiError(
+            "Erreur inconnue lors de la requête à l'API Binance")
 
-    def get_account_info(self) -> Dict[str, Any]:
+    def get_account_info(self) -> dict[str, Any]:
         """
         Récupère les informations du compte.
 
@@ -243,14 +246,15 @@ class BinanceAccountManager:
         """
         endpoint = "/api/v3/account"
         result = self._make_request(endpoint, signed=True)
-        # _make_request peut retourner list ou dict, on s'attend à dict pour account info
+        # _make_request peut retourner list ou dict, on s'attend à dict pour
+        # account info
         if isinstance(result, list):
             raise BinanceApiError(
                 "Réponse inattendue: liste au lieu de dict pour account info"
             )
         return result
 
-    def get_balances(self) -> List[Dict[str, Any]]:
+    def get_balances(self) -> list[dict[str, Any]]:
         """
         Récupère les balances du compte.
         Ne retourne que les actifs avec un solde non nul.
@@ -281,20 +285,21 @@ class BinanceAccountManager:
                         }
                     )
 
-            logger.info(f"Récupéré {len(balances)} balances non nulles depuis Binance")
+            logger.info(
+                f"Récupéré {len(balances)} balances non nulles depuis Binance")
             return balances
 
-        except BinanceApiError as e:
-            logger.error(f"❌ Erreur lors de la récupération des balances: {str(e)}")
+        except BinanceApiError:
+            logger.exception("❌ Erreur lors de la récupération des balances")
             raise
         except Exception as e:
-            logger.error(
-                f"❌ Erreur inattendue lors de la récupération des balances: {str(e)}"
+            logger.exception(
+                f"❌ Erreur inattendue lors de la récupération des balances: {e!s}"
             )
-            logger.error(traceback.format_exc())
+            logger.exception(traceback.format_exc())
             return []
 
-    def get_ticker_prices(self, use_cache: bool = True) -> Dict[str, float]:
+    def get_ticker_prices(self, use_cache: bool = True) -> dict[str, float]:
         """
         Récupère les prix actuels de tous les symboles.
         Utilise un cache pour améliorer les performances.
@@ -310,11 +315,8 @@ class BinanceAccountManager:
         """
         # Vérifier le cache
         current_time = time.time()
-        if (
-            use_cache
-            and self._prices_cache
-            and (current_time - self._prices_cache_time < self._prices_cache_ttl)
-        ):
+        if (use_cache and self._prices_cache and (current_time -
+                                                  self._prices_cache_time < self._prices_cache_ttl)):
             logger.info(
                 f"Utilisation du cache des prix ({len(self._prices_cache)} symboles)"
             )
@@ -328,7 +330,7 @@ class BinanceAccountManager:
             ), "Response should be a list for ticker/price endpoint"
 
             # Convertir la réponse en dictionnaire {symbole: prix}
-            prices: Dict[str, float] = {}
+            prices: dict[str, float] = {}
             for item in response:
                 symbol = item.get("symbol")
                 if symbol is not None:  # Vérifier que symbol n'est pas None
@@ -339,14 +341,17 @@ class BinanceAccountManager:
             self._prices_cache = prices
             self._prices_cache_time = int(current_time)
 
-            logger.info(f"Récupéré les prix pour {len(prices)} symboles depuis Binance")
+            logger.info(
+                f"Récupéré les prix pour {len(prices)} symboles depuis Binance")
             return prices
 
-        except BinanceApiError as e:
-            logger.error(f"❌ Erreur lors de la récupération des prix: {str(e)}")
+        except BinanceApiError:
+            logger.exception("❌ Erreur lors de la récupération des prix")
 
-            # Si le cache existe et n'est pas trop vieux (moins de 5 minutes), l'utiliser malgré l'erreur
-            if self._prices_cache and (current_time - self._prices_cache_time < 60):
+            # Si le cache existe et n'est pas trop vieux (moins de 5 minutes),
+            # l'utiliser malgré l'erreur
+            if self._prices_cache and (
+                    current_time - self._prices_cache_time < 60):
                 logger.warning(
                     f"⚠️ Utilisation du cache des prix après échec de la requête ({len(self._prices_cache)} symboles)"
                 )
@@ -354,13 +359,15 @@ class BinanceAccountManager:
 
             raise
         except Exception as e:
-            logger.error(
-                f"❌ Erreur inattendue lors de la récupération des prix: {str(e)}"
+            logger.exception(
+                f"❌ Erreur inattendue lors de la récupération des prix: {e!s}"
             )
-            logger.error(traceback.format_exc())
+            logger.exception(traceback.format_exc())
 
-            # Si le cache existe et n'est pas trop vieux (moins de 5 minutes), l'utiliser malgré l'erreur
-            if self._prices_cache and (current_time - self._prices_cache_time < 60):
+            # Si le cache existe et n'est pas trop vieux (moins de 5 minutes),
+            # l'utiliser malgré l'erreur
+            if self._prices_cache and (
+                    current_time - self._prices_cache_time < 60):
                 logger.warning(
                     f"⚠️ Utilisation du cache des prix après erreur inattendue ({len(self._prices_cache)} symboles)"
                 )
@@ -369,7 +376,7 @@ class BinanceAccountManager:
             return {}
 
     @lru_cache(maxsize=100)
-    def get_ticker_for_symbol(self, symbol: str) -> Optional[Dict[str, Any]]:
+    def get_ticker_for_symbol(self, symbol: str) -> dict[str, Any] | None:
         """
         Récupère les informations de marché pour un symbole spécifique.
         Utilise une mise en cache pour les requêtes fréquentes.
@@ -395,18 +402,19 @@ class BinanceAccountManager:
             return result
 
         except BinanceApiError as e:
-            logger.error(
-                f"❌ Erreur lors de la récupération des informations pour {symbol}: {str(e)}"
+            logger.exception(
+                f"❌ Erreur lors de la récupération des informations pour {symbol}: {e!s}"
             )
             raise
         except Exception as e:
-            logger.error(
-                f"❌ Erreur inattendue lors de la récupération des informations pour {symbol}: {str(e)}"
+            logger.exception(
+                f"❌ Erreur inattendue lors de la récupération des informations pour {symbol}: {e!s}"
             )
-            logger.error(traceback.format_exc())
+            logger.exception(traceback.format_exc())
             return None
 
-    def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_open_orders(self, symbol: str |
+                        None = None) -> list[dict[str, Any]]:
         """
         Récupère les ordres ouverts.
 
@@ -427,21 +435,23 @@ class BinanceAccountManager:
 
         try:
             result = self._make_request(endpoint, signed=True, params=params)
-            return result if isinstance(result, list) else [result] if result else []
+            return result if isinstance(result, list) else [
+                result] if result else []
 
         except BinanceApiError as e:
-            logger.error(
-                f"❌ Erreur lors de la récupération des ordres ouverts: {str(e)}"
+            logger.exception(
+                f"❌ Erreur lors de la récupération des ordres ouverts: {e!s}"
             )
             raise
         except Exception as e:
-            logger.error(
-                f"❌ Erreur inattendue lors de la récupération des ordres ouverts: {str(e)}"
+            logger.exception(
+                f"❌ Erreur inattendue lors de la récupération des ordres ouverts: {e!s}"
             )
-            logger.error(traceback.format_exc())
+            logger.exception(traceback.format_exc())
             return []
 
-    def get_order_history(self, symbol: str, limit: int = 500) -> List[Dict[str, Any]]:
+    def get_order_history(
+            self, symbol: str, limit: int = 500) -> list[dict[str, Any]]:
         """
         Récupère l'historique des ordres pour un symbole.
 
@@ -460,21 +470,22 @@ class BinanceAccountManager:
 
         try:
             result = self._make_request(endpoint, signed=True, params=params)
-            return result if isinstance(result, list) else [result] if result else []
+            return result if isinstance(result, list) else [
+                result] if result else []
 
         except BinanceApiError as e:
-            logger.error(
-                f"❌ Erreur lors de la récupération de l'historique des ordres: {str(e)}"
+            logger.exception(
+                f"❌ Erreur lors de la récupération de l'historique des ordres: {e!s}"
             )
             raise
         except Exception as e:
-            logger.error(
-                f"❌ Erreur inattendue lors de la récupération de l'historique des ordres: {str(e)}"
+            logger.exception(
+                f"❌ Erreur inattendue lors de la récupération de l'historique des ordres: {e!s}"
             )
-            logger.error(traceback.format_exc())
+            logger.exception(traceback.format_exc())
             return []
 
-    def calculate_asset_values(self) -> List[Dict[str, Any]]:
+    def calculate_asset_values(self) -> list[dict[str, Any]]:
         """
         Calcule la valeur de chaque actif en USDC.
         Utilise des chemins de conversion alternatifs si nécessaire.
@@ -507,7 +518,7 @@ class BinanceAccountManager:
                         raise
                     wait_time = 2**retry
                     logger.warning(
-                        f"⚠️ Erreur lors de la tentative {retry}/{max_retries}: {str(e)}. Nouvelle tentative dans {wait_time}s..."
+                        f"⚠️ Erreur lors de la tentative {retry}/{max_retries}: {e!s}. Nouvelle tentative dans {wait_time}s..."
                     )
                     time.sleep(wait_time)
 
@@ -537,7 +548,7 @@ class BinanceAccountManager:
                         raise
                     wait_time = 2**retry
                     logger.warning(
-                        f"⚠️ Erreur lors de la tentative {retry}/{max_retries}: {str(e)}. Nouvelle tentative dans {wait_time}s..."
+                        f"⚠️ Erreur lors de la tentative {retry}/{max_retries}: {e!s}. Nouvelle tentative dans {wait_time}s..."
                     )
                     time.sleep(wait_time)
 
@@ -586,7 +597,8 @@ class BinanceAccountManager:
                     # Vérifier si cette route est valide
                     if symbol in prices and conversion_rate is not None:
                         asset_price = prices[symbol]
-                        balance["value_usdc"] = total * asset_price * conversion_rate
+                        balance["value_usdc"] = total * \
+                            asset_price * conversion_rate
                         return balance
 
                 # Aucune route trouvée
@@ -601,30 +613,36 @@ class BinanceAccountManager:
                 balances = [process_balance(balance) for balance in balances]
 
             # Compter les actifs avec valeur en USDC
-            valued_count = sum(1 for b in balances if b.get("value_usdc") is not None)
+            valued_count = sum(
+                1 for b in balances if b.get("value_usdc") is not None)
             logger.info(
                 f"✅ Valeurs en USDC calculées pour {valued_count}/{len(balances)} actifs"
             )
 
             # Trier par valeur décroissante
-            balances.sort(key=lambda b: b.get("value_usdc", 0) or 0, reverse=True)
+            balances.sort(
+                key=lambda b: b.get(
+                    "value_usdc",
+                    0) or 0,
+                reverse=True)
 
             return balances
 
-        except BinanceApiError as e:
-            logger.error(f"❌ Erreur API Binance lors du calcul des valeurs: {str(e)}")
+        except BinanceApiError:
+            logger.exception("❌ Erreur API Binance lors du calcul des valeurs")
             raise
         except Exception as e:
-            logger.error(
-                f"❌ Erreur inattendue lors du calcul des valeurs en USDC: {str(e)}"
+            logger.exception(
+                f"❌ Erreur inattendue lors du calcul des valeurs en USDC: {e!s}"
             )
-            logger.error(traceback.format_exc())
+            logger.exception(traceback.format_exc())
             return []
 
 
 # Test simple de la classe
 if __name__ == "__main__":
     import os
+
     from dotenv import load_dotenv
 
     # Charger les variables d'environnement
@@ -641,7 +659,7 @@ if __name__ == "__main__":
         print(
             "Les clés API Binance ne sont pas configurées dans les variables d'environnement"
         )
-        exit(1)
+        sys.exit(1)
 
     try:
         # Créer le gestionnaire de compte
@@ -685,11 +703,11 @@ if __name__ == "__main__":
         print("Test réussi!")
 
     except BinanceApiError as e:
-        print(f"Erreur API Binance: {str(e)}")
+        print(f"Erreur API Binance: {e!s}")
         if hasattr(e, "status_code"):
             print(f"Code d'erreur: {e.status_code}")
         if hasattr(e, "response_text"):
             print(f"Réponse: {e.response_text}")
     except Exception as e:
-        print(f"Erreur: {str(e)}")
+        print(f"Erreur: {e!s}")
         print(traceback.format_exc())

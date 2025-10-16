@@ -3,9 +3,10 @@ Bollinger_Touch_Strategy - Stratégie basée sur les touches des bandes de Bolli
 OPTIMISÉE POUR CRYPTO SPOT INTRADAY
 """
 
-from typing import Dict, Any, Optional
-from .base_strategy import BaseStrategy
 import logging
+from typing import Any
+
+from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -19,26 +20,32 @@ class Bollinger_Touch_Strategy(BaseStrategy):
     - SELL: Prix touche la bande haute + indicateurs de retournement baissier
     """
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres Bollinger Bands - OPTIMISÉS CRYPTO SPOT (CORRIGÉ)
-        self.touch_threshold = 0.004  # 0.4% de proximité (plus sensible, corrigé)
+        # 0.4% de proximité (plus sensible, corrigé)
+        self.touch_threshold = 0.004
         self.bb_position_extreme_buy = (
             0.15  # Position extrême basse (15% depuis le bas)
         )
         self.bb_position_extreme_sell = (
             0.85  # Position extrême haute (85% depuis le bas)
         )
-        self.bb_position_very_low = 0.05  # Position très basse (5% depuis le bas)
-        self.bb_position_very_high = 0.95  # Position très haute (95% depuis le bas)
+        # Position très basse (5% depuis le bas)
+        self.bb_position_very_low = 0.05
+        # Position très haute (95% depuis le bas)
+        self.bb_position_very_high = 0.95
         self.bb_width_min_pct = 0.6  # Largeur minimum 0.6% du prix (simplifié)
         self.max_bb_width_for_trade_pct = (
             8.0  # Ne pas trader si bandes > 8% du prix (volatilité extrême)
         )
 
         # Paramètres volume (utilisant volume_ratio disponible) - ASSOUPLIS
-        self.min_volume_ratio = 0.25  # Volume minimum 25% de la moyenne (crypto adapté)
-        self.high_volume_ratio = 1.3  # Volume élevé pour confirmation (plus accessible)
+        # Volume minimum 25% de la moyenne (crypto adapté)
+        self.min_volume_ratio = 0.25
+        # Volume élevé pour confirmation (plus accessible)
+        self.high_volume_ratio = 1.3
 
         # Paramètres RSI adaptés crypto - ASSOUPLIS POUR PLUS DE SIGNAUX
         self.rsi_oversold_strong = 25  # Survente forte (était 22)
@@ -52,7 +59,7 @@ class Bollinger_Touch_Strategy(BaseStrategy):
         self.stoch_overbought = 75  # Surachat standard (était 80)
         self.stoch_overbought_strong = 85  # Surachat fort (était 88)
 
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs Bollinger."""
         return {
             "bb_upper": self.indicators.get("bb_upper"),
@@ -78,7 +85,7 @@ class Bollinger_Touch_Strategy(BaseStrategy):
             "macd_histogram": self.indicators.get("macd_histogram"),
         }
 
-    def _get_current_price(self) -> Optional[float]:
+    def _get_current_price(self) -> float | None:
         """Récupère le prix actuel depuis les données OHLCV."""
         try:
             if self.data and "close" in self.data and self.data["close"]:
@@ -87,7 +94,7 @@ class Bollinger_Touch_Strategy(BaseStrategy):
             pass
         return None
 
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """
         Génère un signal basé sur les touches des bandes de Bollinger.
         """
@@ -105,23 +112,20 @@ class Bollinger_Touch_Strategy(BaseStrategy):
 
         # Vérification des indicateurs essentiels
         try:
-            bb_upper = (
-                float(values["bb_upper"]) if values["bb_upper"] is not None else None
-            )
-            bb_lower = (
-                float(values["bb_lower"]) if values["bb_lower"] is not None else None
-            )
+            bb_upper = (float(values["bb_upper"])
+                        if values["bb_upper"] is not None else None)
+            bb_lower = (float(values["bb_lower"])
+                        if values["bb_lower"] is not None else None)
             bb_middle = (
-                float(values["bb_middle"]) if values["bb_middle"] is not None else None
-            )
+                float(
+                    values["bb_middle"]) if values["bb_middle"] is not None else None)
             bb_position = (
                 float(values["bb_position"])
                 if values["bb_position"] is not None
                 else None
             )
-            bb_width = (
-                float(values["bb_width"]) if values["bb_width"] is not None else None
-            )
+            bb_width = (float(values["bb_width"])
+                        if values["bb_width"] is not None else None)
         except (ValueError, TypeError) as e:
             return {
                 "side": None,
@@ -151,26 +155,32 @@ class Bollinger_Touch_Strategy(BaseStrategy):
                         "confidence": 0.0,
                         "strength": "weak",
                         "reason": f"Volume insuffisant ({vol_ratio:.2f}x < {self.min_volume_ratio}x)",
-                        "metadata": {"strategy": self.name, "volume_ratio": vol_ratio},
+                        "metadata": {
+                            "strategy": self.name,
+                            "volume_ratio": vol_ratio},
                     }
             except (ValueError, TypeError):
                 pass
 
         # Vérification bb_width corrigée avec current_price
         if bb_width is not None and current_price is not None:
-            bb_width_pct = (bb_width / current_price) * 100  # Plus robuste pour crypto
+            bb_width_pct = (bb_width / current_price) * \
+                100  # Plus robuste pour crypto
             if bb_width_pct < self.bb_width_min_pct:
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
                     "reason": f"BB squeeze trop serré ({bb_width_pct:.2f}% < {self.bb_width_min_pct}%)",
-                    "metadata": {"strategy": self.name, "bb_width_pct": bb_width_pct},
+                    "metadata": {
+                        "strategy": self.name,
+                        "bb_width_pct": bb_width_pct},
                 }
         else:
             bb_width_pct = None
 
-        # CORRECTION MAJEURE: Calcul des distances aux bandes (méthode cohérente)
+        # CORRECTION MAJEURE: Calcul des distances aux bandes (méthode
+        # cohérente)
         distance_to_upper = abs(current_price - bb_upper) / current_price
         distance_to_lower = abs(current_price - bb_lower) / current_price
 
@@ -184,19 +194,16 @@ class Bollinger_Touch_Strategy(BaseStrategy):
         is_touching_upper = distance_to_upper <= self.touch_threshold
         is_touching_lower = distance_to_lower <= self.touch_threshold
 
-        # Position dans les bandes pour confirmation - ÉTENDUE AUX VALEURS NÉGATIVES/SUPÉRIEURES
+        # Position dans les bandes pour confirmation - ÉTENDUE AUX VALEURS
+        # NÉGATIVES/SUPÉRIEURES
         is_extreme_high = (
-            bb_position is not None and bb_position >= self.bb_position_extreme_sell
-        )
+            bb_position is not None and bb_position >= self.bb_position_extreme_sell)
         is_extreme_low = (
-            bb_position is not None and bb_position <= self.bb_position_extreme_buy
-        )
-        is_very_high = (
-            bb_position is not None and bb_position >= self.bb_position_very_high
-        )
-        is_very_low = (
-            bb_position is not None and bb_position <= self.bb_position_very_low
-        )
+            bb_position is not None and bb_position <= self.bb_position_extreme_buy)
+        is_very_high = (bb_position is not None and bb_position >=
+                        self.bb_position_very_high)
+        is_very_low = (bb_position is not None and bb_position <=
+                       self.bb_position_very_low)
 
         # SIGNAL BUY - LOGIQUE SIMPLIFIÉE
         if (is_touching_lower or is_extreme_low or is_very_low) and (
@@ -227,7 +234,8 @@ class Bollinger_Touch_Strategy(BaseStrategy):
             signal_side = "SELL"
             touch_type = "upper_band"
 
-            if is_very_high:  # Position en dehors de la bande haute (très fort)
+            # Position en dehors de la bande haute (très fort)
+            if is_very_high:
                 reason = f"Position très haute {bb_position:.3f} (hors bande)"
                 confidence_boost += 0.25
             elif is_touching_upper and is_extreme_high:
@@ -284,15 +292,19 @@ class Bollinger_Touch_Strategy(BaseStrategy):
                         "confidence": 0.0,
                         "strength": "weak",
                         "reason": f"Rejet BUY: RSI trop haut ({rsi:.1f}) pour retournement",
-                        "metadata": {"strategy": self.name, "rsi": rsi},
+                        "metadata": {
+                            "strategy": self.name,
+                            "rsi": rsi},
                     }
-                elif signal_side == "SELL" and rsi < 45:
+                if signal_side == "SELL" and rsi < 45:
                     return {
                         "side": None,
                         "confidence": 0.0,
                         "strength": "weak",
                         "reason": f"Rejet SELL: RSI trop bas ({rsi:.1f}) pour retournement",
-                        "metadata": {"strategy": self.name, "rsi": rsi},
+                        "metadata": {
+                            "strategy": self.name,
+                            "rsi": rsi},
                     }
 
                 # Confirmations RSI
@@ -331,15 +343,21 @@ class Bollinger_Touch_Strategy(BaseStrategy):
                         "confidence": 0.0,
                         "strength": "weak",
                         "reason": f"Rejet BUY: Stoch trop haut ({k:.1f}/{d:.1f}) pour retournement",
-                        "metadata": {"strategy": self.name, "stoch_k": k, "stoch_d": d},
+                        "metadata": {
+                            "strategy": self.name,
+                            "stoch_k": k,
+                            "stoch_d": d},
                     }
-                elif signal_side == "SELL" and k < 50 and d < 50:
+                if signal_side == "SELL" and k < 50 and d < 50:
                     return {
                         "side": None,
                         "confidence": 0.0,
                         "strength": "weak",
                         "reason": f"Rejet SELL: Stoch trop bas ({k:.1f}/{d:.1f}) pour retournement",
-                        "metadata": {"strategy": self.name, "stoch_k": k, "stoch_d": d},
+                        "metadata": {
+                            "strategy": self.name,
+                            "stoch_k": k,
+                            "stoch_d": d},
                     }
 
                 # Confirmations Stochastic
@@ -382,8 +400,8 @@ class Bollinger_Touch_Strategy(BaseStrategy):
 
         # Calcul final de la confiance avec clamp
         confidence = min(
-            1.0, self.calculate_confidence(base_confidence, 1 + confidence_boost)
-        )
+            1.0, self.calculate_confidence(
+                base_confidence, 1 + confidence_boost))
 
         # Filtre final - SEUIL ÉQUILIBRÉ
         if confidence < 0.45:  # Seuil minimum équilibré
@@ -435,7 +453,8 @@ class Bollinger_Touch_Strategy(BaseStrategy):
 
         for indicator in required:
             if indicator not in self.indicators:
-                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
+                logger.warning(
+                    f"{self.name}: Indicateur manquant: {indicator}")
                 return False
             if self.indicators[indicator] is None:
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")

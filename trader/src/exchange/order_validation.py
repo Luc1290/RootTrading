@@ -15,8 +15,6 @@ logger = logging.getLogger(__name__)
 class OrderValidationError(Exception):
     """Exception levée lorsqu'un ordre ne respecte pas les contraintes."""
 
-    pass
-
 
 class OrderValidator:
     """
@@ -67,10 +65,8 @@ class OrderValidator:
             )
 
             # Log pour débogage si la quantité a changé significativement
-            if (
-                abs(original_quantity - adjusted_order.quantity) / original_quantity
-                > 0.01
-            ):  # Changement de plus de 1%
+            if (abs(original_quantity - adjusted_order.quantity) /
+                    original_quantity > 0.01):  # Changement de plus de 1%
                 logger.warning(
                     f"⚠️ Ajustement significatif de quantité: {original_quantity} → {adjusted_order.quantity} pour {adjusted_order.symbol}"
                 )
@@ -102,10 +98,11 @@ class OrderValidator:
             price = adjusted_order.price
             if price is None:
                 try:
-                    price = binance_utils.get_current_price(adjusted_order.symbol)
+                    price = binance_utils.get_current_price(
+                        adjusted_order.symbol)
                 except Exception as e:
                     logger.warning(
-                        f"⚠️ Impossible de récupérer le prix actuel: {str(e)}"
+                        f"⚠️ Impossible de récupérer le prix actuel: {e!s}"
                     )
                     # Utiliser un prix par défaut selon le symbole
                     if adjusted_order.symbol.startswith("BTC"):
@@ -117,7 +114,8 @@ class OrderValidator:
 
             # Vérifier que le notional est suffisant
             notional = adjusted_order.quantity * price
-            min_notional = self.constraints.get_min_notional(adjusted_order.symbol)
+            min_notional = self.constraints.get_min_notional(
+                adjusted_order.symbol)
 
             # Ajouter une petite marge de tolérance pour éviter les erreurs d'arrondi
             # Utiliser 1e-8 comme epsilon pour les comparaisons de décimaux
@@ -140,8 +138,9 @@ class OrderValidator:
             # Relancer les erreurs de validation
             raise
         except Exception as e:
-            # Capturer les autres erreurs et les convertir en erreurs de validation
-            logger.error(
-                f"❌ Erreur inattendue lors de la validation de l'ordre: {str(e)}"
+            # Capturer les autres erreurs et les convertir en erreurs de
+            # validation
+            logger.exception(
+                f"❌ Erreur inattendue lors de la validation de l'ordre: {e!s}"
             )
-            raise OrderValidationError(f"Erreur de validation: {str(e)}")
+            raise OrderValidationError(f"Erreur de validation: {e!s}")

@@ -3,16 +3,16 @@ Exécuteur d'ordres simplifié pour le trader.
 Logique simple : reçoit ordre du coordinator → exécute sur Binance → stocke historique.
 """
 
-import logging
-import uuid
 import hashlib
+import logging
 import time
+import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Any
 
-from shared.src.enums import OrderSide, OrderStatus
-from shared.src.schemas import TradeOrder, TradeExecution
 from shared.src.db_pool import transaction
+from shared.src.enums import OrderSide, OrderStatus
+from shared.src.schemas import TradeExecution, TradeOrder
 from trader.src.exchange.binance_executor import BinanceExecutor
 from trader.src.trading.cycle_manager import CycleManager
 
@@ -35,18 +35,18 @@ class OrderExecutor:
         self.binance_executor = binance_executor
 
         # Historique des ordres exécutés
-        self.order_history: List[Dict[str, Any]] = []
+        self.order_history: list[dict[str, Any]] = []
 
         # Gestionnaire de cycles pour le tracking des P&L
         self.cycle_manager = CycleManager()
 
         # Cache de déduplication: {hash: (timestamp, order_id)}
-        self.dedup_cache: Dict[str, Tuple[float, str]] = {}
+        self.dedup_cache: dict[str, tuple[float, str]] = {}
         self.dedup_window_seconds = 10  # Fenêtre de déduplication en secondes
 
         logger.info("✅ OrderExecutor initialisé (logique simplifiée)")
 
-    def _get_order_hash(self, order_data: Dict[str, Any]) -> str:
+    def _get_order_hash(self, order_data: dict[str, Any]) -> str:
         """
         Génère un hash unique pour un ordre basé sur ses caractéristiques.
 
@@ -77,7 +77,7 @@ class OrderExecutor:
         for key in expired_keys:
             del self.dedup_cache[key]
 
-    def _is_duplicate_order(self, order_data: Dict[str, Any]) -> Optional[str]:
+    def _is_duplicate_order(self, order_data: dict[str, Any]) -> str | None:
         """
         Vérifie si un ordre est un duplicata récent.
 
@@ -106,7 +106,7 @@ class OrderExecutor:
 
         return None
 
-    def execute_order(self, order_data: Dict[str, Any]) -> Optional[str]:
+    def execute_order(self, order_data: dict[str, Any]) -> str | None:
         """
         Exécute un ordre simple.
 
@@ -146,9 +146,8 @@ class OrderExecutor:
             symbol = order_data["symbol"]
             side = OrderSide(order_data["side"])
             quantity = float(order_data["quantity"])
-            price = (
-                float(order_data.get("price", 0)) if order_data.get("price") else None
-            )
+            price = (float(order_data.get("price", 0))
+                     if order_data.get("price") else None)
             strategy = order_data.get("strategy", "Manual")
 
             # Ajouter l'ordre au cache de déduplication AVANT l'exécution
@@ -184,7 +183,8 @@ class OrderExecutor:
                 OrderStatus.FILLED,
                 OrderStatus.PARTIALLY_FILLED,
             ]:
-                logger.error(f"❌ Ordre {order_id} non exécuté: {execution.status}")
+                logger.error(
+                    f"❌ Ordre {order_id} non exécuté: {execution.status}")
                 return None
 
             # Sauvegarder en base de données
@@ -218,21 +218,23 @@ class OrderExecutor:
                 f"✅ Ordre exécuté: {order_id} (Binance: {execution.order_id}) - {status_str}"
             )
 
-            # Traiter le trade pour les cycles en arrière-plan (après avoir retourné la réponse)
+            # Traiter le trade pour les cycles en arrière-plan (après avoir
+            # retourné la réponse)
             cycle_id = None
             try:
                 cycle_id = self._process_trade_for_cycles(execution, strategy)
                 if cycle_id:
                     # Mettre à jour l'exécution avec le cycle_id
-                    self._update_execution_with_cycle_id(execution.order_id, cycle_id)
-            except Exception as e:
-                logger.error(f"❌ Erreur processing cycle: {e}")
+                    self._update_execution_with_cycle_id(
+                        execution.order_id, cycle_id)
+            except Exception:
+                logger.exception("❌ Erreur processing cycle")
                 # On ne propage pas l'erreur
 
             return order_id
 
-        except Exception as e:
-            logger.error(f"❌ Erreur exécution ordre: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur exécution ordre")
             return None
 
     def _save_execution(self, execution: TradeExecution) -> None:
@@ -246,8 +248,8 @@ class OrderExecutor:
             with transaction() as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO trade_executions 
-                    (order_id, symbol, side, status, price, quantity, quote_quantity, 
+                    INSERT INTO trade_executions
+                    (order_id, symbol, side, status, price, quantity, quote_quantity,
                      fee, fee_asset, role, timestamp, demo)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (order_id) DO UPDATE SET
@@ -258,40 +260,37 @@ class OrderExecutor:
                         fee = EXCLUDED.fee,
                         timestamp = EXCLUDED.timestamp
                 """,
-                    (
-                        execution.order_id,
-                        execution.symbol,
-                        (
-                            execution.side.value
-                            if hasattr(execution.side, "value")
-                            else str(execution.side)
-                        ),
-                        (
-                            execution.status.value
-                            if hasattr(execution.status, "value")
-                            else str(execution.status)
-                        ),
+                    (execution.order_id,
+                     execution.symbol,
+                     (execution.side.value if hasattr(
+                         execution.side,
+                         "value") else str(
+                         execution.side)),
+                        (execution.status.value if hasattr(
+                            execution.status,
+                            "value") else str(
+                            execution.status)),
                         execution.price,
                         execution.quantity,
                         execution.quote_quantity,
                         execution.fee,
                         execution.fee_asset,
-                        (
-                            execution.role.value
-                            if execution.role and hasattr(execution.role, "value")
-                            else (str(execution.role) if execution.role else None)
-                        ),
+                        (execution.role.value if execution.role and hasattr(
+                            execution.role,
+                            "value") else (
+                            str(
+                                execution.role) if execution.role else None)),
                         execution.timestamp,
                         execution.demo,
-                    ),
+                     ),
                 )
 
             logger.debug(f"✅ Exécution {execution.order_id} sauvegardée")
 
-        except Exception as e:
-            logger.error(f"❌ Erreur sauvegarde exécution: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur sauvegarde exécution")
 
-    def get_order_history(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_order_history(self, limit: int = 50) -> list[dict[str, Any]]:
         """
         Récupère l'historique des ordres.
 
@@ -303,7 +302,7 @@ class OrderExecutor:
         """
         return self.order_history[-limit:]
 
-    def get_order_status(self, order_id: str) -> Optional[Dict[str, Any]]:
+    def get_order_status(self, order_id: str) -> dict[str, Any] | None:
         """
         Récupère le statut d'un ordre.
 
@@ -320,7 +319,7 @@ class OrderExecutor:
 
     def _process_trade_for_cycles(
         self, execution: TradeExecution, strategy: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Traite un trade exécuté pour mettre à jour les cycles.
         Cette méthode est appelée pour ne pas bloquer l'exécution.
@@ -345,12 +344,12 @@ class OrderExecutor:
 
             return self.cycle_manager.process_trade_execution(trade_data)
 
-        except Exception as e:
-            logger.error(f"❌ Erreur traitement cycle: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur traitement cycle")
             # On ne propage pas l'erreur pour ne pas impacter le trading
             return None
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Récupère les statistiques de l'exécuteur.
 
@@ -376,7 +375,8 @@ class OrderExecutor:
             ),
         }
 
-    def _update_execution_with_cycle_id(self, order_id: str, cycle_id: str) -> None:
+    def _update_execution_with_cycle_id(
+            self, order_id: str, cycle_id: str) -> None:
         """
         Met à jour une exécution existante avec son cycle_id.
 
@@ -388,7 +388,7 @@ class OrderExecutor:
             with transaction() as cursor:
                 cursor.execute(
                     """
-                    UPDATE trade_executions 
+                    UPDATE trade_executions
                     SET cycle_id = %s, updated_at = NOW()
                     WHERE order_id = %s
                 """,
@@ -396,11 +396,12 @@ class OrderExecutor:
                 )
 
                 if cursor.rowcount > 0:
-                    logger.debug(f"✅ Exécution {order_id} liée au cycle {cycle_id}")
+                    logger.debug(
+                        f"✅ Exécution {order_id} liée au cycle {cycle_id}")
                 else:
                     logger.warning(
                         f"⚠️ Aucune exécution trouvée pour order_id {order_id}"
                     )
 
-        except Exception as e:
-            logger.error(f"❌ Erreur mise à jour cycle_id: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur mise à jour cycle_id")

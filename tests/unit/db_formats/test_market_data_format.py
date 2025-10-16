@@ -2,16 +2,16 @@
 Tests pour valider le format des données market_data en DB.
 """
 
-import pytest
-import sys
+from shared.src.schemas import MarketData
+from pydantic import ValidationError
 import os
+import sys
 from datetime import datetime, timedelta
+
+import pytest
 
 # Ajouter le chemin racine pour les imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-
-from shared.src.schemas import MarketData
-from pydantic import ValidationError
 
 
 class TestMarketDataFormat:
@@ -64,7 +64,7 @@ class TestMarketDataFormat:
         with pytest.raises(ValidationError):
             MarketData(
                 symbol="BTCUSDC",
-                start_time=int(datetime.now().timestamp() * 1000),
+                start_time=int(datetime.now(timezone.utc).timestamp() * 1000),
                 close_time=int(
                     (datetime.now() + timedelta(minutes=1)).timestamp() * 1000
                 ),
@@ -78,11 +78,16 @@ class TestMarketDataFormat:
     def test_market_data_negative_values(self):
         """Test validation avec valeurs négatives."""
         # Pydantic par défaut ne valide pas les valeurs négatives
-        # Créer l'objet avec volume négatif (peut être accepté sans validators custom)
+        # Créer l'objet avec volume négatif (peut être accepté sans validators
+        # custom)
         market_data = MarketData(
             symbol="BTCUSDC",
-            start_time=int(datetime.now().timestamp() * 1000),
-            close_time=int((datetime.now() + timedelta(minutes=1)).timestamp() * 1000),
+            start_time=int(datetime.now(timezone.utc).timestamp() * 1000),
+            close_time=int(
+                (datetime.now() +
+                 timedelta(
+                    minutes=1)).timestamp() *
+                1000),
             open=50000.0,
             high=50100.0,
             low=49900.0,
@@ -94,11 +99,16 @@ class TestMarketDataFormat:
 
     def test_market_data_ohlc_logic_validation(self):
         """Test que la logique OHLC est cohérente."""
-        # Ce test vérifie la cohérence des données mais Pydantic ne fait pas cette validation par défaut
+        # Ce test vérifie la cohérence des données mais Pydantic ne fait pas
+        # cette validation par défaut
         market_data = MarketData(
             symbol="BTCUSDC",
-            start_time=int(datetime.now().timestamp() * 1000),
-            close_time=int((datetime.now() + timedelta(minutes=1)).timestamp() * 1000),
+            start_time=int(datetime.now(timezone.utc).timestamp() * 1000),
+            close_time=int(
+                (datetime.now() +
+                 timedelta(
+                    minutes=1)).timestamp() *
+                1000),
             open=50000.0,
             high=49000.0,  # High < Open (techniquement invalide)
             low=49900.0,
@@ -112,7 +122,7 @@ class TestMarketDataFormat:
 
     def test_market_data_timestamp_auto_generation(self):
         """Test génération automatique du timestamp."""
-        start_time = int(datetime.now().timestamp() * 1000)
+        start_time = int(datetime.now(timezone.utc).timestamp() * 1000)
 
         market_data = MarketData(
             symbol="BTCUSDC",
@@ -137,8 +147,15 @@ class TestMarketDataFormat:
 
         market_data = MarketData(
             symbol="BTCUSDC",
-            start_time=int(datetime.now().timestamp() * 1000),
-            close_time=int((datetime.now() + timedelta(minutes=1)).timestamp() * 1000),
+            start_time=int(
+                datetime.now(
+                    timezone.utc).timestamp() *
+                1000),
+            close_time=int(
+                (datetime.now() +
+                 timedelta(
+                    minutes=1)).timestamp() *
+                1000),
             open=50000.0,
             high=50100.0,
             low=49900.0,
@@ -154,8 +171,12 @@ class TestMarketDataFormat:
         # Symbole vide - Pydantic accepte les strings vides par défaut
         market_data = MarketData(
             symbol="",  # Accepté sans validator custom
-            start_time=int(datetime.now().timestamp() * 1000),
-            close_time=int((datetime.now() + timedelta(minutes=1)).timestamp() * 1000),
+            start_time=int(datetime.now(timezone.utc).timestamp() * 1000),
+            close_time=int(
+                (datetime.now() +
+                 timedelta(
+                    minutes=1)).timestamp() *
+                1000),
             open=50000.0,
             high=50100.0,
             low=49900.0,

@@ -3,11 +3,11 @@ Module de gestion de la base de données pour le Signal Aggregator.
 Gère le stockage des signaux validés et l'historique de validation.
 """
 
-import logging
 import json
+import logging
 from datetime import datetime
-from typing import Dict, Any, List, Optional
-import psycopg2
+from typing import Any
+
 from psycopg2.extras import RealDictCursor
 
 logger = logging.getLogger(__name__)
@@ -26,13 +26,14 @@ class DatabaseManager:
         self.db_connection = db_connection
 
         # Statistiques de stockage
-        self.stats: Dict[str, Any] = {
+        self.stats: dict[str, Any] = {
             "signals_stored": 0,
             "storage_errors": 0,
             "last_storage_time": None,
         }
 
-    def store_validated_signal(self, validated_signal: Dict[str, Any]) -> Optional[int]:
+    def store_validated_signal(
+            self, validated_signal: dict[str, Any]) -> int | None:
         """
         Stocke un signal validé en base de données.
 
@@ -49,9 +50,9 @@ class DatabaseManager:
 
                 # Insertion du signal
                 insert_query = """
-                    INSERT INTO trading_signals 
+                    INSERT INTO trading_signals
                     (strategy, symbol, side, timestamp, confidence, price, metadata, processed)
-                    VALUES (%(strategy)s, %(symbol)s, %(side)s, %(timestamp)s, 
+                    VALUES (%(strategy)s, %(symbol)s, %(side)s, %(timestamp)s,
                            %(confidence)s, %(price)s, %(metadata)s, %(processed)s)
                     RETURNING id
                 """
@@ -63,25 +64,28 @@ class DatabaseManager:
                 self.db_connection.commit()
 
                 # Mise à jour des statistiques
-                self.stats["signals_stored"] = int(self.stats.get("signals_stored", 0)) + 1
+                self.stats["signals_stored"] = int(
+                    self.stats.get("signals_stored", 0)) + 1
                 self.stats["last_storage_time"] = datetime.utcnow()
 
                 logger.debug(f"Signal stocké en DB avec ID: {signal_id}")
                 return signal_id
 
-        except Exception as e:
-            logger.error(f"Erreur stockage signal en DB: {e}")
-            self.stats["storage_errors"] = int(self.stats.get("storage_errors", 0)) + 1
+        except Exception:
+            logger.exception("Erreur stockage signal en DB")
+            self.stats["storage_errors"] = int(
+                self.stats.get("storage_errors", 0)) + 1
 
             # Rollback en cas d'erreur
             try:
                 self.db_connection.rollback()
             except Exception as rollback_error:
-                logger.error(f"Erreur rollback: {rollback_error}")
+                logger.exception(f"Erreur rollback: {rollback_error}")
 
             return None
 
-    def _prepare_signal_data(self, validated_signal: Dict[str, Any]) -> Dict[str, Any]:
+    def _prepare_signal_data(
+            self, validated_signal: dict[str, Any]) -> dict[str, Any]:
         """
         Prépare les données du signal pour l'insertion en DB.
 
@@ -117,7 +121,8 @@ class DatabaseManager:
                 "validation_details": validated_signal.get("validation_details"),
                 "validation_timestamp": validated_signal.get("validation_timestamp"),
                 "original_metadata": original_metadata,
-                # Promouvoir les infos de consensus importantes au niveau supérieur
+                # Promouvoir les infos de consensus importantes au niveau
+                # supérieur
                 "strategy_count": original_metadata.get("strategy_count"),
                 "has_consensus": original_metadata.get("has_consensus"),
                 "is_individual": original_metadata.get("is_individual"),
@@ -129,7 +134,7 @@ class DatabaseManager:
             # Suppression des valeurs None pour optimiser le JSON
             metadata = {k: v for k, v in metadata.items() if v is not None}
 
-            signal_data = {
+            return {
                 "strategy": validated_signal["strategy"],
                 "symbol": validated_signal["symbol"],
                 "side": validated_signal["side"],
@@ -138,7 +143,8 @@ class DatabaseManager:
                 ),
                 "confidence": float(
                     validated_signal.get(
-                        "aggregator_confidence", validated_signal.get("confidence", 0)
+                        "aggregator_confidence", validated_signal.get(
+                            "confidence", 0)
                     )
                 ),
                 "price": price,
@@ -146,13 +152,11 @@ class DatabaseManager:
                 "processed": False,  # Signal pas encore traité par le coordinator
             }
 
-            return signal_data
-
-        except Exception as e:
-            logger.error(f"Erreur préparation données signal: {e}")
+        except Exception:
+            logger.exception("Erreur préparation données signal")
             raise
 
-    def _extract_price(self, validated_signal: Dict[str, Any]) -> float:
+    def _extract_price(self, validated_signal: dict[str, Any]) -> float:
         """
         Extrait le prix du signal depuis les métadonnées ou contexte.
 
@@ -199,8 +203,8 @@ class DatabaseManager:
             )
             return 0.0
 
-        except Exception as e:
-            logger.error(f"Erreur extraction prix: {e}")
+        except Exception:
+            logger.exception("Erreur extraction prix")
             return 0.0
 
     def _parse_timestamp(self, timestamp_str: str) -> datetime:
@@ -237,13 +241,13 @@ class DatabaseManager:
             )
             return datetime.utcnow()
 
-        except Exception as e:
-            logger.error(f"Erreur parsing timestamp: {e}")
+        except Exception:
+            logger.exception("Erreur parsing timestamp")
             return datetime.utcnow()
 
     def store_multiple_signals(
-        self, validated_signals: List[Dict[str, Any]]
-    ) -> List[Optional[int]]:
+        self, validated_signals: list[dict[str, Any]]
+    ) -> list[int | None]:
         """
         Stocke plusieurs signaux en batch pour optimiser les performances.
 
@@ -253,7 +257,7 @@ class DatabaseManager:
         Returns:
             Liste des IDs des signaux stockés
         """
-        signal_ids: List[Optional[int]] = []
+        signal_ids: list[int | None] = []
 
         if not validated_signals:
             return signal_ids
@@ -261,9 +265,9 @@ class DatabaseManager:
         try:
             with self.db_connection.cursor() as cursor:
                 insert_query = """
-                    INSERT INTO trading_signals 
+                    INSERT INTO trading_signals
                     (strategy, symbol, side, timestamp, confidence, price, metadata, processed)
-                    VALUES (%(strategy)s, %(symbol)s, %(side)s, %(timestamp)s, 
+                    VALUES (%(strategy)s, %(symbol)s, %(side)s, %(timestamp)s,
                            %(confidence)s, %(price)s, %(metadata)s, %(processed)s)
                     RETURNING id
                 """
@@ -275,32 +279,36 @@ class DatabaseManager:
                         signal_id = cursor.fetchone()[0]
                         signal_ids.append(signal_id)
 
-                    except Exception as e:
-                        logger.error(f"Erreur stockage signal individuel: {e}")
+                    except Exception:
+                        logger.exception("Erreur stockage signal individuel")
                         signal_ids.append(None)
-                        self.stats["storage_errors"] = int(self.stats.get("storage_errors", 0)) + 1
+                        self.stats["storage_errors"] = int(
+                            self.stats.get("storage_errors", 0)) + 1
 
                 # Commit de toutes les insertions
                 self.db_connection.commit()
 
                 # Mise à jour des statistiques
-                successful_stores = len([sid for sid in signal_ids if sid is not None])
-                self.stats["signals_stored"] = int(self.stats.get("signals_stored", 0)) + successful_stores
+                successful_stores = len(
+                    [sid for sid in signal_ids if sid is not None])
+                self.stats["signals_stored"] = int(
+                    self.stats.get("signals_stored", 0)) + successful_stores
                 self.stats["last_storage_time"] = datetime.utcnow()
 
                 logger.info(
                     f"Batch de {successful_stores}/{len(validated_signals)} signaux stocké en DB"
                 )
 
-        except Exception as e:
-            logger.error(f"Erreur stockage batch signaux: {e}")
-            self.stats["storage_errors"] = int(self.stats.get("storage_errors", 0)) + len(validated_signals)
+        except Exception:
+            logger.exception("Erreur stockage batch signaux")
+            self.stats["storage_errors"] = int(self.stats.get(
+                "storage_errors", 0)) + len(validated_signals)
 
             # Rollback en cas d'erreur
             try:
                 self.db_connection.rollback()
             except Exception as rollback_error:
-                logger.error(f"Erreur rollback batch: {rollback_error}")
+                logger.exception(f"Erreur rollback batch: {rollback_error}")
 
             # Retourner une liste de None de la même taille
             signal_ids = [None] * len(validated_signals)
@@ -310,9 +318,9 @@ class DatabaseManager:
     def get_recent_signals(
         self,
         limit: int = 50,
-        strategy: Optional[str] = None,
-        symbol: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        strategy: str | None = None,
+        symbol: str | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Récupère les signaux récents depuis la base de données.
 
@@ -328,7 +336,7 @@ class DatabaseManager:
             with self.db_connection.cursor(cursor_factory=RealDictCursor) as cursor:
                 # Construction de la requête avec filtres optionnels
                 query = "SELECT * FROM trading_signals WHERE 1=1"
-                params: List[Any] = []
+                params: list[Any] = []
 
                 if strategy:
                     query += " AND strategy = %s"
@@ -364,8 +372,8 @@ class DatabaseManager:
 
                 return signals
 
-        except Exception as e:
-            logger.error(f"Erreur récupération signaux récents: {e}")
+        except Exception:
+            logger.exception("Erreur récupération signaux récents")
             return []
 
     def mark_signal_as_processed(self, signal_id: int) -> bool:
@@ -390,19 +398,18 @@ class DatabaseManager:
                 if cursor.rowcount > 0:
                     logger.debug(f"Signal {signal_id} marqué comme traité")
                     return True
-                else:
-                    logger.warning(f"Signal {signal_id} non trouvé pour marquage")
-                    return False
+                logger.warning(f"Signal {signal_id} non trouvé pour marquage")
+                return False
 
-        except Exception as e:
-            logger.error(f"Erreur marquage signal {signal_id}: {e}")
+        except Exception:
+            logger.exception("Erreur marquage signal {signal_id}")
             try:
                 self.db_connection.rollback()
             except Exception as rollback_error:
-                logger.error(f"Erreur rollback marquage: {rollback_error}")
+                logger.exception(f"Erreur rollback marquage: {rollback_error}")
             return False
 
-    def get_validation_statistics(self, hours: int = 24) -> Dict[str, Any]:
+    def get_validation_statistics(self, hours: int = 24) -> dict[str, Any]:
         """
         Récupère les statistiques de validation sur une période donnée.
 
@@ -417,13 +424,13 @@ class DatabaseManager:
                 # Statistiques générales
                 cursor.execute(
                     """
-                    SELECT 
+                    SELECT
                         COUNT(*) as total_signals,
                         COUNT(CASE WHEN processed = true THEN 1 END) as processed_signals,
                         AVG(confidence) as avg_confidence,
                         COUNT(DISTINCT strategy) as unique_strategies,
                         COUNT(DISTINCT symbol) as unique_symbols
-                    FROM trading_signals 
+                    FROM trading_signals
                     WHERE timestamp >= NOW() - INTERVAL '%s hours'
                 """,
                     (hours,),
@@ -434,11 +441,11 @@ class DatabaseManager:
                 # Statistiques par stratégie
                 cursor.execute(
                     """
-                    SELECT 
+                    SELECT
                         strategy,
                         COUNT(*) as signal_count,
                         AVG(confidence) as avg_confidence
-                    FROM trading_signals 
+                    FROM trading_signals
                     WHERE timestamp >= NOW() - INTERVAL '%s hours'
                     GROUP BY strategy
                     ORDER BY signal_count DESC
@@ -451,12 +458,12 @@ class DatabaseManager:
                 # Statistiques par symbole
                 cursor.execute(
                     """
-                    SELECT 
+                    SELECT
                         symbol,
                         COUNT(*) as signal_count,
                         COUNT(CASE WHEN side = 'BUY' THEN 1 END) as buy_signals,
                         COUNT(CASE WHEN side = 'SELL' THEN 1 END) as sell_signals
-                    FROM trading_signals 
+                    FROM trading_signals
                     WHERE timestamp >= NOW() - INTERVAL '%s hours'
                     GROUP BY symbol
                     ORDER BY signal_count DESC
@@ -475,10 +482,10 @@ class DatabaseManager:
                 }
 
         except Exception as e:
-            logger.error(f"Erreur récupération statistiques validation: {e}")
+            logger.exception("Erreur récupération statistiques validation")
             return {"error": str(e)}
 
-    def get_storage_stats(self) -> Dict[str, Any]:
+    def get_storage_stats(self) -> dict[str, Any]:
         """
         Récupère les statistiques de stockage.
 
@@ -518,7 +525,7 @@ class DatabaseManager:
             with self.db_connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    DELETE FROM trading_signals 
+                    DELETE FROM trading_signals
                     WHERE timestamp < NOW() - INTERVAL '%s days'
                     AND processed = true
                 """,
@@ -528,13 +535,15 @@ class DatabaseManager:
                 deleted_count = cursor.rowcount
                 self.db_connection.commit()
 
-                logger.info(f"Nettoyage DB: {deleted_count} anciens signaux supprimés")
+                logger.info(
+                    f"Nettoyage DB: {deleted_count} anciens signaux supprimés")
                 return deleted_count
 
-        except Exception as e:
-            logger.error(f"Erreur nettoyage anciens signaux: {e}")
+        except Exception:
+            logger.exception("Erreur nettoyage anciens signaux")
             try:
                 self.db_connection.rollback()
             except Exception as rollback_error:
-                logger.error(f"Erreur rollback nettoyage: {rollback_error}")
+                logger.exception(
+                    f"Erreur rollback nettoyage: {rollback_error}")
             return 0

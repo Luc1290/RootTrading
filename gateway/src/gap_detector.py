@@ -5,9 +5,10 @@ Optimise le rechargement après coupure en ne chargeant que les données manquan
 
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+
 import asyncpg  # type: ignore[import-untyped]
-from shared.src.config import get_db_config, SYMBOLS
+
+from shared.src.config import SYMBOLS, get_db_config
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +19,8 @@ class GapDetector:
     """
 
     def __init__(self):
-        self.db_pool: Optional[asyncpg.Pool] = None
-        self.gap_report: Dict = {}
+        self.db_pool: asyncpg.Pool | None = None
+        self.gap_report: dict = {}
 
     async def initialize(self):
         """Initialize la connexion DB"""
@@ -35,8 +36,8 @@ class GapDetector:
                 max_size=10,
             )
             logger.info("✅ GapDetector initialisé avec pool DB")
-        except Exception as e:
-            logger.error(f"❌ Erreur initialisation GapDetector: {e}")
+        except Exception:
+            logger.exception("❌ Erreur initialisation GapDetector")
             raise
 
     async def close(self):
@@ -46,7 +47,7 @@ class GapDetector:
 
     async def detect_gaps_for_symbol(
         self, symbol: str, timeframe: str, lookback_hours: int = 24
-    ) -> List[Tuple[datetime, datetime]]:
+    ) -> list[tuple[datetime, datetime]]:
         """
         Détecte les gaps pour un symbole/timeframe spécifique.
         Nouvelle logique : détecte le gap principal depuis la dernière candle jusqu'à maintenant.
@@ -64,7 +65,8 @@ class GapDetector:
             "1d": 86400,
         }.get(timeframe, 60)
 
-        # Calculer la période à vérifier - forcer UTC explicitement avec timestamps propres
+        # Calculer la période à vérifier - forcer UTC explicitement avec
+        # timestamps propres
         now = datetime.utcnow().replace(tzinfo=None, microsecond=0)
         start_time = (now - timedelta(hours=lookback_hours)).replace(
             tzinfo=None, microsecond=0
@@ -77,20 +79,20 @@ class GapDetector:
             SELECT MAX(time) as last_candle_time,
                    COUNT(*) as total_rows
             FROM market_data
-            WHERE symbol = $1 
+            WHERE symbol = $1
             AND timeframe = $2
             AND time >= $3
         ),
         gap_calculation AS (
-            SELECT 
-                CASE 
+            SELECT
+                CASE
                     -- Si DB vide (total_rows = 0), créer un gap complet depuis start_time
                     WHEN total_rows = 0 THEN $3::timestamp
                     -- Sinon, gap depuis la dernière candle
                     ELSE last_candle_time + make_interval(secs => $5)
                 END as gap_start,
                 $4::timestamp as current_time,
-                CASE 
+                CASE
                     -- Si DB vide, calculer depuis start_time
                     WHEN total_rows = 0 THEN EXTRACT(EPOCH FROM ($4::timestamp - $3::timestamp))
                     -- Sinon, depuis dernière candle
@@ -100,7 +102,7 @@ class GapDetector:
                 total_rows
             FROM latest_data
         )
-        SELECT 
+        SELECT
             gap_start AT TIME ZONE 'UTC' as gap_start,
             current_time AT TIME ZONE 'UTC' as gap_end,
             (seconds_since_last / interval_seconds)::int as missing_candles,
@@ -136,17 +138,20 @@ class GapDetector:
                     f"PostgreSQL returned gap_end: {type(gap_end)} = {gap_end}"
                 )
 
-                # Assurer que nous avons des objets datetime propres SANS TIMEZONE
+                # Assurer que nous avons des objets datetime propres SANS
+                # TIMEZONE
                 try:
                     # Convertir gap_start en datetime sans timezone
                     if not isinstance(gap_start, datetime):
-                        if hasattr(gap_start, "replace"):  # datetime.date ou time
+                        if hasattr(
+                                gap_start, "replace"):  # datetime.date ou time
                             if hasattr(gap_start, "hour") and hasattr(
                                 gap_start, "year"
                             ):  # datetime complet
                                 gap_start = gap_start.replace(tzinfo=None)
                             elif hasattr(gap_start, "hour"):  # time only (pas de date)
-                                gap_start = datetime.combine(now.date(), gap_start)
+                                gap_start = datetime.combine(
+                                    now.date(), gap_start)
                             else:  # date only
                                 gap_start = datetime.combine(
                                     gap_start, datetime.min.time()
@@ -161,7 +166,8 @@ class GapDetector:
 
                     # Convertir gap_end en datetime sans timezone
                     if not isinstance(gap_end, datetime):
-                        if hasattr(gap_end, "replace"):  # datetime.date ou time
+                        if hasattr(
+                                gap_end, "replace"):  # datetime.date ou time
                             if hasattr(gap_end, "hour") and hasattr(
                                 gap_end, "year"
                             ):  # datetime complet
@@ -169,9 +175,11 @@ class GapDetector:
                             elif hasattr(gap_end, "hour"):  # time only (pas de date)
                                 gap_end = datetime.combine(now.date(), gap_end)
                             else:  # date only
-                                gap_end = datetime.combine(gap_end, datetime.min.time())
+                                gap_end = datetime.combine(
+                                    gap_end, datetime.min.time())
                         elif isinstance(gap_end, str):
-                            gap_end = datetime.fromisoformat(gap_end.replace("Z", ""))
+                            gap_end = datetime.fromisoformat(
+                                gap_end.replace("Z", ""))
                     else:
                         # Forcer le retrait de timezone si présente
                         gap_end = gap_end.replace(tzinfo=None)
@@ -193,13 +201,11 @@ class GapDetector:
                 if "EMPTY_DB" in gap_types:
                     logger.error(
                         f"🚨 {symbol} {timeframe}: DB VIDE - CHARGEMENT COMPLET REQUIS - "
-                        f"{total_missing} candles à charger ({total_hours:.1f}h)"
-                    )
+                        f"{total_missing} candles à charger ({total_hours:.1f}h)")
                 else:
                     logger.warning(
                         f"📊 {symbol} {timeframe}: GAP NORMAL détecté - "
-                        f"{total_missing} candles manquantes ({total_hours:.1f}h)"
-                    )
+                        f"{total_missing} candles manquantes ({total_hours:.1f}h)")
             else:
                 logger.info(f"✅ {symbol} {timeframe}: Aucun gap détecté")
 
@@ -207,7 +213,7 @@ class GapDetector:
 
     async def detect_smart_gaps(
         self, symbol: str, timeframe: str, min_candles: int = 300
-    ) -> List[Tuple[datetime, datetime]]:
+    ) -> list[tuple[datetime, datetime]]:
         """
         Détection intelligente des gaps:
         1. Si DB vide ou < min_candles: charge min_candles pour démarrer
@@ -229,7 +235,7 @@ class GapDetector:
         async with self.db_pool.acquire() as conn:
             row = await conn.fetchrow(query, symbol, timeframe)
             current_count = row["count"] if row else 0
-            last_time = row["last_time"] if row else None
+            row["last_time"] if row else None
 
             # Cas 1: DB vide ou pas assez de données - charger min_candles
             if current_count < min_candles:
@@ -250,21 +256,19 @@ class GapDetector:
                 missing_count = min_candles - current_count
                 logger.warning(
                     f"📊 {symbol} {timeframe}: {current_count}/{min_candles} bougies - "
-                    f"chargement initial de {missing_count} bougies"
-                )
+                    f"chargement initial de {missing_count} bougies")
 
                 return [(start_time, now)]
 
             # Cas 2: Assez de données - détection de gaps récents
-            else:
-                # Utiliser la logique existante pour détecter les vrais gaps
-                return await self.detect_gaps_for_symbol(
-                    symbol, timeframe, lookback_hours=24
-                )
+            # Utiliser la logique existante pour détecter les vrais gaps
+            return await self.detect_gaps_for_symbol(
+                symbol, timeframe, lookback_hours=24
+            )
 
     async def detect_all_gaps(
-        self, symbols: Optional[List[str]] = None, lookback_hours: int = 24
-    ) -> Dict:
+        self, symbols: list[str] | None = None, lookback_hours: int = 24
+    ) -> dict:
         """
         Détection intelligente des gaps pour tous les symboles et timeframes:
         - DB vide/insuffisante: charge 300 bougies minimum
@@ -277,7 +281,7 @@ class GapDetector:
             symbols = SYMBOLS
 
         timeframes = ["1m", "3m", "5m", "15m", "1h", "1d"]
-        all_gaps: Dict[str, Dict[str, List[Tuple[datetime, datetime]]]] = {}
+        all_gaps: dict[str, dict[str, list[tuple[datetime, datetime]]]] = {}
         total_gaps = 0
 
         logger.info(
@@ -295,24 +299,26 @@ class GapDetector:
                     if gaps:
                         all_gaps[symbol][timeframe] = gaps
                         total_gaps += len(gaps)
-                except Exception as e:
-                    logger.error(f"❌ Erreur détection gaps {symbol} {timeframe}: {e}")
+                except Exception:
+                    logger.exception(
+                        "❌ Erreur détection gaps {symbol} {timeframe}")
 
         self.gap_report = all_gaps
-        logger.info(f"📊 Détection terminée: {total_gaps} gaps trouvés au total")
+        logger.info(
+            f"📊 Détection terminée: {total_gaps} gaps trouvés au total")
 
         return all_gaps
 
     async def get_last_complete_candle(
         self, symbol: str, timeframe: str
-    ) -> Optional[datetime]:
+    ) -> datetime | None:
         """
         Récupère le timestamp de la dernière candle complète en DB
         """
         query = """
         SELECT MAX(time) as last_time
         FROM market_data
-        WHERE symbol = $1 
+        WHERE symbol = $1
         AND timeframe = $2
         AND enhanced = true
         """
@@ -326,10 +332,10 @@ class GapDetector:
 
     def calculate_fetch_periods(
         self,
-        gaps: List[Tuple[datetime, datetime]],
+        gaps: list[tuple[datetime, datetime]],
         max_candles_per_request: int = 1000,
         timeframe: str = "1m",
-    ) -> List[Tuple[datetime, datetime]]:
+    ) -> list[tuple[datetime, datetime]]:
         """
         Optimise les périodes de fetch en regroupant les gaps proches
 
@@ -350,7 +356,8 @@ class GapDetector:
             try:
                 # Convertir gap_start en datetime SANS TIMEZONE
                 if not isinstance(gap_start, datetime):
-                    if hasattr(gap_start, "hour"):  # datetime complet avec timezone
+                    if hasattr(gap_start,
+                               "hour"):  # datetime complet avec timezone
                         if hasattr(gap_start, "replace"):
                             gap_start = gap_start.replace(tzinfo=None)
                         else:
@@ -359,9 +366,11 @@ class GapDetector:
                             )
                             continue
                     elif hasattr(gap_start, "replace"):  # date only
-                        gap_start = datetime.combine(gap_start, datetime.min.time())
+                        gap_start = datetime.combine(
+                            gap_start, datetime.min.time())
                     elif isinstance(gap_start, str):
-                        gap_start = datetime.fromisoformat(gap_start.replace("Z", ""))
+                        gap_start = datetime.fromisoformat(
+                            gap_start.replace("Z", ""))
                     else:
                         logger.warning(
                             f"Impossible de convertir gap_start {type(gap_start)}: {gap_start}"
@@ -373,7 +382,8 @@ class GapDetector:
 
                 # Convertir gap_end en datetime SANS TIMEZONE
                 if not isinstance(gap_end, datetime):
-                    if hasattr(gap_end, "hour"):  # datetime complet avec timezone
+                    if hasattr(
+                            gap_end, "hour"):  # datetime complet avec timezone
                         if hasattr(gap_end, "replace"):
                             gap_end = gap_end.replace(tzinfo=None)
                         else:
@@ -382,9 +392,11 @@ class GapDetector:
                             )
                             continue
                     elif hasattr(gap_end, "replace"):  # date only
-                        gap_end = datetime.combine(gap_end, datetime.min.time())
+                        gap_end = datetime.combine(
+                            gap_end, datetime.min.time())
                     elif isinstance(gap_end, str):
-                        gap_end = datetime.fromisoformat(gap_end.replace("Z", ""))
+                        gap_end = datetime.fromisoformat(
+                            gap_end.replace("Z", ""))
                     else:
                         logger.warning(
                             f"Impossible de convertir gap_end {type(gap_end)}: {gap_end}"
@@ -397,7 +409,8 @@ class GapDetector:
                 clean_gaps.append((gap_start, gap_end))
 
             except Exception as e:
-                logger.warning(f"Erreur nettoyage gap {gap_start} -> {gap_end}: {e}")
+                logger.warning(
+                    f"Erreur nettoyage gap {gap_start} -> {gap_end}: {e}")
                 continue
 
         if not clean_gaps:
@@ -414,7 +427,9 @@ class GapDetector:
             "1d": 1440,
         }.get(timeframe, 1)
 
-        max_duration = timedelta(minutes=interval_minutes * max_candles_per_request)
+        max_duration = timedelta(
+            minutes=interval_minutes *
+            max_candles_per_request)
         merge_threshold = timedelta(
             minutes=interval_minutes * 10
         )  # Fusionner si < 10 candles d'écart
@@ -432,12 +447,13 @@ class GapDetector:
                 if gap_start - current_end < merge_threshold:
                     current_end = gap_end
                 else:
-                    # Sinon, ajouter la période courante et commencer une nouvelle
+                    # Sinon, ajouter la période courante et commencer une
+                    # nouvelle
                     fetch_periods.append((current_start, current_end))
                     current_start = gap_start
                     current_end = gap_end
             except TypeError as e:
-                logger.error(
+                logger.exception(
                     f"Erreur calcul durée gap: {e} - gap_start: {type(gap_start)}, current_end: {type(current_end)}"
                 )
                 continue
@@ -460,7 +476,7 @@ class GapDetector:
                 else:
                     final_periods.append((start, end))
             except TypeError as e:
-                logger.error(
+                logger.exception(
                     f"Erreur division période: {e} - start: {type(start)}, end: {type(end)}"
                 )
                 continue
@@ -471,14 +487,15 @@ class GapDetector:
 
         return final_periods
 
-    def generate_gap_filling_plan(self, all_gaps: Dict) -> Dict:
+    def generate_gap_filling_plan(self, all_gaps: dict) -> dict:
         """
         Génère un plan optimisé de remplissage des gaps
 
         Returns:
             Dict avec structure: {symbol: {timeframe: [fetch_periods]}}
         """
-        filling_plan: Dict[str, Dict[str, List[Tuple[datetime, datetime]]]] = {}
+        filling_plan: dict[str,
+                           dict[str, list[tuple[datetime, datetime]]]] = {}
         total_requests = 0
 
         for symbol, timeframe_gaps in all_gaps.items():
@@ -495,12 +512,13 @@ class GapDetector:
                     filling_plan[symbol][timeframe] = fetch_periods
                     total_requests += len(fetch_periods)
 
-        logger.info(f"📋 Plan de remplissage: {total_requests} requêtes nécessaires")
+        logger.info(
+            f"📋 Plan de remplissage: {total_requests} requêtes nécessaires")
 
         return filling_plan
 
     def estimate_fill_time(
-        self, filling_plan: Dict, rate_limit_delay: float = 0.1
+        self, filling_plan: dict, rate_limit_delay: float = 0.1
     ) -> float:
         """
         Estime le temps nécessaire pour remplir tous les gaps
@@ -512,6 +530,4 @@ class GapDetector:
         )
 
         # Temps estimé en secondes (avec délai entre requêtes)
-        estimated_seconds = total_requests * rate_limit_delay
-
-        return estimated_seconds
+        return total_requests * rate_limit_delay

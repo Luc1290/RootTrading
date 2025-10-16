@@ -4,11 +4,12 @@ Utilise Pydantic pour définir et valider la structure des messages.
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Any
 
 from pydantic import BaseModel, Field, validator
 
-from .enums import OrderSide, OrderStatus, TradeRole, CycleStatus, SignalStrength
+from .enums import (CycleStatus, OrderSide, OrderStatus, SignalStrength,
+                    TradeRole)
 
 
 class MarketData(BaseModel):
@@ -22,10 +23,10 @@ class MarketData(BaseModel):
     low: float
     close: float
     volume: float
-    timestamp: Optional[datetime] = None
+    timestamp: datetime | None = None
 
     @validator("timestamp", pre=True, always=True)
-    def set_timestamp(cls, v, values):
+    def set_timestamp(self, v, values):
         """Si timestamp n'est pas fourni, le calculer à partir de start_time."""
         if v is None and "start_time" in values:
             return datetime.fromtimestamp(values["start_time"] / 1000)
@@ -40,9 +41,9 @@ class StrategySignal(BaseModel):
     side: OrderSide
     timestamp: datetime
     price: float
-    confidence: Optional[float] = None
-    strength: Optional[SignalStrength] = None
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=lambda: {})
+    confidence: float | None = None
+    strength: SignalStrength | None = None
+    metadata: dict[str, Any] | None = Field(default_factory=dict)
 
     class Config:
         use_enum_values = True
@@ -54,13 +55,13 @@ class TradeOrder(BaseModel):
     symbol: str
     side: OrderSide
     quantity: float
-    price: Optional[float] = None  # None pour un ordre au marché
-    client_order_id: Optional[str] = None
-    strategy: Optional[str] = None
-    stop_price: Optional[float] = None
-    take_profit: Optional[float] = None
-    trailing_delta: Optional[float] = None
-    leverage: Optional[int] = Field(1, ge=1, le=10)  # Levier (1-10x)
+    price: float | None = None  # None pour un ordre au marché
+    client_order_id: str | None = None
+    strategy: str | None = None
+    stop_price: float | None = None
+    take_profit: float | None = None
+    trailing_delta: float | None = None
+    leverage: int | None = Field(1, ge=1, le=10)  # Levier (1-10x)
     demo: bool = False
 
     class Config:
@@ -77,9 +78,9 @@ class TradeExecution(BaseModel):
     price: float
     quantity: float
     quote_quantity: float
-    fee: Optional[float] = None
-    fee_asset: Optional[str] = None
-    role: Optional[TradeRole] = None
+    fee: float | None = None
+    fee_asset: str | None = None
+    role: TradeRole | None = None
     timestamp: datetime
     demo: bool = False
 
@@ -95,25 +96,26 @@ class TradeCycle(BaseModel):
     strategy: str
     status: CycleStatus
     side: (
-        OrderSide  # Direction du cycle: BUY (position longue) ou SELL (position courte)
+        # Direction du cycle: BUY (position longue) ou SELL (position courte)
+        OrderSide
     )
-    entry_order_id: Optional[str] = None
-    exit_order_id: Optional[str] = None
-    entry_price: Optional[float] = None
-    exit_price: Optional[float] = None
-    quantity: Optional[float] = None
-    stop_price: Optional[float] = None
-    trailing_delta: Optional[float] = None
-    min_price: Optional[float] = None
-    max_price: Optional[float] = None
-    profit_loss: Optional[float] = None
-    profit_loss_percent: Optional[float] = None
+    entry_order_id: str | None = None
+    exit_order_id: str | None = None
+    entry_price: float | None = None
+    exit_price: float | None = None
+    quantity: float | None = None
+    stop_price: float | None = None
+    trailing_delta: float | None = None
+    min_price: float | None = None
+    max_price: float | None = None
+    profit_loss: float | None = None
+    profit_loss_percent: float | None = None
     created_at: datetime
     updated_at: datetime
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
     confirmed: bool = False
     demo: bool = False
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=lambda: {})
+    metadata: dict[str, Any] | None = Field(default_factory=dict)
 
     class Config:
         use_enum_values = True
@@ -126,16 +128,16 @@ class AssetBalance(BaseModel):
     free: float
     locked: float
     total: float
-    value_usdc: Optional[float] = None
+    value_usdc: float | None = None
 
 
 class PortfolioSummary(BaseModel):
     """Résumé du portefeuille complet."""
 
-    balances: List[AssetBalance]
+    balances: list[AssetBalance]
     total_value: float
-    performance_24h: Optional[float] = None
-    performance_7d: Optional[float] = None
+    performance_24h: float | None = None
+    performance_7d: float | None = None
     active_trades: int = 0
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
@@ -146,7 +148,7 @@ class ErrorMessage(BaseModel):
     service: str
     error_type: str
     message: str
-    details: Optional[Dict[str, Any]] = None
+    details: dict[str, Any] | None = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -155,8 +157,8 @@ class StrategyConfig(BaseModel):
 
     name: str
     mode: str
-    params: Dict[str, Any]
-    symbols: List[str]
+    params: dict[str, Any]
+    symbols: list[str]
     max_simultaneous_trades: int = 3
     enabled: bool = True
 
@@ -167,5 +169,5 @@ class LogMessage(BaseModel):
     service: str
     level: str
     message: str
-    data: Optional[Dict[str, Any]] = None
+    data: dict[str, Any] | None = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)

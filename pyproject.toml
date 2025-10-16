@@ -46,7 +46,6 @@ exclude = [
     "*.pyo",
     "*.pyd",
     ".DS_Store",
-    "nul",  # Fichier spécial Windows
 ]
 
 # Dossiers à inclure dans le linting
@@ -153,7 +152,6 @@ exclude = [
     "\\.venv",
     "\\.mypy_cache",
     "node_modules",
-    "nul",  # Fichier spécial Windows
 ]
 
 # 🎯 Strictness (équilibré pour projet legacy)
@@ -184,6 +182,8 @@ pretty = true
 module = [
     "psycopg2.*",
     "redis.*",
+    "aioredis.*",
+    "asyncpg.*",
     "aiohttp.*",
     "ccxt.*",
     "pandas.*",

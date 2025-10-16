@@ -3,9 +3,11 @@ VWAP_Support_Resistance_Strategy - Stratégie utilisant VWAP comme niveau dynami
 Le VWAP (Volume-Weighted Average Price) agit comme une référence importante pour les institutions.
 """
 
-from typing import Dict, Any, Optional
-from .base_strategy import BaseStrategy
+import contextlib
 import logging
+from typing import Any
+
+from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +26,16 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
     - SELL: Prix rejette VWAP résistance + confluence avec résistance statique
     """
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
 
         # Paramètres VWAP - ADAPTÉS SCALPING
         self.vwap_distance_threshold = 0.005  # 0.5% au lieu de 0.3% (réaliste)
-        self.vwap_confluence_threshold = 0.015  # 1.5% au lieu de 1% (accessible)
-        self.strong_vwap_volume_threshold = 1.5  # 1.5x au lieu de 2x (atteignable)
+        # 1.5% au lieu de 1% (accessible)
+        self.vwap_confluence_threshold = 0.015
+        # 1.5x au lieu de 2x (atteignable)
+        self.strong_vwap_volume_threshold = 1.5
 
         # Paramètres rebond/rejet - PLUS STRICTS
         self.min_bounce_strength = 0.002  # Rebond minimum 0.2%
@@ -47,7 +52,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         self.momentum_alignment_required = True  # Momentum OBLIGATOIREMENT aligné
         self.min_momentum_threshold = 0.10  # 10% au lieu de 20% (réaliste)
 
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
         return {
             # VWAP principal (support/résistance dynamique)
@@ -111,8 +116,8 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         }
 
     def _detect_vwap_support_bounce(
-        self, values: Dict[str, Any], current_price: float
-    ) -> Dict[str, Any]:
+        self, values: dict[str, Any], current_price: float
+    ) -> dict[str, Any]:
         """Détecte un rebond sur VWAP agissant comme support."""
         bounce_score = 0.0
         bounce_indicators = []
@@ -150,20 +155,24 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         # Bounce scoring selon la proximité
         if vwap_distance <= self.vwap_distance_threshold:
             bounce_score += 0.3
-            bounce_indicators.append(f"Prix très près VWAP ({vwap_distance*100:.2f}%)")
+            bounce_indicators.append(
+                f"Prix très près VWAP ({vwap_distance*100:.2f}%)")
         elif vwap_distance <= self.vwap_distance_threshold * 2:
             bounce_score += 0.2
-            bounce_indicators.append(f"Prix près VWAP ({vwap_distance*100:.2f}%)")
+            bounce_indicators.append(
+                f"Prix près VWAP ({vwap_distance*100:.2f}%)")
         else:
             bounce_score += 0.1
-            bounce_indicators.append(f"Prix proche VWAP ({vwap_distance*100:.2f}%)")
+            bounce_indicators.append(
+                f"Prix proche VWAP ({vwap_distance*100:.2f}%)")
 
         # Confluence avec support statique
         nearest_support = values.get("nearest_support")
         if nearest_support is not None:
             try:
                 support_level = float(nearest_support)
-                support_vwap_distance = abs(support_level - vwap_val) / vwap_val
+                support_vwap_distance = abs(
+                    support_level - vwap_val) / vwap_val
 
                 if support_vwap_distance <= self.vwap_confluence_threshold:
                     bounce_score += 0.25
@@ -210,16 +219,19 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 vol_ratio = float(volume_ratio)
                 if vol_ratio >= self.strong_vwap_volume_threshold:  # >= 2.0x
                     bounce_score += 0.25
-                    bounce_indicators.append(f"Volume exceptionnel ({vol_ratio:.1f}x)")
+                    bounce_indicators.append(
+                        f"Volume exceptionnel ({vol_ratio:.1f}x)")
                 elif vol_ratio >= 1.8:  # Volume très fort
                     bounce_score += 0.20
-                    bounce_indicators.append(f"Volume très fort ({vol_ratio:.1f}x)")
+                    bounce_indicators.append(
+                        f"Volume très fort ({vol_ratio:.1f}x)")
                 elif vol_ratio >= self.strong_volume_threshold:  # >= 2.0x
                     bounce_score += 0.20
                     bounce_indicators.append(f"Volume fort ({vol_ratio:.1f}x)")
                 elif vol_ratio >= self.min_volume_confirmation:  # >= 1.4x
                     bounce_score += 0.15
-                    bounce_indicators.append(f"Volume confirmé ({vol_ratio:.1f}x)")
+                    bounce_indicators.append(
+                        f"Volume confirmé ({vol_ratio:.1f}x)")
                 else:
                     # Volume insuffisant = rejet direct
                     return {
@@ -242,8 +254,8 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         }
 
     def _detect_vwap_resistance_rejection(
-        self, values: Dict[str, Any], current_price: float
-    ) -> Dict[str, Any]:
+        self, values: dict[str, Any], current_price: float
+    ) -> dict[str, Any]:
         """Détecte un rejet sur VWAP agissant comme résistance."""
         rejection_score = 0.0
         rejection_indicators = []
@@ -286,10 +298,12 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
             )
         elif vwap_distance <= self.vwap_distance_threshold * 2:
             rejection_score += 0.2
-            rejection_indicators.append(f"Prix près VWAP ({vwap_distance*100:.2f}%)")
+            rejection_indicators.append(
+                f"Prix près VWAP ({vwap_distance*100:.2f}%)")
         else:
             rejection_score += 0.1
-            rejection_indicators.append(f"Prix proche VWAP ({vwap_distance*100:.2f}%)")
+            rejection_indicators.append(
+                f"Prix proche VWAP ({vwap_distance*100:.2f}%)")
 
         # Confluence avec résistance statique
         nearest_resistance = values.get("nearest_resistance")
@@ -350,13 +364,16 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                     )
                 elif vol_ratio >= 1.8:  # Volume très fort
                     rejection_score += 0.20
-                    rejection_indicators.append(f"Volume très fort ({vol_ratio:.1f}x)")
+                    rejection_indicators.append(
+                        f"Volume très fort ({vol_ratio:.1f}x)")
                 elif vol_ratio >= self.strong_volume_threshold:  # >= 2.0x
                     rejection_score += 0.20
-                    rejection_indicators.append(f"Volume fort ({vol_ratio:.1f}x)")
+                    rejection_indicators.append(
+                        f"Volume fort ({vol_ratio:.1f}x)")
                 elif vol_ratio >= self.min_volume_confirmation:  # >= 1.4x
                     rejection_score += 0.15
-                    rejection_indicators.append(f"Volume confirmé ({vol_ratio:.1f}x)")
+                    rejection_indicators.append(
+                        f"Volume confirmé ({vol_ratio:.1f}x)")
                 else:
                     # Volume insuffisant = rejet direct
                     return {
@@ -379,8 +396,8 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         }
 
     def _detect_momentum_alignment(
-        self, values: Dict[str, Any], signal_direction: str
-    ) -> Dict[str, Any]:
+        self, values: dict[str, Any], signal_direction: str
+    ) -> dict[str, Any]:
         """Détecte l'alignement du momentum avec la direction du signal."""
         momentum_score = 0.0  # Float cohérent
         momentum_indicators = []
@@ -410,12 +427,11 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
 
         # Directional bias alignment
         directional_bias = values.get("directional_bias")
-        if directional_bias:
-            if (
-                signal_direction == "BUY" and directional_bias.upper() == "BULLISH"
-            ) or (signal_direction == "SELL" and directional_bias.upper() == "BEARISH"):
-                momentum_score += 20
-                momentum_indicators.append(f"Bias directionnel {directional_bias}")
+        if directional_bias and (
+            (signal_direction == "BUY" and directional_bias.upper() == "BULLISH") or (
+                signal_direction == "SELL" and directional_bias.upper() == "BEARISH")):
+            momentum_score += 20
+            momentum_indicators.append(f"Bias directionnel {directional_bias}")
 
         # MACD confirmation
         macd_line = values.get("macd_line")
@@ -448,10 +464,12 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 if adx_val > 25:  # Tendance forte
                     if signal_direction == "BUY" and plus_di_val > minus_di_val:
                         momentum_score += 15
-                        momentum_indicators.append(f"ADX fort + DI+ ({adx_val:.1f})")
+                        momentum_indicators.append(
+                            f"ADX fort + DI+ ({adx_val:.1f})")
                     elif signal_direction == "SELL" and minus_di_val > plus_di_val:
                         momentum_score += 15
-                        momentum_indicators.append(f"ADX fort + DI- ({adx_val:.1f})")
+                        momentum_indicators.append(
+                            f"ADX fort + DI- ({adx_val:.1f})")
             except (ValueError, TypeError):
                 pass
 
@@ -462,12 +480,14 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 rsi_val = float(rsi_14)
                 if signal_direction == "BUY" and 40 <= rsi_val <= 60:  # Zone resserrée
                     momentum_score += 15
-                    momentum_indicators.append(f"RSI optimal BUY ({rsi_val:.1f})")
+                    momentum_indicators.append(
+                        f"RSI optimal BUY ({rsi_val:.1f})")
                 elif (
                     signal_direction == "SELL" and 40 <= rsi_val <= 65
                 ):  # Zone resserrée
                     momentum_score += 15
-                    momentum_indicators.append(f"RSI optimal SELL ({rsi_val:.1f})")
+                    momentum_indicators.append(
+                        f"RSI optimal SELL ({rsi_val:.1f})")
                 elif (signal_direction == "BUY" and rsi_val >= 80) or (
                     signal_direction == "SELL" and rsi_val <= 20
                 ):
@@ -482,7 +502,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
             "indicators": momentum_indicators,
         }
 
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """
         Génère un signal basé sur VWAP Support/Resistance.
         """
@@ -499,11 +519,9 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
 
         # Récupérer prix actuel
         current_price = None
-        if "close" in self.data and self.data["close"]:
-            try:
+        if self.data.get("close"):
+            with contextlib.suppress(IndexError, ValueError, TypeError):
                 current_price = float(self.data["close"][-1])
-            except (IndexError, ValueError, TypeError):
-                pass
 
         if current_price is None:
             return {
@@ -515,7 +533,8 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
             }
 
         # Analyse VWAP support (signal BUY)
-        support_analysis = self._detect_vwap_support_bounce(values, current_price)
+        support_analysis = self._detect_vwap_support_bounce(
+            values, current_price)
 
         # Analyse VWAP résistance (signal SELL)
         resistance_analysis = self._detect_vwap_resistance_rejection(
@@ -568,7 +587,8 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
             }
 
         # Vérifier alignement momentum si requis
-        momentum_analysis = self._detect_momentum_alignment(values, signal_side)
+        momentum_analysis = self._detect_momentum_alignment(
+            values, signal_side)
 
         if (
             self.momentum_alignment_required
@@ -584,11 +604,9 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                     "strategy": self.name,
                     "symbol": self.symbol,
                     "vwap_score": (
-                        primary_analysis["score"] if primary_analysis else 0.0
-                    ),
+                        primary_analysis["score"] if primary_analysis else 0.0),
                     "momentum_score": (
-                        momentum_analysis["score"] if momentum_analysis else 0.0
-                    ),
+                        momentum_analysis["score"] if momentum_analysis else 0.0),
                 },
             }
 
@@ -599,7 +617,8 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         regime_strength = values.get("regime_strength")
 
         try:
-            momentum_score = float(momentum_val) if momentum_val is not None else 50.0
+            momentum_score = float(
+                momentum_val) if momentum_val is not None else 50.0
         except (ValueError, TypeError):
             momentum_score = 50.0
 
@@ -615,7 +634,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                     "momentum_score": float(momentum_score),
                 },
             }
-        elif signal_side == "SELL" and momentum_score > 60:
+        if signal_side == "SELL" and momentum_score > 60:
             return {
                 "side": None,
                 "confidence": 0.0,
@@ -629,8 +648,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
 
         # Rejet bias contradictoire
         if (signal_side == "BUY" and str(directional_bias).upper() == "BEARISH") or (
-            signal_side == "SELL" and str(directional_bias).upper() == "BULLISH"
-        ):
+                signal_side == "SELL" and str(directional_bias).upper() == "BULLISH"):
             return {
                 "side": None,
                 "confidence": 0.0,
@@ -643,7 +661,8 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
             }
 
         # Rejet régime contradictoire fort
-        regime_str = str(regime_strength).upper() if regime_strength else "WEAK"
+        regime_str = str(regime_strength).upper(
+        ) if regime_strength else "WEAK"
         if regime_str in ["STRONG", "EXTREME"]:
             if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or (
                 signal_side == "SELL" and market_regime == "TRENDING_BULL"
@@ -711,7 +730,8 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         if momentum_analysis and momentum_analysis["indicators"]:
             reason_elements.append(momentum_analysis["indicators"][0])
 
-        # Bonus confluences et confirmations supplémentaires (track pour reason)
+        # Bonus confluences et confirmations supplémentaires (track pour
+        # reason)
 
         # Trend alignment (format décimal)
         trend_alignment = values.get("trend_alignment")
@@ -777,7 +797,8 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 )
 
                 if signal_side == "BUY":
-                    # BUY sur VWAP support nécessite volatilité contrôlée pour éviter faux rebonds
+                    # BUY sur VWAP support nécessite volatilité contrôlée pour
+                    # éviter faux rebonds
                     if volatility_regime == "low" and atr_percentile < 30:
                         confidence_boost += 0.12
                         reason += f" + volatilité très faible idéale support ({atr_percentile:.0f}%)"
@@ -799,44 +820,47 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                         )
                         reason += " mais volatilité extrême défavorable"
 
-                else:  # SELL
-                    # SELL sur VWAP résistance peut bénéficier de volatilité modérée à élevée
-                    if volatility_regime == "low" and atr_percentile < 25:
-                        confidence_boost += 0.06  # Résistance solide en low vol
-                        reason += f" + volatilité faible résistance solide ({atr_percentile:.0f}%)"
-                    elif volatility_regime == "normal" and 25 <= atr_percentile <= 70:
-                        confidence_boost += 0.10
-                        reason += (
-                            f" + volatilité optimale résistance ({atr_percentile:.0f}%)"
-                        )
-                    elif volatility_regime == "high" and atr_percentile > 70:
-                        if (
-                            atr_percentile > 85
-                        ):  # Volatilité très élevée = continuation baissière
-                            confidence_boost += 0.15
-                            reason += f" + volatilité très élevée continuation ({atr_percentile:.0f}%)"
-                        else:  # Volatilité élevée favorable
-                            confidence_boost += 0.12
-                            reason += f" + volatilité élevée résistance ({atr_percentile:.0f}%)"
-                    elif volatility_regime == "extreme":
-                        confidence_boost += (
-                            0.08  # Volatilité extrême favorable aux résistances
-                        )
-                        reason += " + volatilité extrême favorable résistance"
+                # SELL sur VWAP résistance peut bénéficier de volatilité
+                # modérée à élevée
+                elif volatility_regime == "low" and atr_percentile < 25:
+                    confidence_boost += 0.06  # Résistance solide en low vol
+                    reason += f" + volatilité faible résistance solide ({atr_percentile:.0f}%)"
+                elif volatility_regime == "normal" and 25 <= atr_percentile <= 70:
+                    confidence_boost += 0.10
+                    reason += (
+                        f" + volatilité optimale résistance ({atr_percentile:.0f}%)"
+                    )
+                elif volatility_regime == "high" and atr_percentile > 70:
+                    if (
+                        atr_percentile > 85
+                    ):  # Volatilité très élevée = continuation baissière
+                        confidence_boost += 0.15
+                        reason += f" + volatilité très élevée continuation ({atr_percentile:.0f}%)"
+                    else:  # Volatilité élevée favorable
+                        confidence_boost += 0.12
+                        reason += f" + volatilité élevée résistance ({atr_percentile:.0f}%)"
+                elif volatility_regime == "extreme":
+                    confidence_boost += (
+                        0.08  # Volatilité extrême favorable aux résistances
+                    )
+                    reason += " + volatilité extrême favorable résistance"
 
             except (ValueError, TypeError):
                 pass
 
-        # CORRECTION MAGISTRALE: Market regime avec logique institutionnelle VWAP
+        # CORRECTION MAGISTRALE: Market regime avec logique institutionnelle
+        # VWAP
         market_regime = values.get("market_regime")
         regime_strength = values.get("regime_strength")
 
         if market_regime is not None:
             # regime_strength est un VARCHAR (WEAK/MODERATE/STRONG/EXTREME)
-            regime_str = str(regime_strength).upper() if regime_strength else "WEAK"
+            regime_str = str(regime_strength).upper(
+            ) if regime_strength else "WEAK"
 
             if signal_side == "BUY":
-                # BUY sur VWAP support : trending haussier > ranging > trending baissier
+                # BUY sur VWAP support : trending haussier > ranging > trending
+                # baissier
                 if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
                     if regime_str == "EXTREME":  # Trend très fort
                         confidence_boost += 0.18
@@ -851,7 +875,8 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                         confidence_boost += 0.06
                         reason += f" + trend faible support VWAP ({regime_str})"
                 elif market_regime == "RANGING":
-                    if regime_str in ["EXTREME", "STRONG"]:  # Range bien défini
+                    if regime_str in [
+                            "EXTREME", "STRONG"]:  # Range bien défini
                         confidence_boost += 0.15
                         reason += f" + range fort rebond support ({regime_str})"
                     else:  # MODERATE/WEAK
@@ -861,40 +886,40 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                     confidence_boost -= 0.05  # Marché chaotique défavorable
                     reason += " mais marché chaotique"
 
-            else:  # SELL
-                # SELL sur VWAP résistance : ranging > trending baissier > trending haussier
-                if market_regime == "RANGING":
-                    if regime_str == "EXTREME":  # Range très défini
-                        confidence_boost += (
-                            0.25  # BONUS AUGMENTÉ - VWAP résistance excellent
-                        )
-                        if len(reason_elements) < 4:
-                            reason_elements.append(f"range fort ({regime_str})")
-                    elif regime_str == "STRONG":  # Range fort
-                        confidence_boost += 0.20  # AUGMENTÉ
-                        if len(reason_elements) < 4:
-                            reason_elements.append(f"range ({regime_str})")
-                    elif regime_str == "MODERATE":  # Range modéré
-                        confidence_boost += 0.15  # AUGMENTÉ
-                        if len(reason_elements) < 4:
-                            reason_elements.append("range modéré")
-                    else:  # WEAK
-                        confidence_boost += 0.10  # AUGMENTÉ
-                        if len(reason_elements) < 4:
-                            reason_elements.append("range faible")
-                elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
-                    if regime_str in [
-                        "EXTREME",
-                        "STRONG",
-                    ]:  # Trend fort - résistance peut tenir
-                        confidence_boost += 0.12
-                        reason += f" + trend fort résistance VWAP ({regime_str})"
-                    else:  # MODERATE/WEAK
-                        confidence_boost += 0.06
-                        reason += f" + trend faible résistance ({regime_str})"
-                elif market_regime == "VOLATILE":
-                    confidence_boost += 0.08  # Chaos favorable aux résistances
-                    reason += " + marché chaotique favorable résistance"
+            # SELL sur VWAP résistance : ranging > trending baissier > trending
+            # haussier
+            elif market_regime == "RANGING":
+                if regime_str == "EXTREME":  # Range très défini
+                    confidence_boost += (
+                        0.25  # BONUS AUGMENTÉ - VWAP résistance excellent
+                    )
+                    if len(reason_elements) < 4:
+                        reason_elements.append(f"range fort ({regime_str})")
+                elif regime_str == "STRONG":  # Range fort
+                    confidence_boost += 0.20  # AUGMENTÉ
+                    if len(reason_elements) < 4:
+                        reason_elements.append(f"range ({regime_str})")
+                elif regime_str == "MODERATE":  # Range modéré
+                    confidence_boost += 0.15  # AUGMENTÉ
+                    if len(reason_elements) < 4:
+                        reason_elements.append("range modéré")
+                else:  # WEAK
+                    confidence_boost += 0.10  # AUGMENTÉ
+                    if len(reason_elements) < 4:
+                        reason_elements.append("range faible")
+            elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
+                if regime_str in [
+                    "EXTREME",
+                    "STRONG",
+                ]:  # Trend fort - résistance peut tenir
+                    confidence_boost += 0.12
+                    reason += f" + trend fort résistance VWAP ({regime_str})"
+                else:  # MODERATE/WEAK
+                    confidence_boost += 0.06
+                    reason += f" + trend faible résistance ({regime_str})"
+            elif market_regime == "VOLATILE":
+                confidence_boost += 0.08  # Chaos favorable aux résistances
+                reason += " + marché chaotique favorable résistance"
 
         # Pattern detection (format 0-100)
         pattern_detected = values.get("pattern_detected")
@@ -940,11 +965,9 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
 
         # Clamp explicite pour cohérence
         confidence = min(
-            1.0,
-            max(
-                0.0, self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
-            ),
-        )
+            1.0, max(
+                0.0, self.calculate_confidence(
+                    base_confidence, 1.0 + confidence_boost)), )
         strength = self.get_strength_from_confidence(confidence)
 
         return {
@@ -1004,7 +1027,8 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
 
         for indicator in required_indicators:
             if indicator not in self.indicators:
-                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
+                logger.warning(
+                    f"{self.name}: Indicateur manquant: {indicator}")
                 return False
             if self.indicators[indicator] is None:
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")

@@ -9,12 +9,11 @@ This module provides detailed analysis of price action within ranges:
 - False breakout identification
 """
 
-import numpy as np
-import pandas as pd
-from typing import Dict, List, Optional, Union, Tuple, NamedTuple
+import logging
 from dataclasses import dataclass
 from enum import Enum
-import logging
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +67,9 @@ class RangeInfo:
     volume_at_boundaries: float  # Volume moyen aux limites
     breakout_probability: float  # Probabilité de breakout
     preferred_direction: str  # Direction probable du breakout
-    timestamp: Optional[str] = None
+    timestamp: str | None = None
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convertit en dictionnaire pour export."""
         return {
             "range_high": self.range_high,
@@ -101,11 +100,11 @@ class BreakoutAnalysis:
     volume_confirmation: bool
     momentum_confirmation: bool
     sustainability_score: float  # Score de durabilité du breakout
-    target_projection: Optional[float]  # Objectif projeté
-    stop_level: Optional[float]  # Niveau de stop
+    target_projection: float | None  # Objectif projeté
+    stop_level: float | None  # Niveau de stop
     time_since_breakout: int  # Périodes depuis le breakout
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convertit en dictionnaire pour export."""
         return {
             "breakout_type": self.breakout_type.value,
@@ -153,10 +152,10 @@ class RangeAnalyzer:
 
     def analyze_range(
         self,
-        highs: Union[List[float], np.ndarray],
-        lows: Union[List[float], np.ndarray],
-        closes: Union[List[float], np.ndarray],
-        volumes: Union[List[float], np.ndarray],
+        highs: list[float] | np.ndarray,
+        lows: list[float] | np.ndarray,
+        closes: list[float] | np.ndarray,
+        volumes: list[float] | np.ndarray,
         lookback: int = 50,
     ) -> RangeInfo:
         """
@@ -238,13 +237,11 @@ class RangeAnalyzer:
 
             # 8. Volume aux limites
             volume_at_boundaries = self._calculate_boundary_volume(
-                recent_highs, recent_lows, recent_volumes, range_high, range_low
-            )
+                recent_highs, recent_lows, recent_volumes, range_high, range_low)
 
             # 9. Probabilité de breakout
             breakout_probability = self._calculate_breakout_probability(
-                duration, tests_high, tests_low, efficiency, volume_at_boundaries
-            )
+                duration, tests_high, tests_low, efficiency, volume_at_boundaries)
 
             # 10. Direction préférée
             preferred_direction = self._determine_preferred_direction(
@@ -268,16 +265,16 @@ class RangeAnalyzer:
                 preferred_direction=preferred_direction,
             )
 
-        except Exception as e:
-            logger.error(f"Erreur analyse range: {e}")
+        except Exception:
+            logger.exception("Erreur analyse range")
             return self._invalid_range()
 
     def detect_breakout(
         self,
-        highs: Union[List[float], np.ndarray],
-        lows: Union[List[float], np.ndarray],
-        closes: Union[List[float], np.ndarray],
-        volumes: Union[List[float], np.ndarray],
+        highs: list[float] | np.ndarray,
+        lows: list[float] | np.ndarray,
+        closes: list[float] | np.ndarray,
+        volumes: list[float] | np.ndarray,
         range_info: RangeInfo,
     ) -> BreakoutAnalysis:
         """
@@ -294,10 +291,10 @@ class RangeAnalyzer:
             Analyse complète du breakout
         """
         try:
-            current_price = closes[-1]
+            closes[-1]
             current_high = highs[-1]
             current_low = lows[-1]
-            current_volume = volumes[-1]
+            volumes[-1]
 
             # Vérifier si on est en breakout
             breakout_up = current_high > range_info.range_high * (
@@ -329,20 +326,22 @@ class RangeAnalyzer:
                     np.asarray(volumes),
                     range_info,
                 )
-            else:
-                return self._analyze_bearish_breakout(
-                    np.asarray(highs),
-                    np.asarray(lows),
-                    np.asarray(closes),
-                    np.asarray(volumes),
-                    range_info,
-                )
+            return self._analyze_bearish_breakout(
+                np.asarray(highs),
+                np.asarray(lows),
+                np.asarray(closes),
+                np.asarray(volumes),
+                range_info,
+            )
 
-        except Exception as e:
-            logger.error(f"Erreur détection breakout: {e}")
+        except Exception:
+            logger.exception("Erreur détection breakout")
             return self._empty_breakout_analysis()
 
-    def get_trading_levels(self, range_info: RangeInfo, current_price: float) -> Dict:
+    def get_trading_levels(
+            self,
+            range_info: RangeInfo,
+            current_price: float) -> dict:
         """
         Retourne les niveaux de trading optimaux pour le range.
 
@@ -392,7 +391,7 @@ class RangeAnalyzer:
 
     def _identify_range_boundaries(
         self, highs: np.ndarray, lows: np.ndarray, closes: np.ndarray
-    ) -> Tuple[Optional[float], Optional[float]]:
+    ) -> tuple[float | None, float | None]:
         """Identifie les limites du range."""
         try:
             # Méthode 1: Percentiles pour identifier les limites principales
@@ -465,8 +464,8 @@ class RangeAnalyzer:
             return None, None
 
     def _group_similar_levels(
-        self, levels: List[float], tolerance: float
-    ) -> List[List[float]]:
+        self, levels: list[float], tolerance: float
+    ) -> list[list[float]]:
         """Groupe les niveaux similaires."""
         if not levels:
             return []
@@ -502,14 +501,13 @@ class RangeAnalyzer:
         """Catégorise la position dans le range."""
         if position < 0 or position > 1:
             return RangePosition.OUTSIDE
-        elif position <= 0.25:
+        if position <= 0.25:
             return RangePosition.BOTTOM
-        elif position <= 0.50:
+        if position <= 0.50:
             return RangePosition.LOWER_MIDDLE
-        elif position <= 0.75:
+        if position <= 0.75:
             return RangePosition.UPPER_MIDDLE
-        else:
-            return RangePosition.TOP
+        return RangePosition.TOP
 
     def _assess_range_quality(
         self,
@@ -525,7 +523,8 @@ class RangeAnalyzer:
             score = 0
 
             # 1. Respect des limites (% de temps dans le range)
-            in_range_count = sum(1 for c in closes if range_low <= c <= range_high)
+            in_range_count = sum(
+                1 for c in closes if range_low <= c <= range_high)
             respect_ratio = in_range_count / len(closes)
             if respect_ratio > 0.9:
                 score += 3
@@ -545,10 +544,9 @@ class RangeAnalyzer:
 
             # 3. Stabilité du range (pas de fausses cassures)
             false_breakouts = 0
-            for i, (h, l, c) in enumerate(zip(highs, lows, closes)):
-                if h > range_high and c < range_high:  # Fausse cassure haute
-                    false_breakouts += 1
-                elif l < range_low and c > range_low:  # Fausse cassure basse
+            for _i, (h, l, c) in enumerate(zip(highs, lows, closes)):
+                if (h > range_high and c < range_high) or (
+                        l < range_low and c > range_low):  # Fausse cassure haute
                     false_breakouts += 1
 
             if false_breakouts == 0:
@@ -566,12 +564,11 @@ class RangeAnalyzer:
             # Classification
             if score >= 6:
                 return RangeQuality.EXCELLENT
-            elif score >= 4:
+            if score >= 4:
                 return RangeQuality.GOOD
-            elif score >= 2:
+            if score >= 2:
                 return RangeQuality.AVERAGE
-            else:
-                return RangeQuality.POOR
+            return RangeQuality.POOR
 
         except Exception as e:
             logger.warning(f"Erreur évaluation qualité range: {e}")
@@ -606,9 +603,8 @@ class RangeAnalyzer:
             if is_low:
                 if price <= boundary + boundary_range:
                     tests += 1
-            else:
-                if price >= boundary - boundary_range:
-                    tests += 1
+            elif price >= boundary - boundary_range:
+                tests += 1
 
         return tests
 
@@ -633,10 +629,8 @@ class RangeAnalyzer:
 
         for h, l, v in zip(highs, lows, volumes):
             # Test de la résistance
-            if h >= range_high * (1 - tolerance):
-                boundary_volumes.append(v)
-            # Test du support
-            elif l <= range_low * (1 + tolerance):
+            if h >= range_high * \
+                    (1 - tolerance) or l <= range_low * (1 + tolerance):
                 boundary_volumes.append(v)
 
         if not boundary_volumes:
@@ -687,18 +681,21 @@ class RangeAnalyzer:
         recent_volumes = volumes[-10:]
 
         # Tendance des prix
-        price_slope = np.polyfit(range(len(recent_closes)), recent_closes, 1)[0]
+        price_slope = np.polyfit(
+            range(
+                len(recent_closes)),
+            recent_closes,
+            1)[0]
 
         # Tendance du volume
-        volume_slope = np.polyfit(range(len(recent_volumes)), recent_volumes, 1)[0]
+        np.polyfit(range(len(recent_volumes)), recent_volumes, 1)[0]
 
         # Position dans le range
         if current_position > 0.6 and price_slope > 0:
             return "bullish"
-        elif current_position < 0.4 and price_slope < 0:
+        if current_position < 0.4 and price_slope < 0:
             return "bearish"
-        else:
-            return "neutral"
+        return "neutral"
 
     def _analyze_bullish_breakout(
         self,
@@ -715,8 +712,10 @@ class RangeAnalyzer:
 
         # Mouvement depuis la résistance
         price_movement = (
-            (current_price - range_info.range_high) / range_info.range_high * 100
-        )
+            (current_price -
+             range_info.range_high) /
+            range_info.range_high *
+            100)
 
         # Confirmations
         volume_confirmation = current_volume > avg_volume * self.volume_threshold
@@ -774,7 +773,8 @@ class RangeAnalyzer:
 
         # Confirmations
         volume_confirmation = current_volume > avg_volume * self.volume_threshold
-        momentum_confirmation = self._check_momentum_confirmation(closes, False)
+        momentum_confirmation = self._check_momentum_confirmation(
+            closes, False)
 
         # Type de breakout
         if volume_confirmation and momentum_confirmation and price_movement > 1:
@@ -820,8 +820,7 @@ class RangeAnalyzer:
 
         if is_bullish:
             return momentum > 0.01  # 1% de momentum haussier
-        else:
-            return momentum < -0.01  # 1% de momentum baissier
+        return momentum < -0.01  # 1% de momentum baissier
 
     def _calculate_sustainability_score(
         self,

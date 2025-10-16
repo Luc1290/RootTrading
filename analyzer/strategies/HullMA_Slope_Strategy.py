@@ -3,10 +3,11 @@ HullMA_Slope_Strategy - Stratégie CONTRARIAN utilisant Hull MA comme filtre de 
 TRANSFORMATION D'UNE STRATÉGIE PERDANTE EN STRATÉGIE PROFITABLE
 """
 
-from typing import Dict, Any, Optional
-from .base_strategy import BaseStrategy
 import logging
 import math
+from typing import Any
+
+from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +27,16 @@ class HullMA_Slope_Strategy(BaseStrategy):
     - SELL: Prix AU-DESSUS Hull MA baissière + oscillateurs surachat + momentum retournement
     """
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
 
         # PARAMÈTRES TREND-FOLLOWING RÉALISTES (abandon logique contrarian)
         self.hull_trend_threshold_weak = (
             0.3  # 0.3° pour tendance faible (plus accessible)
         )
-        self.hull_trend_threshold_strong = 1.2  # 1.2° pour tendance forte (maintenu)
+        # 1.2° pour tendance forte (maintenu)
+        self.hull_trend_threshold_strong = 1.2
         # Pas de pullbacks/bounces - suivre les micro-tendances
 
         # Seuils oscillateurs TREND-FOLLOWING (plus momentum que contrarian)
@@ -52,10 +55,11 @@ class HullMA_Slope_Strategy(BaseStrategy):
 
         # Filtres qualité PLUS PERMISSIFS pour CRYPTO
         self.min_volume_ratio = 0.8  # Volume minimum ACCESSIBLE
-        self.min_confluence_score = 15  # Confluence minimum ASSOUPLI (15 vs 35)
+        # Confluence minimum ASSOUPLI (15 vs 35)
+        self.min_confluence_score = 15
         self.min_confidence_threshold = 0.45  # Confidence minimum ACCESSIBLE
 
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs."""
         return {
             # Hull MA principal
@@ -86,7 +90,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
             "confluence_score": self.indicators.get("confluence_score"),
         }
 
-    def _get_price_data(self) -> Dict[str, Optional[float]]:
+    def _get_price_data(self) -> dict[str, float | None]:
         """Récupère les données de prix pour analyse."""
         try:
             if (
@@ -114,15 +118,18 @@ class HullMA_Slope_Strategy(BaseStrategy):
         }
 
     def _analyze_hull_trend_direction(
-        self, values: Dict[str, Any], price_data: Dict[str, Optional[float]]
-    ) -> Dict[str, Any]:
+        self, values: dict[str, Any], price_data: dict[str, float | None]
+    ) -> dict[str, Any]:
         """Analyse la direction de tendance de Hull MA avec trend_angle comme source principale."""
         hull_20 = values.get("hull_20")
         trend_angle = values.get("trend_angle")
         current_price = price_data["current_price"]
 
         if hull_20 is None or current_price is None:
-            return {"direction": None, "strength": "unknown", "reliable": False}
+            return {
+                "direction": None,
+                "strength": "unknown",
+                "reliable": False}
 
         try:
             hull_val = float(hull_20)
@@ -139,34 +146,33 @@ class HullMA_Slope_Strategy(BaseStrategy):
                             "reliable": True,
                             "slope_proxy": angle / 45.0,
                         }
-                    elif angle >= self.hull_trend_threshold_weak:  # 0.3°
+                    if angle >= self.hull_trend_threshold_weak:  # 0.3°
                         return {
                             "direction": "weak_bullish",
                             "strength": "weak",
                             "reliable": True,
                             "slope_proxy": angle / 45.0,
                         }
-                    elif angle <= -self.hull_trend_threshold_strong:  # -1.2°
+                    if angle <= -self.hull_trend_threshold_strong:  # -1.2°
                         return {
                             "direction": "strong_bearish",
                             "strength": "strong",
                             "reliable": True,
                             "slope_proxy": angle / 45.0,
                         }
-                    elif angle <= -self.hull_trend_threshold_weak:  # -0.3°
+                    if angle <= -self.hull_trend_threshold_weak:  # -0.3°
                         return {
                             "direction": "weak_bearish",
                             "strength": "weak",
                             "reliable": True,
                             "slope_proxy": angle / 45.0,
                         }
-                    else:
-                        return {
-                            "direction": "sideways",
-                            "strength": "flat",
-                            "reliable": False,  # Pas de signal en sideways
-                            "slope_proxy": angle / 45.0,
-                        }
+                    return {
+                        "direction": "sideways",
+                        "strength": "flat",
+                        "reliable": False,  # Pas de signal en sideways
+                        "slope_proxy": angle / 45.0,
+                    }
                 except (ValueError, TypeError):
                     pass
 
@@ -187,7 +193,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
                 return {
                     "direction": "bullish",
                     "strength": (
-                        str(trend_strength).lower() if trend_strength else "moderate"
+                        str(trend_strength).lower(
+                        ) if trend_strength else "moderate"
                     ),
                     "reliable": trend_strength
                     in ["moderate", "strong", "very_strong", "extreme"],
@@ -195,7 +202,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
                         (price_hull_ratio - 1.0) * 10, 0.1
                     ),  # Approximation
                 }
-            elif directional_bias == "BEARISH" and trend_strength in [
+            if directional_bias == "BEARISH" and trend_strength in [
                 "weak",
                 "moderate",
                 "strong",
@@ -205,7 +212,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
                 return {
                     "direction": "bearish",
                     "strength": (
-                        str(trend_strength).lower() if trend_strength else "moderate"
+                        str(trend_strength).lower(
+                        ) if trend_strength else "moderate"
                     ),
                     "reliable": trend_strength
                     in ["moderate", "strong", "very_strong", "extreme"],
@@ -213,24 +221,26 @@ class HullMA_Slope_Strategy(BaseStrategy):
                         (price_hull_ratio - 1.0) * 10, -0.1
                     ),  # Approximation
                 }
-            else:
-                return {
-                    "direction": "sideways",
-                    "strength": "weak",
-                    "reliable": False,
-                    "slope_proxy": 0.0,
-                }
+            return {
+                "direction": "sideways",
+                "strength": "weak",
+                "reliable": False,
+                "slope_proxy": 0.0,
+            }
 
         except (ValueError, TypeError):
-            return {"direction": None, "strength": "unknown", "reliable": False}
+            return {
+                "direction": None,
+                "strength": "unknown",
+                "reliable": False}
 
     def _detect_pullback_opportunity(
         self,
-        hull_trend: Dict[str, Any],
+        hull_trend: dict[str, Any],
         hull_20: float,
         current_price: float,
-        values: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        values: dict[str, Any],
+    ) -> dict[str, Any]:
         """Détecte une opportunité de pullback (prix temporairement contre la tendance Hull)."""
 
         if hull_trend["direction"] != "bullish" or not hull_trend["reliable"]:
@@ -271,14 +281,16 @@ class HullMA_Slope_Strategy(BaseStrategy):
         if rsi_14 is not None and self._is_valid(rsi_14):
             try:
                 rsi = float(rsi_14)
-                # REJET si RSI contradictoire (BUY avec RSI élevé = pas contrarian)
-                if rsi >= 75:  # RSI trop haut pour un BUY contrarian (assoupli)
+                # REJET si RSI contradictoire (BUY avec RSI élevé = pas
+                # contrarian)
+                # RSI trop haut pour un BUY contrarian (assoupli)
+                if rsi >= 75:
                     return {
                         "is_pullback": False,
                         "reason": f"RSI contradictoire pour BUY contrarian: {rsi:.1f} trop élevé (>70)",
                         "rsi_rejection": True,
                     }
-                elif rsi <= self.rsi_oversold_entry:
+                if rsi <= self.rsi_oversold_entry:
                     oversold_signals += 1
                     oversold_details.append(f"RSI survente ({rsi:.1f})")
             except (ValueError, TypeError):
@@ -289,7 +301,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
                 momentum = float(momentum_score)
                 if momentum <= 45:  # Momentum faible pour BUY (assoupli)
                     oversold_signals += 1
-                    oversold_details.append(f"momentum très faible ({momentum:.0f})")
+                    oversold_details.append(
+                        f"momentum très faible ({momentum:.0f})")
             except (ValueError, TypeError):
                 pass
 
@@ -328,11 +341,11 @@ class HullMA_Slope_Strategy(BaseStrategy):
 
     def _detect_bounce_opportunity(
         self,
-        hull_trend: Dict[str, Any],
+        hull_trend: dict[str, Any],
         hull_20: float,
         current_price: float,
-        values: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        values: dict[str, Any],
+    ) -> dict[str, Any]:
         """Détecte une opportunité de bounce (prix temporairement contre la tendance Hull)."""
 
         if hull_trend["direction"] != "bearish" or not hull_trend["reliable"]:
@@ -373,14 +386,16 @@ class HullMA_Slope_Strategy(BaseStrategy):
         if rsi_14 is not None and self._is_valid(rsi_14):
             try:
                 rsi = float(rsi_14)
-                # REJET si RSI contradictoire (SELL avec RSI faible = pas contrarian)
-                if rsi <= 25:  # RSI trop bas pour un SELL contrarian (assoupli)
+                # REJET si RSI contradictoire (SELL avec RSI faible = pas
+                # contrarian)
+                # RSI trop bas pour un SELL contrarian (assoupli)
+                if rsi <= 25:
                     return {
                         "is_bounce": False,
                         "reason": f"RSI contradictoire pour SELL contrarian: {rsi:.1f} trop bas (<30)",
                         "rsi_rejection": True,
                     }
-                elif rsi >= self.rsi_overbought_entry:
+                if rsi >= self.rsi_overbought_entry:
                     overbought_signals += 1
                     overbought_details.append(f"RSI surachat ({rsi:.1f})")
             except (ValueError, TypeError):
@@ -391,7 +406,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
                 momentum = float(momentum_score)
                 if momentum >= 55:  # Momentum élevé pour SELL (assoupli)
                     overbought_signals += 1
-                    overbought_details.append(f"momentum très élevé ({momentum:.0f})")
+                    overbought_details.append(
+                        f"momentum très élevé ({momentum:.0f})")
             except (ValueError, TypeError):
                 pass
 
@@ -403,7 +419,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
                 # Chercher un retournement (MACD qui redevient négatif)
                 if hist < -0.00005:  # Légèrement négatif (seuil assoupli)
                     overbought_signals += 1
-                    overbought_details.append(f"MACD retournement ({hist:.4f})")
+                    overbought_details.append(
+                        f"MACD retournement ({hist:.4f})")
             except (ValueError, TypeError):
                 pass
 
@@ -428,7 +445,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
             "reason": f"Bounce {bounce_pct*100:.1f}% avec {overbought_signals} confirmations",
         }
 
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """
         Génère un signal CONTRARIAN basé sur Hull MA comme filtre de tendance.
         """
@@ -463,7 +480,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
 
         try:
             hull_val = float(hull_20) if hull_20 is not None else 0.0
-            price_val = float(current_price) if current_price is not None else 0.0
+            price_val = float(
+                current_price) if current_price is not None else 0.0
         except (ValueError, TypeError) as e:
             return {
                 "side": None,
@@ -480,8 +498,10 @@ class HullMA_Slope_Strategy(BaseStrategy):
             volume_penalty = -0.05  # Légère pénalité si pas de données volume valides
         else:
             try:
-                vol_val = float(volume_ratio) if volume_ratio is not None else 0.0
-                if vol_val < 0.8:  # Volume sous la normale = problématique (assoupli)
+                vol_val = float(
+                    volume_ratio) if volume_ratio is not None else 0.0
+                # Volume sous la normale = problématique (assoupli)
+                if vol_val < 0.8:
                     volume_penalty = -0.10  # Pénalité réduite (assoupli)
             except (ValueError, TypeError):
                 volume_penalty = -0.05
@@ -493,16 +513,20 @@ class HullMA_Slope_Strategy(BaseStrategy):
             confluence_penalty = -0.08  # Pénalité si pas de données confluence valides
         else:
             try:
-                conf_val = float(confluence_score) if confluence_score is not None else 0.0
-                if conf_val < 15:  # Confluence trop faible = rejet net (assoupli)
+                conf_val = float(
+                    confluence_score) if confluence_score is not None else 0.0
+                # Confluence trop faible = rejet net (assoupli)
+                if conf_val < 15:
                     return {
                         "side": None,
                         "confidence": 0.0,
                         "strength": "weak",
                         "reason": f"Rejet contrarian: confluence trop faible ({conf_val:.0f}) - signal bruité",
-                        "metadata": {"strategy": self.name},
+                        "metadata": {
+                            "strategy": self.name},
                     }
-                elif conf_val < self.min_confluence_score:  # 15-15 (plus de pénalité)
+                # 15-15 (plus de pénalité)
+                if conf_val < self.min_confluence_score:
                     confluence_penalty = 0.0  # Plus de pénalité pour confluence faible
             except (ValueError, TypeError):
                 confluence_penalty = -0.08
@@ -515,7 +539,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": "Rejet contrarian: volatilité extrême - pullbacks trop violents",
-                "metadata": {"strategy": self.name},
+                "metadata": {
+                    "strategy": self.name},
             }
 
         volatility_penalty = 0.0  # Pas de pénalité si pas extrême
@@ -524,7 +549,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
 
         hull_trend = self._analyze_hull_trend_direction(values, price_data)
 
-        if hull_trend["direction"] is None or not hull_trend.get("reliable", False):
+        if hull_trend["direction"] is None or not hull_trend.get(
+                "reliable", False):
             return {
                 "side": None,
                 "confidence": 0.0,
@@ -576,8 +602,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
             if momentum_ok or rsi_ok:
                 signal_side = "BUY"
                 trend_label = (
-                    "forte" if hull_trend["direction"] == "strong_bullish" else "faible"
-                )
+                    "forte" if hull_trend["direction"] == "strong_bullish" else "faible")
                 reason = f"TREND-FOLLOWING BUY: Hull tendance {trend_label} ({hull_trend.get('slope_proxy', 0):.3f})"
                 if reason_parts:
                     reason += f" + {' + '.join(reason_parts)}"
@@ -600,7 +625,9 @@ class HullMA_Slope_Strategy(BaseStrategy):
                     "confidence": 0.0,
                     "strength": "weak",
                     "reason": f"Hull tendance haussière mais momentum défavorable (momentum:{momentum_score:.1f}, RSI:{rsi_14:.1f})",
-                    "metadata": {"strategy": self.name, "hull_trend": hull_trend},
+                    "metadata": {
+                        "strategy": self.name,
+                        "hull_trend": hull_trend},
                 }
 
         elif hull_trend["direction"] in ["strong_bearish", "weak_bearish"]:
@@ -634,8 +661,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
             if momentum_ok or rsi_ok:
                 signal_side = "SELL"
                 trend_label = (
-                    "forte" if hull_trend["direction"] == "strong_bearish" else "faible"
-                )
+                    "forte" if hull_trend["direction"] == "strong_bearish" else "faible")
                 reason = f"TREND-FOLLOWING SELL: Hull tendance {trend_label} ({hull_trend.get('slope_proxy', 0):.3f})"
                 if reason_parts:
                     reason += f" + {' + '.join(reason_parts)}"
@@ -657,7 +683,9 @@ class HullMA_Slope_Strategy(BaseStrategy):
                     "confidence": 0.0,
                     "strength": "weak",
                     "reason": f"Hull tendance baissière mais momentum défavorable (momentum:{momentum_score:.1f}, RSI:{rsi_14:.1f})",
-                    "metadata": {"strategy": self.name, "hull_trend": hull_trend},
+                    "metadata": {
+                        "strategy": self.name,
+                        "hull_trend": hull_trend},
                 }
 
         else:  # sideways
@@ -666,7 +694,9 @@ class HullMA_Slope_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": "Hull MA en tendance latérale - pas de setup contrarian",
-                "metadata": {"strategy": self.name, "hull_trend": hull_trend},
+                "metadata": {
+                    "strategy": self.name,
+                    "hull_trend": hull_trend},
             }
 
         # === BONUS DE CONFIANCE ===
@@ -727,7 +757,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
         # Bonus volume élevé avec validation NaN
         if self._is_valid(volume_ratio):
             try:
-                vol_ratio = float(volume_ratio) if volume_ratio is not None else 0.0
+                vol_ratio = float(
+                    volume_ratio) if volume_ratio is not None else 0.0
                 if vol_ratio >= 2.0:
                     confidence_boost += 0.15
                     reason += f" + volume très élevé ({vol_ratio:.1f}x)"
@@ -743,7 +774,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
         # Bonus confluence avec validation NaN
         if self._is_valid(confluence_score):
             try:
-                conf_val = float(confluence_score) if confluence_score is not None else 0.0
+                conf_val = float(
+                    confluence_score) if confluence_score is not None else 0.0
                 if conf_val >= 70:
                     confidence_boost += 0.18
                     reason += f" + confluence excellente ({conf_val:.0f})"
@@ -769,7 +801,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
         trend_alignment = values.get("trend_alignment")
         if self._is_valid(trend_alignment):
             try:
-                alignment = float(trend_alignment) if trend_alignment is not None else 0.0
+                alignment = float(
+                    trend_alignment) if trend_alignment is not None else 0.0
                 if abs(alignment) >= 0.3:
                     confidence_boost += 0.10
                     reason += " + MA alignées"
@@ -778,7 +811,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
 
         # Bonus market regime favorable
         market_regime = values.get("market_regime")
-        if market_regime is not None and str(market_regime) in ["TRENDING_BULL", "TRENDING_BEAR"]:
+        if market_regime is not None and str(market_regime) in [
+                "TRENDING_BULL", "TRENDING_BEAR"]:
             confidence_boost += 0.08
             reason += f" + marché {str(market_regime).lower()}"
 
@@ -792,9 +826,9 @@ class HullMA_Slope_Strategy(BaseStrategy):
 
         # CORRECTION: Calcul MULTIPLICATIF pour cohérence avec autres strats
         raw_confidence = max(
-            0.0,
-            min(1.0, self.calculate_confidence(base_confidence, 1 + confidence_boost)),
-        )
+            0.0, min(
+                1.0, self.calculate_confidence(
+                    base_confidence, 1 + confidence_boost)), )
 
         if raw_confidence < self.min_confidence_threshold:
             return {
@@ -849,7 +883,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
 
         for indicator in required:
             if indicator not in self.indicators:
-                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
+                logger.warning(
+                    f"{self.name}: Indicateur manquant: {indicator}")
                 return False
             if self.indicators[indicator] is None:
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")

@@ -9,15 +9,14 @@ High-performance Redis-based caching for technical indicators with:
 - TTL management
 """
 
-import redis
+import logging
 import pickle
-import json
 import threading
 import time
-from typing import Dict, Any, Optional, List, Union
-from dataclasses import dataclass, asdict
-import logging
-import numpy as np
+from dataclasses import asdict, dataclass
+from typing import Any
+
+import redis
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ class CacheMetrics:
     save_count: int = 0
     restore_count: int = 0
     error_count: int = 0
-    last_save: Optional[float] = None
+    last_save: float | None = None
 
     @property
     def hit_ratio(self) -> float:
@@ -39,7 +38,7 @@ class CacheMetrics:
         total = self.hit_count + self.miss_count
         return self.hit_count / total if total > 0 else 0.0
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convertit en dictionnaire."""
         return asdict(self)
 
@@ -57,10 +56,10 @@ class IndicatorCache:
 
     def __init__(
         self,
-        redis_host: Optional[str] = None,
-        redis_port: Optional[int] = None,
+        redis_host: str | None = None,
+        redis_port: int | None = None,
         redis_db: int = 2,  # DB séparée pour les indicateurs
-        redis_password: Optional[str] = None,
+        redis_password: str | None = None,
         ttl_hours: int = 48,
         auto_save_interval: int = 300,
     ):  # 5 minutes
@@ -74,7 +73,7 @@ class IndicatorCache:
             auto_save_interval: Intervalle auto-save en secondes
         """
         # Importer la configuration par défaut si non fournie
-        from .config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD
+        from .config import REDIS_HOST, REDIS_PASSWORD, REDIS_PORT
 
         self.redis_host = redis_host or REDIS_HOST
         self.redis_port = redis_port or REDIS_PORT
@@ -84,12 +83,12 @@ class IndicatorCache:
         self.auto_save_interval = auto_save_interval
 
         # Connexion Redis
-        self.redis_client: Optional[redis.Redis] = None
+        self.redis_client: redis.Redis | None = None
         self._connect_redis()
 
         # Cache en mémoire
-        self._memory_cache: Dict[str, Any] = {}
-        self._cache_timestamps: Dict[str, float] = {}
+        self._memory_cache: dict[str, Any] = {}
+        self._cache_timestamps: dict[str, float] = {}
 
         # Thread safety
         self._lock = threading.RLock()
@@ -98,7 +97,7 @@ class IndicatorCache:
         self.metrics = CacheMetrics()
 
         # Auto-save
-        self._auto_save_thread: Optional[threading.Thread] = None
+        self._auto_save_thread: threading.Thread | None = None
         self._stop_auto_save = threading.Event()
         self._start_auto_save()
 
@@ -124,8 +123,8 @@ class IndicatorCache:
             self.redis_client.ping()
             logger.info("Connexion Redis établie")
 
-        except Exception as e:
-            logger.error(f"Erreur connexion Redis: {e}")
+        except Exception:
+            logger.exception("Erreur connexion Redis")
             self.redis_client = None
 
     def _start_auto_save(self):
@@ -144,11 +143,11 @@ class IndicatorCache:
         while not self._stop_auto_save.wait(self.auto_save_interval):
             try:
                 self.save_all_to_redis()
-            except Exception as e:
-                logger.error(f"Erreur auto-save: {e}")
+            except Exception:
+                logger.exception("Erreur auto-save")
                 self.metrics.error_count += 1
 
-    def get(self, key: str, symbol: Optional[str] = None) -> Optional[Any]:
+    def get(self, key: str, symbol: str | None = None) -> Any | None:
         """
         Récupère une valeur du cache.
 
@@ -171,7 +170,7 @@ class IndicatorCache:
             if self.redis_client:
                 try:
                     redis_value = self.redis_client.get(full_key)
-                    if redis_value and isinstance(redis_value, (bytes, str)):
+                    if redis_value and isinstance(redis_value, bytes | str):
                         # Convertir en bytes si nécessaire pour pickle.loads
                         redis_bytes = (
                             redis_value
@@ -192,7 +191,7 @@ class IndicatorCache:
             self.metrics.miss_count += 1
             return None
 
-    def set(self, key: str, value: Any, symbol: Optional[str] = None):
+    def set(self, key: str, value: Any, symbol: str | None = None):
         """
         Stocke une valeur dans le cache.
 
@@ -211,8 +210,8 @@ class IndicatorCache:
             # Cache Redis (asynchrone pour performance)
             if self.redis_client:
                 threading.Thread(
-                    target=self._save_to_redis, args=(full_key, value), daemon=True
-                ).start()
+                    target=self._save_to_redis, args=(
+                        full_key, value), daemon=True).start()
 
     def _save_to_redis(self, full_key: str, value: Any):
         """Sauvegarde en Redis (méthode privée pour threading)."""
@@ -224,7 +223,7 @@ class IndicatorCache:
             logger.warning(f"Erreur écriture Redis {full_key}: {e}")
             self.metrics.error_count += 1
 
-    def delete(self, key: str, symbol: Optional[str] = None):
+    def delete(self, key: str, symbol: str | None = None):
         """
         Supprime une entrée du cache.
 
@@ -262,7 +261,7 @@ class IndicatorCache:
                 # Effacer cache mémoire
                 keys_to_remove = [
                     k
-                    for k in self._memory_cache.keys()
+                    for k in self._memory_cache
                     if k.startswith(f"indicators:{symbol}:")
                 ]
 
@@ -280,8 +279,8 @@ class IndicatorCache:
                     f"Cache effacé pour {symbol}: {len(keys_to_remove)} entrées"
                 )
 
-            except Exception as e:
-                logger.error(f"Erreur effacement cache {symbol}: {e}")
+            except Exception:
+                logger.exception("Erreur effacement cache {symbol}")
                 self.metrics.error_count += 1
                 if not force:
                     raise
@@ -301,8 +300,8 @@ class IndicatorCache:
                     if keys:
                         self.redis_client.delete(*keys)
                     logger.info(f"Cache Redis effacé: {len(keys)} entrées")
-                except Exception as e:
-                    logger.error(f"Erreur effacement Redis: {e}")
+                except Exception:
+                    logger.exception("Erreur effacement Redis")
                     self.metrics.error_count += 1
 
     def save_all_to_redis(self):
@@ -333,13 +332,14 @@ class IndicatorCache:
                 self.metrics.last_save = time.time()
 
                 if saved_count > 0:
-                    logger.debug(f"Auto-save: {saved_count} indicateurs sauvegardés")
+                    logger.debug(
+                        f"Auto-save: {saved_count} indicateurs sauvegardés")
 
-            except Exception as e:
-                logger.error(f"Erreur pipeline Redis: {e}")
+            except Exception:
+                logger.exception("Erreur pipeline Redis")
                 self.metrics.error_count += 1
 
-    def restore_from_redis(self, symbol: Optional[str] = None) -> int:
+    def restore_from_redis(self, symbol: str | None = None) -> int:
         """
         Restaure le cache depuis Redis.
 
@@ -381,21 +381,23 @@ class IndicatorCache:
                                     restored_count += 1
 
                                 except Exception as e:
-                                    logger.warning(f"Erreur désérialisation {key}: {e}")
+                                    logger.warning(
+                                        f"Erreur désérialisation {key}: {e}")
                                     continue
 
                 self.metrics.restore_count += restored_count
 
                 if restored_count > 0:
-                    logger.info(f"Restauré {restored_count} indicateurs depuis Redis")
+                    logger.info(
+                        f"Restauré {restored_count} indicateurs depuis Redis")
 
-            except Exception as e:
-                logger.error(f"Erreur restauration Redis: {e}")
+            except Exception:
+                logger.exception("Erreur restauration Redis")
                 self.metrics.error_count += 1
 
         return restored_count
 
-    def get_memory_usage(self) -> Dict[str, int]:
+    def get_memory_usage(self) -> dict[str, int]:
         """Retourne l'usage mémoire du cache."""
         with self._lock:
             total_entries = len(self._memory_cache)
@@ -405,7 +407,7 @@ class IndicatorCache:
             for value in self._memory_cache.values():
                 try:
                     total_size += len(pickle.dumps(value))
-                except:
+                except BaseException:
                     total_size += 1024  # Estimation par défaut
 
             return {
@@ -434,9 +436,10 @@ class IndicatorCache:
                 self._cache_timestamps.pop(key, None)
 
         if expired_keys:
-            logger.debug(f"Nettoyage cache: {len(expired_keys)} entrées expirées")
+            logger.debug(
+                f"Nettoyage cache: {len(expired_keys)} entrées expirées")
 
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """Retourne les statistiques du cache."""
         memory_usage = self.get_memory_usage()
 
@@ -449,12 +452,11 @@ class IndicatorCache:
             "ttl_hours": self.ttl_seconds / 3600,
         }
 
-    def _make_full_key(self, key: str, symbol: Optional[str] = None) -> str:
+    def _make_full_key(self, key: str, symbol: str | None = None) -> str:
         """Génère une clé complète."""
         if symbol:
             return f"indicators:{symbol}:{key}"
-        else:
-            return f"indicators:{key}"
+        return f"indicators:{key}"
 
     def shutdown(self):
         """Arrêt propre du cache."""
@@ -468,15 +470,15 @@ class IndicatorCache:
         # Dernière sauvegarde
         try:
             self.save_all_to_redis()
-        except Exception as e:
-            logger.error(f"Erreur sauvegarde finale: {e}")
+        except Exception:
+            logger.exception("Erreur sauvegarde finale")
 
         # Fermer connexion Redis
         if self.redis_client:
             try:
                 self.redis_client.close()
-            except Exception as e:
-                logger.error(f"Erreur fermeture Redis: {e}")
+            except Exception:
+                logger.exception("Erreur fermeture Redis")
 
         logger.info("IndicatorCache arrêté")
 
@@ -490,7 +492,7 @@ class IndicatorCache:
 
 
 # Instance globale partagée
-_global_cache: Optional[IndicatorCache] = None
+_global_cache: IndicatorCache | None = None
 
 
 def get_indicator_cache() -> IndicatorCache:
@@ -504,7 +506,8 @@ def get_indicator_cache() -> IndicatorCache:
         try:
             restored = _global_cache.restore_from_redis()
             if restored > 0:
-                logger.info(f"Cache restauré au démarrage: {restored} indicateurs")
+                logger.info(
+                    f"Cache restauré au démarrage: {restored} indicateurs")
         except Exception as e:
             logger.warning(f"Restauration cache échouée: {e}")
 

@@ -4,7 +4,8 @@ Charge les variables d'environnement depuis .env et les rend disponibles dans l'
 """
 
 import os
-from typing import Dict, Any, Optional
+from typing import Any
+
 from dotenv import load_dotenv
 
 # Charger les variables d'environnement depuis .env
@@ -36,7 +37,7 @@ DB_MIN_CONNECTIONS = int(os.getenv("DB_MIN_CONNECTIONS", "5"))
 DB_MAX_CONNECTIONS = int(os.getenv("DB_MAX_CONNECTIONS", "50"))
 
 
-def get_db_config() -> Dict[str, Any]:
+def get_db_config() -> dict[str, Any]:
     """Retourne la configuration de la base de données."""
     return {
         "host": PGHOST,
@@ -94,7 +95,7 @@ def is_live_mode() -> bool:
     return TRADING_MODE.lower() == "live" if TRADING_MODE else False
 
 
-def get_redis_channel(channel_type: str, symbol: Optional[str] = None) -> str:
+def get_redis_channel(channel_type: str, symbol: str | None = None) -> str:
     """Génère un nom de canal Redis basé sur le type et le symbole."""
     base_channel = f"{CHANNEL_PREFIX}:{channel_type}"
     if symbol:

@@ -1,13 +1,13 @@
 """Service de notifications Telegram pour signaux BUY"""
 
-import os
-import time
+import builtins
+import contextlib
 import logging
-from typing import Dict, Optional
+import os
 from datetime import datetime, timedelta
+
 import requests  # type: ignore[import-untyped]
 from dotenv import load_dotenv
-import psycopg2
 from psycopg2.extras import Json
 
 load_dotenv()
@@ -25,7 +25,7 @@ class TelegramNotifier:
         self.db_connection = db_connection
 
         # Anti-spam: tracker des dernières notifications par symbole
-        self._last_notification: Dict[str, datetime] = {}
+        self._last_notification: dict[str, datetime] = {}
         self._cooldown_minutes = (
             5  # Cooldown de 5 minutes entre notifications pour le même symbole
         )
@@ -49,17 +49,17 @@ class TelegramNotifier:
         score: int,
         price: float,
         action: str,
-        targets: Dict[str, float],
+        targets: dict[str, float],
         stop_loss: float,
         reason: str,
-        momentum: Optional[float] = None,
-        volume_ratio: Optional[float] = None,
-        regime: Optional[str] = None,
-        estimated_hold_time: Optional[str] = None,
-        grade: Optional[str] = None,
-        rr_ratio: Optional[float] = None,
-        risk_level: Optional[str] = None,
-        early_signal: Optional[Dict] = None,
+        momentum: float | None = None,
+        volume_ratio: float | None = None,
+        regime: str | None = None,
+        estimated_hold_time: str | None = None,
+        grade: str | None = None,
+        rr_ratio: float | None = None,
+        risk_level: str | None = None,
+        early_signal: dict | None = None,
     ) -> bool:
         """
         Envoie une notification Telegram pour un signal BUY
@@ -85,7 +85,8 @@ class TelegramNotifier:
         """
         # Vérifier anti-spam
         if not self._can_send_notification(symbol):
-            logger.info(f"⏸️ Notification ignorée pour {symbol} (cooldown actif)")
+            logger.info(
+                f"⏸️ Notification ignorée pour {symbol} (cooldown actif)")
             return False
 
         # Construire le message
@@ -146,14 +147,13 @@ class TelegramNotifier:
                 )
 
                 return True
-            else:
-                logger.error(
-                    f"❌ Erreur Telegram API: {response.status_code} - {response.text}"
-                )
-                return False
+            logger.error(
+                f"❌ Erreur Telegram API: {response.status_code} - {response.text}"
+            )
+            return False
 
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de l'envoi Telegram: {e}")
+        except Exception:
+            logger.exception("❌ Erreur lors de l'envoi Telegram")
             return False
 
     def _build_message(
@@ -162,17 +162,17 @@ class TelegramNotifier:
         score: int,
         price: float,
         action: str,
-        targets: Dict[str, float],
+        targets: dict[str, float],
         stop_loss: float,
         reason: str,
-        momentum: Optional[float],
-        volume_ratio: Optional[float],
-        regime: Optional[str],
-        estimated_hold_time: Optional[str],
-        grade: Optional[str],
-        rr_ratio: Optional[float],
-        risk_level: Optional[str],
-        early_signal: Optional[Dict],
+        momentum: float | None,
+        volume_ratio: float | None,
+        regime: str | None,
+        estimated_hold_time: str | None,
+        grade: str | None,
+        rr_ratio: float | None,
+        risk_level: str | None,
+        early_signal: dict | None,
     ) -> str:
         """Construit le message formaté pour Telegram"""
 
@@ -247,14 +247,13 @@ class TelegramNotifier:
         def format_price(p):
             if p is None or p == 0:
                 return "$0.00"
-            elif p >= 1:
+            if p >= 1:
                 return f"${p:,.2f}"
-            elif p >= 0.01:
+            if p >= 0.01:
                 return f"${p:.4f}"
-            elif p >= 0.0001:
+            if p >= 0.0001:
                 return f"${p:.6f}"
-            else:
-                return f"${p:.8f}"
+            return f"${p:.8f}"
 
         message = f"""{config['emoji']} <b>{config['title']}</b>{score_emoji}
 
@@ -263,10 +262,12 @@ class TelegramNotifier:
 💰 Prix: <b>{price_str}</b>"""
 
         # BADGE EARLY ENTRY (NOUVEAU)
-        if early_signal and early_signal.get("level") in ["entry_now", "prepare"]:
+        if early_signal and early_signal.get(
+                "level") in ["entry_now", "prepare"]:
             early_level = early_signal.get("level", "").upper()
             early_score = early_signal.get("score", 0)
-            entry_window = early_signal.get("estimated_entry_window_seconds", 0)
+            entry_window = early_signal.get(
+                "estimated_entry_window_seconds", 0)
 
             early_emoji = "🚀" if early_level == "ENTRY_NOW" else "⚡"
             message += f"""
@@ -313,17 +314,17 @@ SL: {format_price(stop_loss)} ({sl_loss:.2f}%)
         score: int,
         price: float,
         action: str,
-        targets: Dict[str, float],
+        targets: dict[str, float],
         stop_loss: float,
         reason: str,
-        momentum: Optional[float],
-        volume_ratio: Optional[float],
-        regime: Optional[str],
-        estimated_hold_time: Optional[str],
-        grade: Optional[str],
-        rr_ratio: Optional[float],
-        risk_level: Optional[str],
-        message_id: Optional[str],
+        momentum: float | None,
+        volume_ratio: float | None,
+        regime: str | None,
+        estimated_hold_time: str | None,
+        grade: str | None,
+        rr_ratio: float | None,
+        risk_level: str | None,
+        message_id: str | None,
     ) -> None:
         """Stocke le signal Telegram en base de données"""
         if not self.db_connection:
@@ -332,12 +333,15 @@ SL: {format_price(stop_loss)} ({sl_loss:.2f}%)
 
         try:
             with self.db_connection.cursor() as cursor:
-                # Déterminer le side (BUY pour BUY_NOW, BUY_DCA et EARLY_ENTRY, sinon déduire du contexte)
+                # Déterminer le side (BUY pour BUY_NOW, BUY_DCA et EARLY_ENTRY,
+                # sinon déduire du contexte)
                 side = (
-                    "BUY"
-                    if action in ["BUY_NOW", "BUY_DCA", "EARLY_ENTRY"]
-                    else "SELL" if action in ["SELL_OVERBOUGHT", "AVOID"] else "BUY"
-                )
+                    "BUY" if action in [
+                        "BUY_NOW",
+                        "BUY_DCA",
+                        "EARLY_ENTRY"] else "SELL" if action in [
+                        "SELL_OVERBOUGHT",
+                        "AVOID"] else "BUY")
 
                 # Métadonnées additionnelles
                 metadata = {
@@ -383,12 +387,10 @@ SL: {format_price(stop_loss)} ({sl_loss:.2f}%)
                 self.db_connection.commit()
                 logger.debug(f"Signal Telegram stocké en DB pour {symbol}")
 
-        except Exception as e:
-            logger.error(f"❌ Erreur stockage signal Telegram en DB: {e}")
-            try:
+        except Exception:
+            logger.exception("❌ Erreur stockage signal Telegram en DB")
+            with contextlib.suppress(builtins.BaseException):
                 self.db_connection.rollback()
-            except:
-                pass
 
     def send_test_notification(self) -> bool:
         """Envoie une notification de test"""
@@ -403,13 +405,13 @@ SL: {format_price(stop_loss)} ({sl_loss:.2f}%)
                 timeout=10,
             )
             return response.status_code == 200
-        except Exception as e:
-            logger.error(f"❌ Erreur test notification: {e}")
+        except Exception:
+            logger.exception("❌ Erreur test notification")
             return False
 
 
 # Instance globale
-_notifier: Optional[TelegramNotifier] = None
+_notifier: TelegramNotifier | None = None
 
 
 def get_notifier(db_connection=None) -> TelegramNotifier:

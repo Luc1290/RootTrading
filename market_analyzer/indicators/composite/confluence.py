@@ -6,7 +6,6 @@ pour mesurer la cohérence des signaux haussiers/baissiers.
 """
 
 import logging
-from typing import Dict, Optional, Tuple, List
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -20,8 +19,8 @@ class ConfluenceType(Enum):
 
 
 def calculate_confluence_score(
-    indicators: Dict,
-    current_price: Optional[float] = None,
+    indicators: dict,
+    current_price: float | None = None,
     confluence_type: ConfluenceType = ConfluenceType.MONO_TIMEFRAME,
 ) -> float:
     """
@@ -36,8 +35,8 @@ def calculate_confluence_score(
         Score entre 0.0 et 100.0 (50 = neutre, >50 = haussier, <50 = baissier)
     """
     try:
-        signals: List[float] = []
-        weights: List[float] = []
+        signals: list[float] = []
+        weights: list[float] = []
 
         # === MOYENNES MOBILES ===
         if confluence_type == ConfluenceType.MONO_TIMEFRAME:
@@ -63,7 +62,12 @@ def calculate_confluence_score(
             return 50.0  # Neutre si aucun signal
 
         # Moyenne pondérée
-        weighted_sum = sum(signal * weight for signal, weight in zip(signals, weights))
+        weighted_sum = sum(
+            signal *
+            weight for signal,
+            weight in zip(
+                signals,
+                weights))
         total_weight = sum(weights)
         confluence_score = weighted_sum / total_weight
 
@@ -84,7 +88,7 @@ def calculate_confluence_score(
 
 
 def _add_ma_signals(
-    indicators: Dict, current_price: Optional[float], signals: list, weights: list
+    indicators: dict, current_price: float | None, signals: list, weights: list
 ) -> None:
     """Ajoute les signaux des moyennes mobiles."""
     # EMA crossover signals
@@ -110,7 +114,10 @@ def _add_ma_signals(
             weights.append(1.5)
 
 
-def _add_oscillator_signals(indicators: Dict, signals: list, weights: list) -> None:
+def _add_oscillator_signals(
+        indicators: dict,
+        signals: list,
+        weights: list) -> None:
     """Ajoute les signaux des oscillateurs."""
     # RSI
     rsi_14 = indicators.get("rsi_14")
@@ -165,7 +172,7 @@ def _add_oscillator_signals(indicators: Dict, signals: list, weights: list) -> N
             weights.append(1.2)
 
 
-def _add_trend_signals(indicators: Dict, signals: list, weights: list) -> None:
+def _add_trend_signals(indicators: dict, signals: list, weights: list) -> None:
     """Ajoute les signaux de tendance."""
     # ADX et directional indicators
     adx_14 = indicators.get("adx_14")
@@ -185,27 +192,32 @@ def _add_trend_signals(indicators: Dict, signals: list, weights: list) -> None:
             weights.append(0.5)
 
 
-def _add_volume_signals(indicators: Dict, signals: list, weights: list) -> None:
+def _add_volume_signals(
+        indicators: dict,
+        signals: list,
+        weights: list) -> None:
     """Ajoute les signaux de volume."""
     volume_ratio = indicators.get("volume_ratio")
-    if volume_ratio:
-        if volume_ratio > 1.5:
-            # Volume élevé renforce le signal dominant
-            if len(signals) > 0:
-                avg_signal = sum(
-                    s * w for s, w in zip(signals[-3:], weights[-3:])
-                ) / sum(weights[-3:])
-                if avg_signal > 0.5:
-                    signals.append(0.65)  # Renforce haussier
-                else:
-                    signals.append(0.35)  # Renforce baissier
-                weights.append(1.5)
+    if volume_ratio and volume_ratio > 1.5:
+        # Volume élevé renforce le signal dominant
+        if len(signals) > 0:
+            avg_signal = sum(
+                s * w for s, w in zip(signals[-3:], weights[-3:])
+            ) / sum(weights[-3:])
+            if avg_signal > 0.5:
+                signals.append(0.65)  # Renforce haussier
             else:
-                signals.append(0.5)  # Neutre si pas d'autres signaux
-                weights.append(0.5)
+                signals.append(0.35)  # Renforce baissier
+            weights.append(1.5)
+        else:
+            signals.append(0.5)  # Neutre si pas d'autres signaux
+            weights.append(0.5)
 
 
-def _add_bollinger_signals(indicators: Dict, signals: list, weights: list) -> None:
+def _add_bollinger_signals(
+        indicators: dict,
+        signals: list,
+        weights: list) -> None:
     """Ajoute les signaux des Bollinger Bands."""
     bb_position = indicators.get("bb_position")
     if bb_position is not None:
@@ -221,7 +233,10 @@ def _add_bollinger_signals(indicators: Dict, signals: list, weights: list) -> No
             weights.append(0.5)
 
 
-def _add_momentum_signals(indicators: Dict, signals: list, weights: list) -> None:
+def _add_momentum_signals(
+        indicators: dict,
+        signals: list,
+        weights: list) -> None:
     """Ajoute les signaux de momentum."""
     momentum_score = indicators.get("momentum_score")
     if momentum_score is not None:
@@ -267,7 +282,12 @@ def calculate_multi_timeframe_confluence(
     }.get(trend_alignment, 0.5)
 
     confidence_score = confidence / 100
-    risk_penalty = {"low": 1.0, "medium": 0.9, "high": 0.7}.get(risk_level.lower(), 0.9)
+    risk_penalty = {
+        "low": 1.0,
+        "medium": 0.9,
+        "high": 0.7}.get(
+        risk_level.lower(),
+        0.9)
 
     raw_score = (
         0.4 * strength_score + 0.3 * alignment_score + 0.3 * confidence_score

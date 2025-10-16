@@ -12,13 +12,12 @@ NOUVEAU: Consensus adaptatif + filtres de sécurité seulement
 """
 
 import asyncio
-import logging
-from typing import Dict, List, Any, Optional
-import redis.asyncio as redis
 import json
-import sys
-import os
+import logging
 from datetime import datetime, timedelta
+from typing import Any
+
+import redis.asyncio as redis
 
 from .signal_buffer import IntelligentSignalBuffer
 from .signal_processor_simple import SimpleSignalProcessor
@@ -32,7 +31,11 @@ class SimpleSignalAggregatorService:
     Logic: Buffer + Consensus adaptatif + Filtres critiques + Done !
     """
 
-    def __init__(self, context_manager, database_manager=None, db_connection=None):
+    def __init__(
+            self,
+            context_manager,
+            database_manager=None,
+            db_connection=None):
         """
         Initialise le service d'agrégation simplifié.
 
@@ -56,26 +59,29 @@ class SimpleSignalAggregatorService:
             min_batch_size=1,  # Minimum 1 signal
             sync_window=3.0,  # RÉDUIT: 3s pour sync multi-TF crypto
             enable_mtf_sync=True,  # Sync multi-timeframes
-            wave_timeout=10.0,  # NOUVEAU: 10s pour détecter fin de vague (résolution conflits)
+            wave_timeout=10.0,
+            # NOUVEAU: 10s pour détecter fin de vague (résolution conflits)
         )
 
         # Configuration Redis
-        self.redis_client: Optional[redis.Redis] = None
+        self.redis_client: redis.Redis | None = None
         self.redis_url = "redis://redis:6379"
 
         # Canaux Redis
         self.input_channel = "analyzer:signals"
         self.output_channel = "roottrading:signals:filtered"
 
-        # Protection contradictions - RENFORCÉE avec locks et tracking des traitements
-        self.recent_signals: Dict[str, Dict[str, Any]] = {}
-        self.signals_being_processed: Dict[str, set] = (
+        # Protection contradictions - RENFORCÉE avec locks et tracking des
+        # traitements
+        self.recent_signals: dict[str, dict[str, Any]] = {}
+        self.signals_being_processed: dict[str, set] = (
             {}
         )  # symbol -> set of sides being processed
         self.contradiction_window = (
             30.0  # 30s de protection (réduit pour crypto rapide)
         )
-        self._contradiction_locks: Dict[str, asyncio.Lock] = {}  # Locks per symbol
+        self._contradiction_locks: dict[str,
+                                        asyncio.Lock] = {}  # Locks per symbol
 
         # Statistiques ultra-simples + tracking des vagues et conflits
         self.stats = {
@@ -98,7 +104,8 @@ class SimpleSignalAggregatorService:
         await self._connect_redis()
 
         # Configuration du buffer
-        self.signal_buffer.set_batch_processor(self._process_signal_batch_simple)
+        self.signal_buffer.set_batch_processor(
+            self._process_signal_batch_simple)
 
         # Démarrage des tâches
         tasks = [
@@ -117,8 +124,8 @@ class SimpleSignalAggregatorService:
             )
             await self.redis_client.ping()
             logger.info("✅ Connexion Redis établie")
-        except Exception as e:
-            logger.error(f"❌ Erreur connexion Redis: {e}")
+        except Exception:
+            logger.exception("❌ Erreur connexion Redis")
             raise
 
     async def _listen_for_signals(self):
@@ -136,8 +143,8 @@ class SimpleSignalAggregatorService:
             async for message in pubsub.listen():
                 if message["type"] == "message":
                     await self._handle_signal_message(message["data"])
-        except Exception as e:
-            logger.error(f"❌ Erreur écoute signaux: {e}")
+        except Exception:
+            logger.exception("❌ Erreur écoute signaux")
         finally:
             await pubsub.unsubscribe(self.input_channel)
 
@@ -152,8 +159,8 @@ class SimpleSignalAggregatorService:
                 # Ajout au buffer pour consensus
                 await self.signal_buffer.add_signal(processed_signal)
 
-        except Exception as e:
-            logger.error(f"❌ Erreur traitement message: {e}")
+        except Exception:
+            logger.exception("❌ Erreur traitement message")
             self.stats["errors"] += 1
 
     async def _process_signal_batch_simple(
@@ -176,7 +183,8 @@ class SimpleSignalAggregatorService:
             else:
                 logger.info(f"📦 Traitement batch: {len(signals)} signaux")
 
-            # Si MTF (multi_timeframe), les signaux sont déjà filtrés par direction
+            # Si MTF (multi_timeframe), les signaux sont déjà filtrés par
+            # direction
             if context_key and context_key[1] == "multi_timeframe":
                 # Signaux MTF déjà résolus, traiter directement
                 symbol = context_key[0]
@@ -186,12 +194,14 @@ class SimpleSignalAggregatorService:
                     ]  # Tous dans la même direction après résolution MTF
                     timeframe = signals[0].get("timeframe", "3m")
                     await self._validate_signal_group(signals)
-            # Si WAVE WINNER, traiter les signaux gagnants après résolution de conflit
+            # Si WAVE WINNER, traiter les signaux gagnants après résolution de
+            # conflit
             elif context_key and context_key[1] == "wave_winner":
                 # Signaux gagnants après résolution de conflit de vague
                 symbol = context_key[0]
                 if signals:
-                    # Maintenant on a TOUS les signaux gagnants (ex: 19 signaux SELL)
+                    # Maintenant on a TOUS les signaux gagnants (ex: 19 signaux
+                    # SELL)
                     first_signal = signals[0]
                     side = first_signal.get("side", "UNKNOWN")
 
@@ -210,31 +220,34 @@ class SimpleSignalAggregatorService:
                             f"✅ Conflit résolu: score {wave_metadata.get('winning_score', 0):.3f} vs {wave_metadata.get('losing_score', 0):.3f}"
                         )
 
-                    # Envoyer TOUS les signaux gagnants au consensus pour analyse des vraies familles
+                    # Envoyer TOUS les signaux gagnants au consensus pour
+                    # analyse des vraies familles
                     await self._validate_signal_group(signals)
             else:
                 # Grouper par symbol + side (logique simple)
-                signal_groups: Dict[str, List] = {}
+                signal_groups: dict[str, list] = {}
                 for signal in signals:
                     key = f"{signal['symbol']}_{signal['side']}"
                     if key not in signal_groups:
                         signal_groups[key] = []
                     signal_groups[key].append(signal)
 
-                # NOUVEAU: Résoudre les conflits intra-batch (BUY vs SELL simultanés)
-                resolved_groups = self._resolve_simultaneous_conflicts(signal_groups)
+                # NOUVEAU: Résoudre les conflits intra-batch (BUY vs SELL
+                # simultanés)
+                resolved_groups = self._resolve_simultaneous_conflicts(
+                    signal_groups)
 
                 # Traiter chaque groupe résolu
-                for group_key, group_signals in resolved_groups.items():
+                for _group_key, group_signals in resolved_groups.items():
                     await self._validate_signal_group(group_signals)
 
-        except Exception as e:
-            logger.error(f"❌ Erreur traitement batch: {e}")
+        except Exception:
+            logger.exception("❌ Erreur traitement batch")
             self.stats["errors"] += 1
 
     def _resolve_simultaneous_conflicts(
-        self, signal_groups: Dict[str, List]
-    ) -> Dict[str, List]:
+        self, signal_groups: dict[str, list]
+    ) -> dict[str, list]:
         """
         OBSOLÈTE: Cette méthode n'est plus utilisée depuis l'implémentation du système de vague intelligent.
 
@@ -250,10 +263,12 @@ class SimpleSignalAggregatorService:
         logger.debug(
             "⚠️ MÉTHODE OBSOLÈTE: _resolve_simultaneous_conflicts() - Conflits gérés au niveau buffer"
         )
-        # Retourner les groupes sans modification car les conflits sont résolus en amont
+        # Retourner les groupes sans modification car les conflits sont résolus
+        # en amont
         return signal_groups
 
-    def _calculate_group_strength(self, signals: List[Dict[str, Any]]) -> float:
+    def _calculate_group_strength(
+            self, signals: list[dict[str, Any]]) -> float:
         """
         OBSOLÈTE: Cette méthode n'est plus utilisée depuis l'implémentation du système de vague intelligent.
 
@@ -282,7 +297,8 @@ class SimpleSignalAggregatorService:
         timeframe = first_signal.get("timeframe", "3m")
         side = first_signal["side"]
 
-        logger.info(f"🔍 Validation groupe {symbol} {side}: {len(signals)} signaux")
+        logger.info(
+            f"🔍 Validation groupe {symbol} {side}: {len(signals)} signaux")
 
         # 🚨 CRITIQUE: Vérifier les contradictions RÉCENTES avec un lock pour éviter les races conditions
         async with self._get_contradiction_lock(symbol):
@@ -300,7 +316,8 @@ class SimpleSignalAggregatorService:
                 )
                 return
 
-            # Marquer le début du traitement AVANT la validation pour bloquer l'opposé
+            # Marquer le début du traitement AVANT la validation pour bloquer
+            # l'opposé
             self._start_processing_signal(symbol, side)
 
         # Validation avec système simplifié
@@ -331,10 +348,8 @@ class SimpleSignalAggregatorService:
         time_diff = (datetime.utcnow() - recent["timestamp"]).total_seconds()
 
         # Si signal opposé récent dans la fenêtre de protection
-        if recent["side"] != side and time_diff < self.contradiction_window:
-            return True
-
-        return False
+        return bool(recent["side"] != side and time_diff <
+                    self.contradiction_window)
 
     def _get_contradiction_lock(self, symbol: str) -> asyncio.Lock:
         """Obtient ou crée un lock pour éviter les races conditions sur un symbole."""
@@ -359,14 +374,16 @@ class SimpleSignalAggregatorService:
         """Marque qu'un signal a fini d'être traité."""
         if symbol in self.signals_being_processed:
             self.signals_being_processed[symbol].discard(side)
-            if not self.signals_being_processed[symbol]:  # Si plus aucun side en cours
+            # Si plus aucun side en cours
+            if not self.signals_being_processed[symbol]:
                 del self.signals_being_processed[symbol]
 
     def _track_recent_signal(self, symbol: str, side: str):
         """Enregistre le signal récent pour éviter contradictions."""
-        self.recent_signals[symbol] = {"side": side, "timestamp": datetime.utcnow()}
+        self.recent_signals[symbol] = {
+            "side": side, "timestamp": datetime.utcnow()}
 
-    async def _send_validated_signal(self, signal: Dict[str, Any]):
+    async def _send_validated_signal(self, signal: dict[str, Any]):
         """Envoie le signal validé vers le coordinator."""
         try:
             if self.redis_client is None:
@@ -376,14 +393,16 @@ class SimpleSignalAggregatorService:
             signal_json = json.dumps(signal, default=str)
             await self.redis_client.publish(self.output_channel, signal_json)
 
-            strategies_count = signal.get("metadata", {}).get("strategies_count", 1)
+            strategies_count = signal.get(
+                "metadata", {}).get(
+                "strategies_count", 1)
             logger.info(
                 f"📤 Signal envoyé: {signal['symbol']} {signal['side']} "
                 f"({strategies_count} stratégies)"
             )
 
-        except Exception as e:
-            logger.error(f"❌ Erreur envoi signal: {e}")
+        except Exception:
+            logger.exception("❌ Erreur envoi signal")
 
     async def _health_monitor(self):
         """Monitore la santé du service."""
@@ -394,21 +413,19 @@ class SimpleSignalAggregatorService:
                 # Log stats périodiques avec métriques de vague
                 if self.stats["signals_received"] > 0:
                     success_rate = (
-                        self.stats["signals_validated"] / self.stats["signals_received"]
-                    ) * 100
+                        self.stats["signals_validated"] / self.stats["signals_received"]) * 100
                     logger.info(
                         f"📊 Stats: {self.stats['signals_received']} reçus, "
                         f"{self.stats['signals_validated']} validés ({success_rate:.1f}%), "
                         f"{self.stats['wave_winners_processed']} gagnants de vague, "
                         f"{self.stats['conflicts_resolved_by_wave']} conflits résolus, "
-                        f"{self.stats['errors']} erreurs"
-                    )
+                        f"{self.stats['errors']} erreurs")
 
                 # Nettoyage des signaux anciens
                 self._cleanup_old_signals()
 
-            except Exception as e:
-                logger.error(f"❌ Erreur health monitor: {e}")
+            except Exception:
+                logger.exception("❌ Erreur health monitor")
 
     def _cleanup_old_signals(self):
         """Nettoie les anciens signaux de la mémoire."""
@@ -424,7 +441,7 @@ class SimpleSignalAggregatorService:
         for symbol in to_remove:
             del self.recent_signals[symbol]
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Retourne les statistiques complètes."""
         processor_stats = self.signal_processor.get_stats()
 

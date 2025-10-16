@@ -4,10 +4,10 @@ OBV (On-Balance Volume) Indicator
 This module provides OBV calculation for volume-momentum analysis.
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
-from typing import List, Optional, Union
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +21,9 @@ except ImportError:
 
 
 def calculate_obv(
-    prices: Union[List[float], np.ndarray, pd.Series],
-    volumes: Union[List[float], np.ndarray, pd.Series],
-) -> Optional[float]:
+    prices: list[float] | np.ndarray | pd.Series,
+    volumes: list[float] | np.ndarray | pd.Series,
+) -> float | None:
     """
     Calculate On-Balance Volume (OBV).
 
@@ -62,7 +62,8 @@ def calculate_obv(
     if TALIB_AVAILABLE:
         try:
             obv_values = talib.OBV(prices_array, volumes_array)
-            return float(obv_values[-1]) if not np.isnan(obv_values[-1]) else None
+            return float(
+                obv_values[-1]) if not np.isnan(obv_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib OBV error: {e}, using fallback")
 
@@ -70,9 +71,9 @@ def calculate_obv(
 
 
 def calculate_obv_series(
-    prices: Union[List[float], np.ndarray, pd.Series],
-    volumes: Union[List[float], np.ndarray, pd.Series],
-) -> List[Optional[float]]:
+    prices: list[float] | np.ndarray | pd.Series,
+    volumes: list[float] | np.ndarray | pd.Series,
+) -> list[float | None]:
     """
     Calculate OBV for entire price/volume series.
 
@@ -94,7 +95,8 @@ def calculate_obv_series(
     if TALIB_AVAILABLE:
         try:
             obv_values = talib.OBV(prices_array, volumes_array)
-            return [float(val) if not np.isnan(val) else None for val in obv_values]
+            return [float(val) if not np.isnan(
+                val) else None for val in obv_values]
         except Exception as e:
             logger.warning(f"TA-Lib OBV series error: {e}, using fallback")
 
@@ -103,8 +105,8 @@ def calculate_obv_series(
 
 
 def obv_signal(
-    current_obv: Optional[float],
-    previous_obv: Optional[float],
+    current_obv: float | None,
+    previous_obv: float | None,
     current_price: float,
     previous_price: float,
 ) -> str:
@@ -138,23 +140,23 @@ def obv_signal(
     # Confirmation signals (OBV and price move in same direction)
     if obv_direction == "up" and price_direction == "up":
         return "bullish_confirmation"
-    elif obv_direction == "down" and price_direction == "down":
+    if obv_direction == "down" and price_direction == "down":
         return "bearish_confirmation"
 
     # Divergence signals (OBV and price move in opposite directions)
-    elif obv_direction == "up" and price_direction == "down":
+    if obv_direction == "up" and price_direction == "down":
         return "bullish_divergence"
-    elif obv_direction == "down" and price_direction == "up":
+    if obv_direction == "down" and price_direction == "up":
         return "bearish_divergence"
 
     return "neutral"
 
 
 def calculate_obv_ma(
-    prices: Union[List[float], np.ndarray, pd.Series],
-    volumes: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
+    volumes: list[float] | np.ndarray | pd.Series,
     ma_period: int = 10,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate moving average of OBV for trend smoothing.
 
@@ -179,11 +181,11 @@ def calculate_obv_ma(
 
 
 def calculate_obv_oscillator(
-    prices: Union[List[float], np.ndarray, pd.Series],
-    volumes: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
+    volumes: list[float] | np.ndarray | pd.Series,
     fast_period: int = 10,
     slow_period: int = 20,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate OBV Oscillator (fast OBV MA - slow OBV MA).
 
@@ -206,8 +208,8 @@ def calculate_obv_oscillator(
 
 
 def detect_obv_divergence(
-    prices: Union[List[float], np.ndarray, pd.Series],
-    volumes: Union[List[float], np.ndarray, pd.Series],
+    prices: list[float] | np.ndarray | pd.Series,
+    volumes: list[float] | np.ndarray | pd.Series,
     lookback: int = 20,
 ) -> str:
     """
@@ -308,11 +310,11 @@ def detect_obv_divergence(
 
 
 def calculate_volume_accumulation_distribution(
-    highs: Union[List[float], np.ndarray, pd.Series],
-    lows: Union[List[float], np.ndarray, pd.Series],
-    closes: Union[List[float], np.ndarray, pd.Series],
-    volumes: Union[List[float], np.ndarray, pd.Series],
-) -> Optional[float]:
+    highs: list[float] | np.ndarray | pd.Series,
+    lows: list[float] | np.ndarray | pd.Series,
+    closes: list[float] | np.ndarray | pd.Series,
+    volumes: list[float] | np.ndarray | pd.Series,
+) -> float | None:
     """
     Calculate Accumulation/Distribution Line (A/D Line).
 
@@ -334,8 +336,13 @@ def calculate_volume_accumulation_distribution(
             closes_array = _to_numpy_array(closes)
             volumes_array = _to_numpy_array(volumes)
 
-            ad_values = talib.AD(highs_array, lows_array, closes_array, volumes_array)
-            return float(ad_values[-1]) if not np.isnan(ad_values[-1]) else None
+            ad_values = talib.AD(
+                highs_array,
+                lows_array,
+                closes_array,
+                volumes_array)
+            return float(
+                ad_values[-1]) if not np.isnan(ad_values[-1]) else None
         except Exception as e:
             logger.warning(f"TA-Lib A/D Line error: {e}, using fallback")
 
@@ -346,8 +353,10 @@ def calculate_volume_accumulation_distribution(
     volumes_array = _to_numpy_array(volumes)
 
     min_len = min(
-        len(highs_array), len(lows_array), len(closes_array), len(volumes_array)
-    )
+        len(highs_array),
+        len(lows_array),
+        len(closes_array),
+        len(volumes_array))
     if min_len == 0:
         return None
 
@@ -369,7 +378,8 @@ def calculate_volume_accumulation_distribution(
     return float(ad_line)
 
 
-def obv_trend_strength(obv_values: List[Optional[float]], period: int = 10) -> str:
+def obv_trend_strength(
+        obv_values: list[float | None], period: int = 10) -> str:
     """
     Assess trend strength based on OBV momentum.
 
@@ -384,7 +394,7 @@ def obv_trend_strength(obv_values: List[Optional[float]], period: int = 10) -> s
     if len(obv_values) < period + 1:
         return "neutral"
 
-    recent_obv = [x for x in obv_values[-period - 1 :] if x is not None]
+    recent_obv = [x for x in obv_values[-period - 1:] if x is not None]
     if len(recent_obv) < period + 1:
         return "neutral"
 
@@ -395,7 +405,8 @@ def obv_trend_strength(obv_values: List[Optional[float]], period: int = 10) -> s
     direction_changes = 0
     for i in range(1, len(recent_obv)):
         current_change = recent_obv[i] - recent_obv[i - 1]
-        prev_change = recent_obv[i - 1] - recent_obv[i - 2] if i > 1 else current_change
+        prev_change = recent_obv[i - 1] - \
+            recent_obv[i - 2] if i > 1 else current_change
 
         if (current_change > 0) != (prev_change > 0):
             direction_changes += 1
@@ -406,12 +417,12 @@ def obv_trend_strength(obv_values: List[Optional[float]], period: int = 10) -> s
     if obv_change > 0:
         if consistency > 0.7:
             return "strong_accumulation"
-        elif consistency > 0.5:
+        if consistency > 0.5:
             return "moderate_accumulation"
     elif obv_change < 0:
         if consistency > 0.7:
             return "strong_distribution"
-        elif consistency > 0.5:
+        if consistency > 0.5:
             return "moderate_distribution"
 
     return "neutral"
@@ -420,16 +431,18 @@ def obv_trend_strength(obv_values: List[Optional[float]], period: int = 10) -> s
 # ============ Helper Functions ============
 
 
-def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
+def _to_numpy_array(data: list[float] | np.ndarray | pd.Series) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
         return np.asarray(data.values, dtype=float)
-    elif isinstance(data, list):
+    if isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
 
 
-def _calculate_obv_manual(prices: np.ndarray, volumes: np.ndarray) -> Optional[float]:
+def _calculate_obv_manual(
+        prices: np.ndarray,
+        volumes: np.ndarray) -> float | None:
     """Manual OBV calculation."""
     if len(prices) < 2:
         return None
@@ -448,12 +461,12 @@ def _calculate_obv_manual(prices: np.ndarray, volumes: np.ndarray) -> Optional[f
 
 def _calculate_obv_series_manual(
     prices: np.ndarray, volumes: np.ndarray
-) -> List[Optional[float]]:
+) -> list[float | None]:
     """Manual OBV series calculation."""
     if len(prices) < 2:
         return [None] * len(prices)
 
-    obv_series: List[Optional[float]] = [
+    obv_series: list[float | None] = [
         None
     ]  # First value is None (no previous price to compare)
     obv = 0.0

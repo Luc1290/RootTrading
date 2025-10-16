@@ -5,7 +5,10 @@ Ce module contient des indicateurs composites qui combinent plusieurs indicateur
 pour fournir des signaux plus robustes.
 """
 
-from .confluence import calculate_confluence_score, ConfluenceType
+from .confluence import ConfluenceType, calculate_confluence_score
 from .signal_strength import calculate_signal_strength
 
-__all__ = ["calculate_confluence_score", "ConfluenceType", "calculate_signal_strength"]
+__all__ = [
+    "ConfluenceType",
+    "calculate_confluence_score",
+    "calculate_signal_strength"]

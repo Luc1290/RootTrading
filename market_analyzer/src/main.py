@@ -4,25 +4,32 @@ Service qui calcule TOUS les indicateurs techniques à partir des données OHLCV
 Architecture propre : Gateway → market_data → Market Analyzer → analyzer_data
 """
 
+from shared.src.config import SYMBOLS
+from market_analyzer.src.data_listener import DataListener
 import asyncio
 import logging
+import os
 import signal
 import sys
-import os
 import time
+
 from aiohttp import web
 
 # Ajouter les chemins pour les imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+sys.path.append(
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "../../")))
 
-from market_analyzer.src.data_listener import DataListener
-from shared.src.config import SYMBOLS
 
 # Configuration du logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(), logging.FileHandler("market_analyzer.log")],
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler("market_analyzer.log")],
 )
 logger = logging.getLogger("market_analyzer")
 
@@ -73,7 +80,8 @@ async def process_historical(request):
     global data_listener
 
     if not data_listener:
-        return web.json_response({"error": "DataListener not initialized"}, status=503)
+        return web.json_response(
+            {"error": "DataListener not initialized"}, status=503)
 
     try:
         # Parser les paramètres
@@ -86,8 +94,8 @@ async def process_historical(request):
 
         # Lancer le traitement optimisé en arrière-plan
         asyncio.create_task(
-            data_listener.process_historical_optimized(symbol, timeframe, limit)
-        )
+            data_listener.process_historical_optimized(
+                symbol, timeframe, limit))
 
         return web.json_response(
             {
@@ -111,7 +119,8 @@ async def get_coverage(request):
     global data_listener
 
     if not data_listener:
-        return web.json_response({"error": "DataListener not initialized"}, status=503)
+        return web.json_response(
+            {"error": "DataListener not initialized"}, status=503)
 
     try:
         # Statistiques par symbole/timeframe
@@ -152,8 +161,8 @@ async def get_coverage(request):
         return web.json_response(
             {
                 "coverage_by_asset": coverage_data,
-                "total_assets": len(set(row["symbol"] for row in coverage_data)),
-                "total_timeframes": len(set(row["timeframe"] for row in coverage_data)),
+                "total_assets": len({row["symbol"] for row in coverage_data}),
+                "total_timeframes": len({row["timeframe"] for row in coverage_data}),
             }
         )
 
@@ -192,8 +201,8 @@ async def shutdown(signal_type, loop):
         try:
             await data_listener.stop()
             logger.info("✅ DataListener arrêté proprement")
-        except Exception as e:
-            logger.error(f"❌ Erreur arrêt DataListener: {e}")
+        except Exception:
+            logger.exception("❌ Erreur arrêt DataListener")
 
     # Attendre plus longtemps pour que toutes les connexions DB se ferment
     await asyncio.sleep(1.0)
@@ -206,7 +215,8 @@ async def shutdown(signal_type, loop):
             if not task.done() and task != asyncio.current_task()
         ]
         if pending_tasks:
-            logger.info(f"Annulation de {len(pending_tasks)} tâches pendantes...")
+            logger.info(
+                f"Annulation de {len(pending_tasks)} tâches pendantes...")
             for task in pending_tasks:
                 task.cancel()
             # Attendre que les tâches se terminent
@@ -216,8 +226,8 @@ async def shutdown(signal_type, loop):
 
     logger.info("Market Analyzer terminé")
 
-    # NE PAS appeler loop.stop() ici - laisser le main() se terminer naturellement
-    return None
+    # NE PAS appeler loop.stop() ici - laisser le main() se terminer
+    # naturellement
 
 
 async def main():
@@ -240,7 +250,7 @@ async def main():
 
         # Démarrer l'écoute temps réel IMMÉDIATEMENT (non-bloquant)
         logger.info("🎧 Démarrage de l'écoute temps réel...")
-        listening_task = asyncio.create_task(data_listener.start_listening())
+        asyncio.create_task(data_listener.start_listening())
 
         # Proposer de traiter l'historique en parallèle
         logger.info("🔍 Vérification de la couverture des données...")
@@ -264,16 +274,18 @@ async def main():
         )
 
         # Attendre que l'écoute temps réel continue ou que l'arrêt soit demandé
-        logger.info("✅ Traitement historique terminé - écoute temps réel active")
+        logger.info(
+            "✅ Traitement historique terminé - écoute temps réel active")
 
-        # Boucle d'attente au lieu d'attendre le listening_task qui peut ne jamais se terminer
+        # Boucle d'attente au lieu d'attendre le listening_task qui peut ne
+        # jamais se terminer
         while running:
             await asyncio.sleep(1)
 
         logger.info("📟 Arrêt demandé - terminaison en cours...")
 
-    except Exception as e:
-        logger.error(f"❌ Erreur critique: {e}")
+    except Exception:
+        logger.exception("❌ Erreur critique")
     finally:
         if data_listener:
             await data_listener.stop()
@@ -291,7 +303,8 @@ if __name__ == "__main__":
     # Configurer les gestionnaires de signaux
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(
-            sig, lambda s=sig: asyncio.create_task(shutdown(s, loop))  # type: ignore
+            sig, lambda s=sig: asyncio.create_task(
+                shutdown(s, loop))  # type: ignore
         )
 
     try:

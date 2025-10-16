@@ -6,11 +6,12 @@ Permet d'exécuter plusieurs stratégies en parallèle sur différents cœurs CP
 import asyncio
 import logging
 import multiprocessing as mp
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from typing import Dict, List, Any, Callable, Optional
-import time
-from datetime import datetime
 import os
+import time
+from collections.abc import Callable
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from datetime import datetime, timezone
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -18,13 +19,13 @@ logger = logging.getLogger(__name__)
 class MultiProcessManager:
     """Gestionnaire de parallélisation pour l'analyzer."""
 
-    def __init__(self, max_workers: Optional[int] = None):
+    def __init__(self, max_workers: int | None = None):
         # Nombre de workers basé sur les CPUs disponibles
         self.max_workers = max_workers or min(mp.cpu_count(), 8)
 
         # Executors pour différents types de tâches
-        self.process_executor: Optional[ProcessPoolExecutor] = None
-        self.thread_executor: Optional[ThreadPoolExecutor] = None
+        self.process_executor: ProcessPoolExecutor | None = None
+        self.thread_executor: ThreadPoolExecutor | None = None
 
         # Métriques de performance
         self.metrics = {
@@ -35,7 +36,8 @@ class MultiProcessManager:
             "active_workers": 0,
         }
 
-        logger.info(f"MultiProcessManager initialisé avec {self.max_workers} workers")
+        logger.info(
+            f"MultiProcessManager initialisé avec {self.max_workers} workers")
 
     async def start(self):
         """Démarre les executors."""
@@ -47,12 +49,13 @@ class MultiProcessManager:
             )
 
             # Executor pour les tâches I/O (DB, Redis)
-            self.thread_executor = ThreadPoolExecutor(max_workers=self.max_workers * 2)
+            self.thread_executor = ThreadPoolExecutor(
+                max_workers=self.max_workers * 2)
 
             logger.info("Executors démarrés")
 
-        except Exception as e:
-            logger.error(f"Erreur démarrage executors: {e}")
+        except Exception:
+            logger.exception("Erreur démarrage executors")
             raise
 
     async def stop(self):
@@ -66,8 +69,8 @@ class MultiProcessManager:
             logger.info("Thread executor arrêté")
 
     async def execute_strategies_parallel(
-        self, strategy_tasks: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+        self, strategy_tasks: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """
         Exécute plusieurs tâches de stratégies en parallèle.
 
@@ -94,7 +97,7 @@ class MultiProcessManager:
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             # Traitement des résultats et gestion des erreurs
-            processed_results: List[Dict[str, Any]] = []
+            processed_results: list[dict[str, Any]] = []
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
                     logger.error(f"Erreur tâche {i}: {result}")
@@ -112,16 +115,16 @@ class MultiProcessManager:
 
             logger.info(
                 f"Exécution parallèle terminée: {len(processed_results)}/{len(strategy_tasks)} "
-                f"réussies en {execution_time:.2f}s"
-            )
+                f"réussies en {execution_time:.2f}s")
 
+        except Exception:
+            logger.exception("Erreur exécution parallèle")
+            return []
+        else:
             return processed_results
 
-        except Exception as e:
-            logger.error(f"Erreur exécution parallèle: {e}")
-            return []
-
-    async def _execute_strategy_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_strategy_task(
+            self, task_data: dict[str, Any]) -> dict[str, Any]:
         """
         Exécute une tâche de stratégie individuelle.
 
@@ -141,7 +144,7 @@ class MultiProcessManager:
             # Exécution de la stratégie dans un thread séparé
             # (Les stratégies sont légères, pas besoin de processus séparé)
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
+            return await loop.run_in_executor(
                 self.thread_executor,
                 self._run_strategy,
                 strategy_class,
@@ -150,19 +153,17 @@ class MultiProcessManager:
                 indicators,
             )
 
-            return result
-
-        except Exception as e:
-            logger.error(f"Erreur exécution tâche stratégie: {e}")
+        except Exception:
+            logger.exception("Erreur exécution tâche stratégie")
             raise
 
     def _run_strategy(
         self,
         strategy_class: type,
         symbol: str,
-        data: Dict[str, Any],
-        indicators: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        data: dict[str, Any],
+        indicators: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Exécute une stratégie (fonction synchrone pour l'executor).
 
@@ -177,29 +178,28 @@ class MultiProcessManager:
         """
         try:
             # Instanciation de la stratégie
-            strategy = strategy_class(symbol=symbol, data=data, indicators=indicators)
+            strategy = strategy_class(
+                symbol=symbol, data=data, indicators=indicators)
 
             # Génération du signal
             signal = strategy.generate_signal()
 
             # Enrichissement du résultat
-            result = {
+            return {
                 "strategy_name": strategy_class.__name__,
                 "symbol": symbol,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "signal": signal,
                 "execution_time": time.time(),
             }
 
-            return result
-
-        except Exception as e:
-            logger.error(f"Erreur dans _run_strategy: {e}")
+        except Exception:
+            logger.exception("Erreur dans _run_strategy")
             raise
 
     async def execute_db_operations_parallel(
-        self, db_operations: List[Callable]
-    ) -> List[Any]:
+        self, db_operations: list[Callable]
+    ) -> list[Any]:
         """
         Exécute plusieurs opérations de base de données en parallèle.
 
@@ -231,19 +231,19 @@ class MultiProcessManager:
                 else:
                     valid_results.append(result)
 
-            return valid_results
-
-        except Exception as e:
-            logger.error(f"Erreur exécution DB parallèle: {e}")
+        except Exception:
+            logger.exception("Erreur exécution DB parallèle")
             return []
+        else:
+            return valid_results
 
     async def batch_process_symbols(
         self,
-        symbols: List[str],
-        timeframes: List[str],
+        symbols: list[str],
+        timeframes: list[str],
         processor_func: Callable,
         batch_size: int = 10,
-    ) -> List[Any]:
+    ) -> list[Any]:
         """
         Traite les symboles par batch pour éviter la surcharge.
 
@@ -259,15 +259,16 @@ class MultiProcessManager:
         all_results = []
 
         # Création des combinaisons symbole/timeframe
-        combinations = [(symbol, tf) for symbol in symbols for tf in timeframes]
+        combinations = [(symbol, tf)
+                        for symbol in symbols for tf in timeframes]
 
         # Traitement par batch
         for i in range(0, len(combinations), batch_size):
-            batch = combinations[i : i + batch_size]
+            batch = combinations[i: i + batch_size]
 
             logger.info(
-                f"Traitement batch {i//batch_size + 1}: " f"{len(batch)} combinaisons"
-            )
+                f"Traitement batch {i//batch_size + 1}: "
+                f"{len(batch)} combinaisons")
 
             # Exécution du batch
             batch_tasks = []
@@ -288,7 +289,7 @@ class MultiProcessManager:
 
         return all_results
 
-    def get_metrics(self) -> Dict[str, Any]:
+    def get_metrics(self) -> dict[str, Any]:
         """Récupère les métriques de performance."""
         return {
             **self.metrics,
@@ -303,7 +304,7 @@ class MultiProcessManager:
     def _get_memory_usage(self) -> float:
         """Récupère l'utilisation mémoire du processus."""
         try:
-            import psutil  # type: ignore[import-untyped]
+            import psutil  # type: ignore[import-untyped]  # noqa: PLC0415
 
             process = psutil.Process(os.getpid())
             return process.memory_info().rss / 1024 / 1024  # MB
@@ -312,7 +313,7 @@ class MultiProcessManager:
         except Exception:
             return 0.0
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """Vérifie la santé du gestionnaire de processus."""
         try:
             # Test simple d'exécution
@@ -324,19 +325,17 @@ class MultiProcessManager:
                 and self.thread_executor is not None
             )
 
-            health_status = {
+            return {
                 "status": "healthy",
                 "executors_running": executors_running,
                 "metrics": self.get_metrics(),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-            return health_status
-
         except Exception as e:
-            logger.error(f"Health check échoué: {e}")
+            logger.exception("Health check échoué")
             return {
                 "status": "unhealthy",
                 "error": str(e),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }

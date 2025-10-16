@@ -4,15 +4,15 @@ Module d'exécution principal des ordres sur Binance.
 Version simplifiée qui délègue les tâches spécifiques à d'autres modules.
 """
 import logging
-from typing import Dict, Any, Optional, Tuple
 from datetime import datetime
+from typing import Any
 
+from shared.src.enums import OrderSide, OrderStatus, TradeRole
+from shared.src.schemas import TradeExecution, TradeOrder
 # Imports des modules internes
 from trader.src.exchange.binance_utils import BinanceUtils
 from trader.src.exchange.constraints import BinanceSymbolConstraints
 from trader.src.exchange.order_validation import OrderValidator
-from shared.src.enums import OrderSide, OrderStatus, TradeRole
-from shared.src.schemas import TradeOrder, TradeExecution
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,8 @@ class BinanceExecutor:
 
         # Variables pour le mode démo
         self.demo_order_id = 10000000  # ID de départ pour les ordres démo
-        self.demo_trades: Dict[str, Any] = {}  # Historique des trades en mode démo
+        # Historique des trades en mode démo
+        self.demo_trades: dict[str, Any] = {}
 
         # Calculer le décalage temporel avec le serveur Binance
         self.time_offset = self.utils.get_time_offset()
@@ -74,7 +75,8 @@ class BinanceExecutor:
                 f"✅ {'Mode DÉMO: vérifié la connectivité Binance (sans authentification)' if self.demo_mode else 'Connecté à Binance avec succès'}"
             )
         else:
-            logger.error("❌ Échec de la vérification de la connectivité Binance")
+            logger.error(
+                "❌ Échec de la vérification de la connectivité Binance")
             raise Exception("Impossible de se connecter à Binance")
 
     def _simulate_order(self, order: TradeOrder) -> TradeExecution:
@@ -156,7 +158,8 @@ class BinanceExecutor:
             validated_order = self.validator.validate_and_adjust_order(order)
 
             # Préparer les paramètres d'ordre
-            params = self.utils.prepare_order_params(validated_order, self.time_offset)
+            params = self.utils.prepare_order_params(
+                validated_order, self.time_offset)
 
             # Envoyer l'ordre à Binance
             response = self.utils.send_order_request(params)
@@ -165,21 +168,26 @@ class BinanceExecutor:
             execution = self.utils.create_execution_from_response(response)
 
             side_str = (
-                order.side.value if hasattr(order.side, "value") else str(order.side)
-            )
+                order.side.value if hasattr(
+                    order.side,
+                    "value") else str(
+                    order.side))
             logger.info(
                 f"✅ Ordre exécuté sur Binance: {side_str} {execution.quantity} {execution.symbol} @ {execution.price}"
             )
             return execution
 
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de l'exécution: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur lors de l'exécution")
 
             # NE PAS simuler l'ordre en cas d'erreur
             # Cela crée des incohérences (cycles non-démo avec ordres démo)
-            raise e
+            raise
 
-    def get_order_status(self, symbol: str, order_id: str) -> Optional[TradeExecution]:
+    def get_order_status(
+            self,
+            symbol: str,
+            order_id: str) -> TradeExecution | None:
         """
         Récupère le statut d'un ordre sur Binance.
 
@@ -194,7 +202,8 @@ class BinanceExecutor:
         if self.demo_mode:
             return self.demo_trades.get(order_id)
 
-        # Vérifier si c'est un ordre créé en mode démo (stocké dans demo_trades)
+        # Vérifier si c'est un ordre créé en mode démo (stocké dans
+        # demo_trades)
         if order_id in self.demo_trades:
             logger.debug(
                 f"⏭️ Ordre démo détecté ({order_id}), ignorer la vérification Binance"
@@ -203,10 +212,11 @@ class BinanceExecutor:
 
         # En mode réel, interroger Binance
         try:
-            return self.utils.fetch_order_status(symbol, order_id, self.time_offset)
+            return self.utils.fetch_order_status(
+                symbol, order_id, self.time_offset)
         except Exception as e:
-            logger.error(
-                f"❌ Erreur lors de la récupération du statut de l'ordre: {str(e)}"
+            logger.exception(
+                f"❌ Erreur lors de la récupération du statut de l'ordre: {e!s}"
             )
             return None
 
@@ -225,13 +235,16 @@ class BinanceExecutor:
         if self.demo_mode:
             if order_id in self.demo_trades:
                 trade = self.demo_trades[order_id]
-                if trade.status not in [OrderStatus.FILLED, OrderStatus.CANCELED]:
+                if trade.status not in [
+                        OrderStatus.FILLED,
+                        OrderStatus.CANCELED]:
                     trade.status = OrderStatus.CANCELED
                     logger.info(f"✅ [DÉMO] Ordre annulé: {order_id}")
                     return True
             return False
 
-        # Vérifier si c'est un ordre créé en mode démo (stocké dans demo_trades)
+        # Vérifier si c'est un ordre créé en mode démo (stocké dans
+        # demo_trades)
         if order_id in self.demo_trades:
             logger.debug(
                 f"⏭️ Ordre démo détecté ({order_id}), ignorer l'annulation Binance"
@@ -241,11 +254,11 @@ class BinanceExecutor:
         # En mode réel, annuler sur Binance
         try:
             return self.utils.cancel_order(symbol, order_id, self.time_offset)
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de l'annulation de l'ordre: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur lors de l'annulation de l'ordre")
             return False
 
-    def get_account_balances(self) -> Dict[str, Dict[str, float]]:
+    def get_account_balances(self) -> dict[str, dict[str, float]]:
         """
         Récupère les soldes du compte Binance.
 
@@ -262,11 +275,11 @@ class BinanceExecutor:
 
         try:
             return self.utils.fetch_account_balances(self.time_offset)
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la récupération des soldes: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur lors de la récupération des soldes")
             return {}
 
-    def get_trade_fee(self, symbol: str) -> Tuple[float, float]:
+    def get_trade_fee(self, symbol: str) -> tuple[float, float]:
         """
         Récupère les frais de trading pour un symbole.
 
@@ -283,7 +296,7 @@ class BinanceExecutor:
         try:
             return self.utils.fetch_trade_fee(symbol, self.time_offset)
         except Exception as e:
-            logger.error(
-                f"❌ Erreur lors de la récupération des frais de trading: {str(e)}"
+            logger.exception(
+                f"❌ Erreur lors de la récupération des frais de trading: {e!s}"
             )
             return (0.001, 0.001)  # Valeurs par défaut en cas d'erreur

@@ -9,18 +9,19 @@ import logging
 import signal
 import sys
 import time
-import os
-import uvicorn
 
-from shared.src.config import LOG_LEVEL
-from .utils.logging_config import setup_logging
-from .models import DBManager
-from .sync import start_sync_tasks
-from .redis_subscriber import start_redis_subscriptions
-from .startup import initial_sync_binance
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+
+from shared.src.config import LOG_LEVEL
+
+from .models import DBManager
+from .redis_subscriber import start_redis_subscriptions
+from .startup import initial_sync_binance
+from .sync import start_sync_tasks
+from .utils.logging_config import setup_logging
 
 # Configuration du logging
 logger = logging.getLogger("portfolio")
@@ -77,8 +78,8 @@ class PortfolioService:
 
             logger.info("✅ Service Portfolio démarré")
 
-        except Exception as e:
-            logger.error(f"❌ Erreur critique lors du démarrage: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur critique lors du démarrage")
             self.running = False
             raise
 
@@ -94,8 +95,8 @@ class PortfolioService:
                 logger.info("✅ Connexion à la base de données vérifiée")
             else:
                 raise Exception("Réponse de test invalide")
-        except Exception as e:
-            logger.error(f"❌ Erreur de connexion à la base de données: {str(e)}")
+        except Exception:
+            logger.exception("❌ Erreur de connexion à la base de données")
             raise
 
     def _create_fastapi_app(self):
@@ -162,9 +163,15 @@ def parse_arguments():
     """Parse les arguments de ligne de commande."""
     parser = argparse.ArgumentParser(description="Portfolio RootTrading")
     parser.add_argument(
-        "--host", type=str, default="0.0.0.0", help="Adresse IP pour l'API REST"
-    )
-    parser.add_argument("--port", type=int, default=8000, help="Port pour l'API REST")
+        "--host",
+        type=str,
+        default="0.0.0.0",
+        help="Adresse IP pour l'API REST")
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port pour l'API REST")
     parser.add_argument(
         "--log-level",
         type=str,
@@ -215,8 +222,8 @@ async def main():
 
     except KeyboardInterrupt:
         logger.info("Programme interrompu par l'utilisateur")
-    except Exception as e:
-        logger.error(f"❌ Erreur critique dans le service Portfolio: {str(e)}")
+    except Exception:
+        logger.exception("❌ Erreur critique dans le service Portfolio")
     finally:
         # Arrêter le service
         portfolio_service.stop()

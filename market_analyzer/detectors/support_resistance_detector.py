@@ -8,12 +8,12 @@ This module identifies key support and resistance levels using multiple methods:
 - Trend lines and channels
 """
 
-import numpy as np
-import pandas as pd
-from typing import Dict, List, Optional, Union, Tuple, NamedTuple, Any
+import logging
 from dataclasses import dataclass
 from enum import Enum
-import logging
+from typing import Any
+
+import numpy as np
 from scipy import stats  # type: ignore
 from scipy.signal import find_peaks  # type: ignore
 
@@ -56,11 +56,11 @@ class PriceLevel:
     distance_from_price: float  # Distance du prix actuel
     last_test_age: int  # Périodes depuis dernier test
     break_probability: float  # Probabilité de cassure
-    slope: Optional[float] = None  # Pour trendlines
+    slope: float | None = None  # Pour trendlines
     timeframe: str = "5m"
-    timestamp: Optional[str] = None
+    timestamp: str | None = None
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convertit en dictionnaire pour export."""
         return {
             "price": self.price,
@@ -110,17 +110,17 @@ class SupportResistanceDetector:
         self.volume_window = volume_window
 
         # Cache pour optimiser les calculs répétés
-        self._cache: Dict[str, Any] = {}
+        self._cache: dict[str, Any] = {}
 
     def detect_levels(
         self,
-        highs: Union[List[float], np.ndarray],
-        lows: Union[List[float], np.ndarray],
-        closes: Union[List[float], np.ndarray],
-        volumes: Union[List[float], np.ndarray],
-        current_price: Optional[float] = None,
+        highs: list[float] | np.ndarray,
+        lows: list[float] | np.ndarray,
+        closes: list[float] | np.ndarray,
+        volumes: list[float] | np.ndarray,
+        current_price: float | None = None,
         timeframe: str = "5m",
-    ) -> List[PriceLevel]:
+    ) -> list[PriceLevel]:
         """
         Détecte tous les niveaux de support et résistance.
 
@@ -173,7 +173,8 @@ class SupportResistanceDetector:
             all_levels.extend(trendline_levels)
 
             # 5. Consolider et nettoyer les niveaux proches
-            consolidated_levels = self._consolidate_levels(all_levels, current_price)
+            consolidated_levels = self._consolidate_levels(
+                all_levels, current_price)
 
             # 6. Calculer la force finale et trier
             final_levels = self._calculate_final_strength(
@@ -182,7 +183,8 @@ class SupportResistanceDetector:
 
             # Si aucun niveau détecté, créer des niveaux basiques de fallback
             if not final_levels:
-                logger.debug("Aucun niveau détecté, création de niveaux basiques")
+                logger.debug(
+                    "Aucun niveau détecté, création de niveaux basiques")
                 final_levels = self._create_basic_levels(
                     highs, lows, closes, current_price, timeframe
                 )
@@ -199,8 +201,8 @@ class SupportResistanceDetector:
             # Limiter à 20 niveaux max pour performance
             return final_levels[:20]
 
-        except Exception as e:
-            logger.error(f"Erreur détection niveaux S/R: {e}")
+        except Exception:
+            logger.exception("Erreur détection niveaux S/R")
             return []
 
     def _detect_pivot_levels(
@@ -210,7 +212,7 @@ class SupportResistanceDetector:
         closes: np.ndarray,
         current_price: float,
         timeframe: str,
-    ) -> List[PriceLevel]:
+    ) -> list[PriceLevel]:
         """Détecte les points pivots (swing highs/lows)."""
         levels = []
 
@@ -253,18 +255,20 @@ class SupportResistanceDetector:
                                 price=float(price),
                                 level_type=LevelType.RESISTANCE,
                                 strength=LevelStrength.MODERATE,
-                                confidence=min(touches * 15, 85),
+                                confidence=min(
+                                    touches * 15,
+                                    85),
                                 touches=touches,
                                 volume_strength=0.0,
-                                distance_from_price=abs(price - current_price)
-                                / current_price,
+                                distance_from_price=abs(
+                                    price - current_price) / current_price,
                                 last_test_age=len(closes) - peak_idx,
                                 break_probability=self._calculate_break_probability(
-                                    price, closes, True
-                                ),
+                                    price,
+                                    closes,
+                                    True),
                                 timeframe=timeframe,
-                            )
-                        )
+                            ))
 
             # Traiter les supports
             for peak_idx in low_peaks[-10:]:  # Derniers 10 creux
@@ -280,18 +284,20 @@ class SupportResistanceDetector:
                                 price=float(price),
                                 level_type=LevelType.SUPPORT,
                                 strength=LevelStrength.MODERATE,
-                                confidence=min(touches * 15, 85),
+                                confidence=min(
+                                    touches * 15,
+                                    85),
                                 touches=touches,
                                 volume_strength=0.0,
-                                distance_from_price=abs(price - current_price)
-                                / current_price,
+                                distance_from_price=abs(
+                                    price - current_price) / current_price,
                                 last_test_age=len(closes) - peak_idx,
                                 break_probability=self._calculate_break_probability(
-                                    price, closes, False
-                                ),
+                                    price,
+                                    closes,
+                                    False),
                                 timeframe=timeframe,
-                            )
-                        )
+                            ))
 
         except Exception as e:
             logger.warning(f"Erreur détection pivots: {e}")
@@ -304,14 +310,14 @@ class SupportResistanceDetector:
         volumes: np.ndarray,
         current_price: float,
         timeframe: str,
-    ) -> List[PriceLevel]:
+    ) -> list[PriceLevel]:
         """Détecte les niveaux basés sur le volume (POC, Value Areas)."""
         levels = []
 
         try:
             # Créer un profil de volume
-            min_price = np.min(closes[-self.volume_window :])
-            max_price = np.max(closes[-self.volume_window :])
+            min_price = np.min(closes[-self.volume_window:])
+            max_price = np.max(closes[-self.volume_window:])
 
             # Diviser en bins de prix
             n_bins = min(50, len(closes) // 4)
@@ -319,10 +325,11 @@ class SupportResistanceDetector:
             volume_profile = np.zeros(n_bins - 1)
 
             # Calculer le volume pour chaque bin
-            recent_closes = closes[-self.volume_window :]
-            recent_volumes = volumes[-self.volume_window :]
+            recent_closes = closes[-self.volume_window:]
+            recent_volumes = volumes[-self.volume_window:]
 
-            for i, (price, vol) in enumerate(zip(recent_closes, recent_volumes)):
+            for _i, (price, vol) in enumerate(
+                    zip(recent_closes, recent_volumes)):
                 bin_idx = np.digitize(price, price_bins) - 1
                 if 0 <= bin_idx < len(volume_profile):
                     volume_profile[bin_idx] += vol
@@ -341,7 +348,8 @@ class SupportResistanceDetector:
                     volume_strength=float(
                         volume_profile[poc_idx] / np.sum(volume_profile)
                     ),
-                    distance_from_price=abs(poc_price - current_price) / current_price,
+                    distance_from_price=abs(
+                        poc_price - current_price) / current_price,
                     last_test_age=0,
                     break_probability=0.3,
                     timeframe=timeframe,
@@ -361,7 +369,8 @@ class SupportResistanceDetector:
                 va_low_idx > 0 or va_high_idx < len(volume_profile) - 1
             ):
                 # Choisir la direction avec le plus de volume
-                low_vol = volume_profile[va_low_idx - 1] if va_low_idx > 0 else 0
+                low_vol = volume_profile[va_low_idx -
+                                         1] if va_low_idx > 0 else 0
                 high_vol = (
                     volume_profile[va_high_idx + 1]
                     if va_high_idx < len(volume_profile) - 1
@@ -379,7 +388,8 @@ class SupportResistanceDetector:
 
             # Value Area High
             if va_high_idx != poc_idx:
-                vah_price = (price_bins[va_high_idx] + price_bins[va_high_idx + 1]) / 2
+                vah_price = (price_bins[va_high_idx] +
+                             price_bins[va_high_idx + 1]) / 2
                 levels.append(
                     PriceLevel(
                         price=float(vah_price),
@@ -400,7 +410,8 @@ class SupportResistanceDetector:
 
             # Value Area Low
             if va_low_idx != poc_idx:
-                val_price = (price_bins[va_low_idx] + price_bins[va_low_idx + 1]) / 2
+                val_price = (price_bins[va_low_idx] +
+                             price_bins[va_low_idx + 1]) / 2
                 levels.append(
                     PriceLevel(
                         price=float(val_price),
@@ -426,7 +437,7 @@ class SupportResistanceDetector:
 
     def _detect_psychological_levels(
         self, closes: np.ndarray, current_price: float, timeframe: str
-    ) -> List[PriceLevel]:
+    ) -> list[PriceLevel]:
         """Détecte les niveaux psychologiques (nombres ronds)."""
         levels = []
 
@@ -479,7 +490,8 @@ class SupportResistanceDetector:
                             confidence = 30 + min(touches * 10, 40)
 
                             # Niveaux particulièrement importants
-                            if level % (step * 10) == 0:  # Multiples de 10 fois le pas
+                            if level % (
+                                    step * 10) == 0:  # Multiples de 10 fois le pas
                                 strength = LevelStrength.MODERATE
                                 confidence += 15
 
@@ -497,7 +509,8 @@ class SupportResistanceDetector:
                                     confidence=confidence,
                                     touches=touches,
                                     volume_strength=0.2,  # Modéré pour psychologique
-                                    distance_from_price=abs(level - current_price)
+                                    distance_from_price=abs(
+                                        level - current_price)
                                     / current_price,
                                     last_test_age=self._days_since_last_touch(
                                         level, closes, step * 0.1
@@ -521,13 +534,14 @@ class SupportResistanceDetector:
         closes: np.ndarray,
         current_price: float,
         timeframe: str,
-    ) -> List[PriceLevel]:
+    ) -> list[PriceLevel]:
         """Détecte les lignes de tendance dynamiques."""
         levels = []
 
         try:
             # Détecter tendance haussière (support dynamique)
-            support_line = self._calculate_trendline(lows, trend_type="support")
+            support_line = self._calculate_trendline(
+                lows, trend_type="support")
             if support_line is not None:
                 current_support = support_line["current_level"]
 
@@ -553,7 +567,8 @@ class SupportResistanceDetector:
                 )
 
             # Détecter tendance baissière (résistance dynamique)
-            resistance_line = self._calculate_trendline(highs, trend_type="resistance")
+            resistance_line = self._calculate_trendline(
+                highs, trend_type="resistance")
             if resistance_line is not None:
                 current_resistance = resistance_line["current_level"]
 
@@ -584,8 +599,8 @@ class SupportResistanceDetector:
         return levels
 
     def _consolidate_levels(
-        self, levels: List[PriceLevel], current_price: float
-    ) -> List[PriceLevel]:
+        self, levels: list[PriceLevel], current_price: float
+    ) -> list[PriceLevel]:
         """Consolide les niveaux proches pour éviter la redondance."""
         if not levels:
             return []
@@ -623,7 +638,7 @@ class SupportResistanceDetector:
 
         return consolidated
 
-    def _merge_levels(self, levels: List[PriceLevel]) -> PriceLevel:
+    def _merge_levels(self, levels: list[PriceLevel]) -> PriceLevel:
         """Fusionne plusieurs niveaux similaires en un seul."""
         # Prix pondéré par la confiance
         total_confidence = sum(level.confidence for level in levels)
@@ -642,7 +657,9 @@ class SupportResistanceDetector:
         min_last_test_age = min(level.last_test_age for level in levels)
 
         # Force maximale
-        strength_values = [self._strength_to_number(level.strength) for level in levels]
+        strength_values = [
+            self._strength_to_number(
+                level.strength) for level in levels]
         max_strength_idx = np.argmax(strength_values)
         best_strength = levels[max_strength_idx].strength
 
@@ -650,7 +667,12 @@ class SupportResistanceDetector:
             price=float(weighted_price),
             level_type=max_confidence_level.level_type,
             strength=best_strength,
-            confidence=min(total_confidence / len(levels) + 10, 95),  # Bonus fusion
+            confidence=min(
+                total_confidence /
+                len(levels) +
+                10,
+                95),
+            # Bonus fusion
             touches=min(total_touches, 10),
             volume_strength=max_volume_strength,
             distance_from_price=max_confidence_level.distance_from_price,
@@ -664,12 +686,12 @@ class SupportResistanceDetector:
 
     def _calculate_final_strength(
         self,
-        levels: List[PriceLevel],
+        levels: list[PriceLevel],
         highs: np.ndarray,
         lows: np.ndarray,
         closes: np.ndarray,
         volumes: np.ndarray,
-    ) -> List[PriceLevel]:
+    ) -> list[PriceLevel]:
         """Calcule la force finale des niveaux."""
         for level in levels:
             # Recalculer les touches avec plus de précision
@@ -706,18 +728,22 @@ class SupportResistanceDetector:
     # ============ Méthodes utilitaires ============
 
     def _count_touches(
-        self, level: float, highs: np.ndarray, lows: np.ndarray, tolerance: float
-    ) -> int:
+            self,
+            level: float,
+            highs: np.ndarray,
+            lows: np.ndarray,
+            tolerance: float) -> int:
         """Compte le nombre de fois qu'un niveau a été testé."""
         touches = 0
         level_range = level * tolerance
 
         for high, low in zip(highs, lows):
             # Test du niveau (prix proche du niveau)
-            if abs(high - level) <= level_range or abs(low - level) <= level_range:
-                touches += 1
-            # Crossing du niveau (prix traverse le niveau)
-            elif low <= level <= high:
+            if abs(
+                    high -
+                    level) <= level_range or abs(
+                    low -
+                    level) <= level_range or low <= level <= high:
                 touches += 1
 
         return touches
@@ -749,18 +775,21 @@ class SupportResistanceDetector:
         recent_closes = closes[-10:]
 
         if is_resistance:
-            approaches = sum(1 for close in recent_closes if close > level * 0.98)
+            approaches = sum(
+                1 for close in recent_closes if close > level * 0.98)
         else:
-            approaches = sum(1 for close in recent_closes if close < level * 1.02)
+            approaches = sum(
+                1 for close in recent_closes if close < level * 1.02)
 
         # Plus d'approches = plus de probabilité de cassure
-        base_prob = min(approaches * 0.1, 0.7)
-
-        return base_prob
+        return min(approaches * 0.1, 0.7)
 
     def _calculate_volume_at_level(
-        self, level: float, closes: np.ndarray, volumes: np.ndarray, tolerance: float
-    ) -> float:
+            self,
+            level: float,
+            closes: np.ndarray,
+            volumes: np.ndarray,
+            tolerance: float) -> float:
         """Calcule la force du volume autour d'un niveau."""
         level_range = level * tolerance
         total_volume = 0
@@ -778,12 +807,13 @@ class SupportResistanceDetector:
         avg_total_volume = np.mean(volumes)
 
         return min(
-            avg_level_volume / avg_total_volume if avg_total_volume > 0 else 0, 2.0
-        )
+            avg_level_volume /
+            avg_total_volume if avg_total_volume > 0 else 0,
+            2.0)
 
     def _calculate_trendline(
         self, prices: np.ndarray, trend_type: str = "support"
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         """Calcule une ligne de tendance par régression linéaire."""
         try:
             if len(prices) < 10:
@@ -794,7 +824,8 @@ class SupportResistanceDetector:
             x = np.arange(len(y))
 
             # Régression linéaire
-            slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
+            slope, intercept, r_value, p_value, std_err = stats.linregress(
+                x, y)
 
             # R-squared pour la qualité de la ligne
             r_squared = r_value**2
@@ -839,7 +870,7 @@ class SupportResistanceDetector:
         closes: np.ndarray,
         current_price: float,
         timeframe: str,
-    ) -> List[PriceLevel]:
+    ) -> list[PriceLevel]:
         """
         Crée des niveaux basiques de fallback quand aucun niveau n'est détecté.
         Utilise les high/low récents et les moyennes.
@@ -894,9 +925,8 @@ class SupportResistanceDetector:
             # Niveau 3: Moyenne mobile 50 périodes
             if len(recent_closes) >= 50:
                 ma_50 = float(np.mean(recent_closes[-50:]))
-                level_type = (
-                    LevelType.SUPPORT if ma_50 < current_price else LevelType.RESISTANCE
-                )
+                level_type = (LevelType.SUPPORT if ma_50 <
+                              current_price else LevelType.RESISTANCE)
                 levels.append(
                     PriceLevel(
                         price=ma_50,
@@ -905,19 +935,20 @@ class SupportResistanceDetector:
                         confidence=50.0,
                         touches=1,
                         volume_strength=0.0,
-                        distance_from_price=abs(ma_50 - current_price) / current_price,
+                        distance_from_price=abs(
+                            ma_50 -
+                            current_price) /
+                        current_price,
                         last_test_age=0,
                         break_probability=0.6,
                         timeframe=timeframe,
-                    )
-                )
+                    ))
 
             # Niveau 4: Moyenne mobile 20 périodes
             if len(recent_closes) >= 20:
                 ma_20 = float(np.mean(recent_closes[-20:]))
-                level_type = (
-                    LevelType.SUPPORT if ma_20 < current_price else LevelType.RESISTANCE
-                )
+                level_type = (LevelType.SUPPORT if ma_20 <
+                              current_price else LevelType.RESISTANCE)
                 levels.append(
                     PriceLevel(
                         price=ma_20,
@@ -926,12 +957,14 @@ class SupportResistanceDetector:
                         confidence=45.0,
                         touches=1,
                         volume_strength=0.0,
-                        distance_from_price=abs(ma_20 - current_price) / current_price,
+                        distance_from_price=abs(
+                            ma_20 -
+                            current_price) /
+                        current_price,
                         last_test_age=0,
                         break_probability=0.6,
                         timeframe=timeframe,
-                    )
-                )
+                    ))
 
             # Niveau 5 & 6: High et Low de la dernière période de 24h environ
             if lookback >= 288:  # ~24h en 5m
@@ -989,11 +1022,11 @@ class SupportResistanceDetector:
 
     def get_nearest_levels(
         self,
-        levels: List[PriceLevel],
+        levels: list[PriceLevel],
         current_price: float,
         max_distance: float = 0.05,
         max_count: int = 5,
-    ) -> List[PriceLevel]:
+    ) -> list[PriceLevel]:
         """
         Retourne les niveaux les plus proches du prix actuel.
 
@@ -1015,15 +1048,14 @@ class SupportResistanceDetector:
                 nearby_levels.append(level)
 
         # Trier par distance puis par force
-        nearby_levels.sort(
-            key=lambda x: (x.distance_from_price, -self._strength_to_number(x.strength))
-        )
+        nearby_levels.sort(key=lambda x: (
+            x.distance_from_price, -self._strength_to_number(x.strength)))
 
         return nearby_levels[:max_count]
 
     def get_key_levels_summary(
-        self, levels: List[PriceLevel], current_price: float
-    ) -> Dict:
+        self, levels: list[PriceLevel], current_price: float
+    ) -> dict:
         """
         Retourne un résumé des niveaux clés.
 
@@ -1045,12 +1077,10 @@ class SupportResistanceDetector:
 
         # Trier par DISTANCE d'abord (scalping nécessite niveaux les plus proches)
         # Puis par force comme critère secondaire
-        supports.sort(
-            key=lambda x: (x.distance_from_price, -self._strength_to_number(x.strength))
-        )
-        resistances.sort(
-            key=lambda x: (x.distance_from_price, -self._strength_to_number(x.strength))
-        )
+        supports.sort(key=lambda x: (x.distance_from_price, -
+                                     self._strength_to_number(x.strength)))
+        resistances.sort(key=lambda x: (
+            x.distance_from_price, -self._strength_to_number(x.strength)))
 
         return {
             "nearest_support": supports[0].to_dict() if supports else None,

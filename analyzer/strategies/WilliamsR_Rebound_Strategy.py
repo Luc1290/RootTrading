@@ -4,9 +4,11 @@ Williams %R est un oscillateur de momentum qui mesure les niveaux de surachat/su
 et génère des signaux de rebound depuis les extrêmes.
 """
 
-from typing import Dict, Any, Optional
-from .base_strategy import BaseStrategy
+import contextlib
 import logging
+from typing import Any
+
+from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +29,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
     - SELL: Williams %R sort de zone surachat (-20) vers le bas + confirmations
     """
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
 
         # Paramètres Williams %R - RESSERRE pour vrais rebonds
@@ -44,7 +47,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         # Paramètres momentum et volume - STRICTS pour qualité
         self.momentum_alignment_required = True  # Momentum doit confirmer
         self.min_momentum_threshold = 45  # Momentum minimum plus strict
-        self.min_volume_confirmation = 1.5  # Volume ≥50% au-dessus normal (strict)
+        # Volume ≥50% au-dessus normal (strict)
+        self.min_volume_confirmation = 1.5
 
         # Paramètres confluence - EQUILIBRES (bonus mais avec seuils stricts)
         self.support_resistance_confluence = False  # Confluence S/R non requise
@@ -52,7 +56,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         self.min_oscillator_confluence = 0.10  # Confluence oscillateurs rehaussée
         self.min_sr_confluence = 0.20  # Confluence S/R rehaussée
 
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
         return {
             # Williams %R principal
@@ -123,7 +127,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             "pattern_confidence": self.indicators.get("pattern_confidence"),
         }
 
-    def _detect_williamsR_rebound_buy(self, values: Dict[str, Any]) -> Dict[str, Any]:
+    def _detect_williamsR_rebound_buy(
+            self, values: dict[str, Any]) -> dict[str, Any]:
         """Détecte un rebound haussier depuis zone survente Williams %R."""
         rebound_score = 0.0
         rebound_indicators = []
@@ -147,7 +152,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                 "williams_value": williams_val,
             }
 
-        # Vérifier rebound depuis survente (Williams %R > -80 après avoir été < -80)
+        # Vérifier rebound depuis survente (Williams %R > -80 après avoir été <
+        # -80)
         if williams_val > self.oversold_threshold and williams_val < -50:
             # Zone de rebound depuis survente (entre -80 et -50)
             rebound_distance = abs(williams_val - self.oversold_threshold)
@@ -192,7 +198,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             "rebound_type": "bullish_from_oversold",
         }
 
-    def _detect_williamsR_rebound_sell(self, values: Dict[str, Any]) -> Dict[str, Any]:
+    def _detect_williamsR_rebound_sell(
+            self, values: dict[str, Any]) -> dict[str, Any]:
         """Détecte un rebound baissier depuis zone surachat Williams %R."""
         rebound_score = 0.0
         rebound_indicators = []
@@ -216,7 +223,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                 "williams_value": williams_val,
             }
 
-        # Vérifier rebound depuis surachat (Williams %R < -20 après avoir été > -20)
+        # Vérifier rebound depuis surachat (Williams %R < -20 après avoir été >
+        # -20)
         if williams_val < self.overbought_threshold and williams_val > -50:
             # Zone de rebound depuis surachat (entre -50 et -20)
             rebound_distance = abs(self.overbought_threshold - williams_val)
@@ -262,8 +270,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         }
 
     def _detect_oscillator_confluence(
-        self, values: Dict[str, Any], signal_direction: str
-    ) -> Dict[str, Any]:
+        self, values: dict[str, Any], signal_direction: str
+    ) -> dict[str, Any]:
         """Détecte la confluence avec autres oscillateurs."""
         confluence_score = 0.0
         confluence_indicators = []
@@ -282,7 +290,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                         )
                     elif 20 <= rsi_val <= 40:  # RSI encore en zone basse
                         confluence_score += 0.1
-                        confluence_indicators.append(f"RSI zone basse ({rsi_val:.1f})")
+                        confluence_indicators.append(
+                            f"RSI zone basse ({rsi_val:.1f})")
                 elif signal_direction == "SELL":
                     if 50 <= rsi_val <= 70:  # RSI sortant de surachat
                         confluence_score += 0.15
@@ -291,7 +300,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                         )
                     elif 60 <= rsi_val <= 80:  # RSI encore en zone haute
                         confluence_score += 0.1
-                        confluence_indicators.append(f"RSI zone haute ({rsi_val:.1f})")
+                        confluence_indicators.append(
+                            f"RSI zone haute ({rsi_val:.1f})")
 
             except (ValueError, TypeError):
                 pass
@@ -309,7 +319,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                         stoch_k_val < 30 and stoch_k_val > stoch_d_val
                     ):  # Stoch cross up from oversold
                         confluence_score += 0.12
-                        confluence_indicators.append("Stochastic cross haussier")
+                        confluence_indicators.append(
+                            "Stochastic cross haussier")
                     elif stoch_k_val < 40:
                         confluence_score += 0.08
                         confluence_indicators.append(
@@ -320,7 +331,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                         stoch_k_val > 70 and stoch_k_val < stoch_d_val
                     ):  # Stoch cross down from overbought
                         confluence_score += 0.12
-                        confluence_indicators.append("Stochastic cross baissier")
+                        confluence_indicators.append(
+                            "Stochastic cross baissier")
                     elif stoch_k_val > 60:
                         confluence_score += 0.08
                         confluence_indicators.append(
@@ -358,8 +370,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         }
 
     def _detect_support_resistance_confluence(
-        self, values: Dict[str, Any], current_price: float, signal_direction: str
-    ) -> Dict[str, Any]:
+        self, values: dict[str, Any], current_price: float, signal_direction: str
+    ) -> dict[str, Any]:
         """Détecte la confluence avec niveaux de support/résistance."""
         sr_score = 0.0
         sr_indicators = []
@@ -484,7 +496,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             "indicators": sr_indicators,
         }
 
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """
         Génère un signal basé sur Williams %R rebound.
         """
@@ -501,11 +513,9 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
 
         # Récupérer prix actuel
         current_price = None
-        if "close" in self.data and self.data["close"]:
-            try:
+        if self.data.get("close"):
+            with contextlib.suppress(IndexError, ValueError, TypeError):
                 current_price = float(self.data["close"][-1])
-            except (IndexError, ValueError, TypeError):
-                pass
 
         if current_price is None:
             return {
@@ -548,14 +558,13 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                     else:
                         signal_side = "SELL"
                         primary_rebound = sell_rebound
+            # Pas de Williams %R disponible - utiliser scores
+            elif buy_rebound["score"] > sell_rebound["score"]:
+                signal_side = "BUY"
+                primary_rebound = buy_rebound
             else:
-                # Pas de Williams %R disponible - utiliser scores
-                if buy_rebound["score"] > sell_rebound["score"]:
-                    signal_side = "BUY"
-                    primary_rebound = buy_rebound
-                else:
-                    signal_side = "SELL"
-                    primary_rebound = sell_rebound
+                signal_side = "SELL"
+                primary_rebound = sell_rebound
         elif buy_rebound["is_rebound"]:
             signal_side = "BUY"
             primary_rebound = buy_rebound
@@ -593,7 +602,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             }
 
         # Vérifier confluences - NOUVEAU: OBLIGATOIRES pour signal
-        oscillator_confluence = self._detect_oscillator_confluence(values, signal_side)
+        oscillator_confluence = self._detect_oscillator_confluence(
+            values, signal_side)
         sr_confluence = self._detect_support_resistance_confluence(
             values, current_price, signal_side
         )
@@ -618,7 +628,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                             "rejection_reason": "momentum_too_low",
                         },
                     }
-                elif signal_side == "SELL" and momentum > 60:
+                if signal_side == "SELL" and momentum > 60:
                     return {
                         "side": None,
                         "confidence": 0.0,
@@ -650,7 +660,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                         "rejection_reason": "bias_contradiction",
                     },
                 }
-            elif signal_side == "SELL" and directional_bias == "BULLISH":
+            if signal_side == "SELL" and directional_bias == "BULLISH":
                 return {
                     "side": None,
                     "confidence": 0.0,
@@ -746,7 +756,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             reason += f" + {sr_confluence['indicators'][0]}"
             confirmation_count += 1
 
-        # CORRECTION: Momentum alignment - logique directionnelle optimisée pour rebonds
+        # CORRECTION: Momentum alignment - logique directionnelle optimisée
+        # pour rebonds
         momentum_score_val = values.get("momentum_score")
         if momentum_score_val is not None:
             try:
@@ -802,12 +813,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                     macd_val = float(macd_line)
                     macd_sig = float(macd_signal)
 
-                    if signal_side == "BUY" and macd_val > macd_sig:
-                        confidence_boost += 0.08
-                        if confirmation_count < 4:
-                            reason += " + MACD"
-                            confirmation_count += 1
-                    elif signal_side == "SELL" and macd_val < macd_sig:
+                    if (signal_side == "BUY" and macd_val > macd_sig) or (
+                            signal_side == "SELL" and macd_val < macd_sig):
                         confidence_boost += 0.08
                         if confirmation_count < 4:
                             reason += " + MACD"
@@ -841,14 +848,14 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         if bb_position is not None:
             try:
                 bb_pos = float(bb_position)
-                if signal_side == "BUY" and bb_pos <= 0.2:
-                    confidence_boost += 0.05
-                elif signal_side == "SELL" and bb_pos >= 0.8:
+                if (signal_side == "BUY" and bb_pos <= 0.2) or (
+                        signal_side == "SELL" and bb_pos >= 0.8):
                     confidence_boost += 0.05
             except (ValueError, TypeError):
                 pass
 
-        confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
+        confidence = self.calculate_confidence(
+            base_confidence, 1.0 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
 
         return {
@@ -864,16 +871,14 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                 "rebound_type": rebound_type,
                 "rebound_score": primary_rebound["score"] if primary_rebound else 0.0,
                 "rebound_indicators": (
-                    primary_rebound["indicators"] if primary_rebound else []
-                ),
+                    primary_rebound["indicators"] if primary_rebound else []),
                 "oscillator_confluence_score": oscillator_confluence["score"],
                 "oscillator_confluence_indicators": oscillator_confluence["indicators"],
                 "sr_confluence_score": sr_confluence["score"],
                 "sr_confluence_indicators": sr_confluence["indicators"],
                 "buy_rebound_analysis": buy_rebound if signal_side == "BUY" else None,
                 "sell_rebound_analysis": (
-                    sell_rebound if signal_side == "SELL" else None
-                ),
+                    sell_rebound if signal_side == "SELL" else None),
                 "volume_ratio": values.get("volume_ratio"),
                 "momentum_score": values.get("momentum_score"),
                 "directional_bias": values.get("directional_bias"),
@@ -893,7 +898,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
 
         for indicator in required_indicators:
             if indicator not in self.indicators:
-                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
+                logger.warning(
+                    f"{self.name}: Indicateur manquant: {indicator}")
                 return False
             if self.indicators[indicator] is None:
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")

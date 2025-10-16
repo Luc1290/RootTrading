@@ -3,23 +3,25 @@ Simple Data Fetcher - Service de récupération de données OHLCV brutes depuis 
 Ne fait AUCUN calcul d'indicateur - transmet uniquement les données brutes
 """
 
+from shared.src.redis_client import RedisClient
+from shared.src.config import SYMBOLS
+from gateway.src.kafka_producer import get_producer
 import asyncio
 import logging
-import json
-import time
+import os
+import sys
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+
 import aiohttp
 from aiohttp import ClientTimeout
-import sys
-import os
 
 # Ajouter le répertoire parent au path pour les imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+sys.path.append(
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "../../")))
 
-from shared.src.config import SYMBOLS
-from shared.src.redis_client import RedisClient
-from gateway.src.kafka_producer import get_producer
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +56,8 @@ class SimpleDataFetcher:
             "1d": 300,  # 300 jours = 10 mois (EMA 99 très stable)
         }
 
-        logger.info("📡 SimpleDataFetcher initialisé - données brutes uniquement")
+        logger.info(
+            "📡 SimpleDataFetcher initialisé - données brutes uniquement")
 
     async def start(self):
         """Démarre le service de récupération de données."""
@@ -62,14 +65,15 @@ class SimpleDataFetcher:
         logger.info("🚀 SimpleDataFetcher démarré")
 
         try:
-            # Récupération initiale des données historiques pour tous les symboles/timeframes
+            # Récupération initiale des données historiques pour tous les
+            # symboles/timeframes
             await self._fetch_initial_data()
 
             # Ensuite, lancer la surveillance en continu
             await self._continuous_fetch()
 
-        except Exception as e:
-            logger.error(f"❌ Erreur dans SimpleDataFetcher: {e}")
+        except Exception:
+            logger.exception("❌ Erreur dans SimpleDataFetcher")
         finally:
             self.running = False
 
@@ -89,7 +93,8 @@ class SimpleDataFetcher:
         success_count = sum(1 for r in results if not isinstance(r, Exception))
         total_count = len(tasks)
 
-        logger.info(f"✅ Données initiales récupérées: {success_count}/{total_count}")
+        logger.info(
+            f"✅ Données initiales récupérées: {success_count}/{total_count}")
 
     async def _fetch_symbol_timeframe_data(self, symbol: str, timeframe: str):
         """Récupère les données pour un symbole/timeframe spécifique."""
@@ -98,7 +103,10 @@ class SimpleDataFetcher:
 
             # URL de requête Binance
             url = f"{self.base_url}{self.klines_endpoint}"
-            params = {"symbol": symbol, "interval": timeframe, "limit": str(limit)}
+            params = {
+                "symbol": symbol,
+                "interval": timeframe,
+                "limit": str(limit)}
 
             async with aiohttp.ClientSession(timeout=self.timeout) as session:
                 async with session.get(url, params=params) as response:
@@ -117,19 +125,18 @@ class SimpleDataFetcher:
                             f"✅ Données récupérées: {symbol} {timeframe} ({len(klines)} bougies)"
                         )
                         return True
-                    else:
-                        logger.error(
-                            f"❌ Erreur API Binance {response.status} pour {symbol} {timeframe}"
-                        )
-                        return False
+                    logger.error(
+                        f"❌ Erreur API Binance {response.status} pour {symbol} {timeframe}"
+                    )
+                    return False
 
-        except Exception as e:
-            logger.error(f"❌ Erreur récupération {symbol} {timeframe}: {e}")
+        except Exception:
+            logger.exception("❌ Erreur récupération {symbol} {timeframe}")
             return False
 
     def _process_raw_klines(
-        self, klines: List, symbol: str, timeframe: str
-    ) -> List[Dict]:
+        self, klines: list, symbol: str, timeframe: str
+    ) -> list[dict]:
         """
         Traite les klines brutes pour en extraire uniquement les données OHLCV.
         AUCUN calcul d'indicateur technique.
@@ -160,17 +167,22 @@ class SimpleDataFetcher:
 
         return processed_candles
 
-    async def _publish_to_kafka(self, candles: List[Dict], symbol: str, timeframe: str):
+    async def _publish_to_kafka(
+            self,
+            candles: list[dict],
+            symbol: str,
+            timeframe: str):
         """Publie les données brutes sur Kafka via KafkaProducer."""
         try:
             for candle in candles:
                 # Utiliser le KafkaProducer pour publier
                 self.kafka_producer.publish_market_data(candle, key=symbol)
 
-                logger.debug(f"📤 Données historiques publiées: {symbol} {timeframe}")
+                logger.debug(
+                    f"📤 Données historiques publiées: {symbol} {timeframe}")
 
-        except Exception as e:
-            logger.error(f"❌ Erreur publication Kafka: {e}")
+        except Exception:
+            logger.exception("❌ Erreur publication Kafka")
 
     async def _continuous_fetch(self):
         """Surveillance continue des nouvelles données."""
@@ -178,19 +190,23 @@ class SimpleDataFetcher:
 
         while self.running:
             try:
-                # Attendre 60 secondes entre les vérifications (moins de pression sur l'API)
+                # Attendre 60 secondes entre les vérifications (moins de
+                # pression sur l'API)
                 await asyncio.sleep(60)
 
-                # Récupérer les dernières données pour tous les symboles avec un petit délai
+                # Récupérer les dernières données pour tous les symboles avec
+                # un petit délai
                 for symbol in self.symbols:
                     for timeframe in self.timeframes:
                         await self._fetch_latest_data(symbol, timeframe)
-                        # Petit délai entre chaque requête pour éviter les rate limits
+                        # Petit délai entre chaque requête pour éviter les rate
+                        # limits
                         await asyncio.sleep(0.1)
 
-            except Exception as e:
-                logger.error(f"❌ Erreur surveillance continue: {e}")
-                await asyncio.sleep(60)  # Attendre plus longtemps en cas d'erreur
+            except Exception:
+                logger.exception("❌ Erreur surveillance continue")
+                # Attendre plus longtemps en cas d'erreur
+                await asyncio.sleep(60)
 
     async def _fetch_latest_data(self, symbol: str, timeframe: str):
         """Récupère uniquement les dernières données pour un symbole/timeframe."""
@@ -204,7 +220,8 @@ class SimpleDataFetcher:
                     if response.status == 200:
                         klines = await response.json()
 
-                        # Traiter toutes les bougies fermées (pas celle en cours)
+                        # Traiter toutes les bougies fermées (pas celle en
+                        # cours)
                         if len(klines) >= 2:
                             closed_klines = klines[
                                 :-1
@@ -217,8 +234,9 @@ class SimpleDataFetcher:
                                 processed_data, symbol, timeframe
                             )
 
-        except Exception as e:
-            logger.error(f"❌ Erreur récupération latest {symbol} {timeframe}: {e}")
+        except Exception:
+            logger.exception(
+                "❌ Erreur récupération latest {symbol} {timeframe}")
 
     async def _fetch_period_data(
         self, symbol: str, timeframe: str, start_time, end_time
@@ -261,8 +279,8 @@ class SimpleDataFetcher:
                         )
                         return False
 
-        except Exception as e:
-            logger.error(f"❌ Erreur fetch période {symbol} {timeframe}: {e}")
+        except Exception:
+            logger.exception("❌ Erreur fetch période {symbol} {timeframe}")
             return False
 
     async def stop(self):

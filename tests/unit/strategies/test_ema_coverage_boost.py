@@ -3,13 +3,13 @@ Tests spécifiques pour améliorer la couverture d'EMA_Cross_Strategy.
 Cible les lignes non couvertes : 68-69, 93-94, 103, 181-184, etc.
 """
 
-import pytest
-import sys
+from analyzer.strategies.EMA_Cross_Strategy import EMA_Cross_Strategy
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-
-from analyzer.strategies.EMA_Cross_Strategy import EMA_Cross_Strategy
 
 
 class TestEMACoverageBoost:
@@ -81,7 +81,8 @@ class TestEMACoverageBoost:
         # Ligne 103 : current_price is None
         assert result["side"] is None
         assert result["confidence"] == 0.0
-        # Erreur peut être détectée à différents niveaux (validation vs generation)
+        # Erreur peut être détectée à différents niveaux (validation vs
+        # generation)
         assert (
             "EMA 12/26 ou prix non disponibles" in result["reason"]
             or "Données insuffisantes" in result["reason"]
@@ -92,7 +93,8 @@ class TestEMACoverageBoost:
         """Test lignes 181-184: Différents cas de séparation EMA."""
         data = {"close": [49000, 49500, 50100]}
 
-        # Test séparations à différents niveaux pour couvrir toutes les branches
+        # Test séparations à différents niveaux pour couvrir toutes les
+        # branches
         separation_cases = [
             # Séparations très faibles (< min_separation_pct)
             {"ema_12": 50000.5, "ema_26": 50000.0, "ema_50": 49800},  # 0.001%
@@ -129,14 +131,16 @@ class TestEMACoverageBoost:
             {**base_setup, "ema_12": 49700, "ema_26": 50000, "ema_99": 50500},
             # EMA99 contredit la tendance (lignes 212-215)
             {**base_setup, "ema_99": 51000},  # Prix < EMA99 pour signal BUY
-            # EMA99 None (pas de test spécial mais assure que les branches sont vues)
+            # EMA99 None (pas de test spécial mais assure que les branches sont
+            # vues)
             {**base_setup, "ema_99": None},
         ]
 
         for indicators in ema99_cases:
             # Ajuster data selon le signal attendu
             if indicators["ema_12"] < indicators["ema_26"]:
-                test_data = {"close": [50500, 50200, 49400]}  # Prix < EMA50 pour SELL
+                # Prix < EMA50 pour SELL
+                test_data = {"close": [50500, 50200, 49400]}
             else:
                 test_data = data
 
@@ -166,7 +170,10 @@ class TestEMACoverageBoost:
                 "macd_histogram": 5,
             },  # BUY + MACD > 0
             # MACD confirme mais pas parfait (lignes 235-237)
-            {**base_setup, "macd_line": -30, "macd_signal": -35},  # BUY mais MACD < 0
+            {**base_setup,
+             "macd_line": -30,
+             "macd_signal": -35},
+            # BUY mais MACD < 0
             # MACD diverge (lignes 239-241)
             {
                 **base_setup,

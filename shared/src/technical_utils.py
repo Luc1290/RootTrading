@@ -8,16 +8,17 @@ Shared utilities for technical indicator calculations:
 - Error handling utilities
 """
 
+import logging
+from typing import Any
+
 import numpy as np
 import pandas as pd
-from typing import List, Union, Tuple, Optional, Any, Dict
-import logging
 
 logger = logging.getLogger(__name__)
 
 
 def to_numpy_array(
-    data: Union[List[float], np.ndarray, pd.Series], allow_nan: bool = False
+    data: list[float] | np.ndarray | pd.Series, allow_nan: bool = False
 ) -> np.ndarray:
     """
     Convert input data to numpy array with enhanced error handling.
@@ -39,10 +40,9 @@ def to_numpy_array(
         raise ValueError("Input list cannot be empty")
 
     try:
-        if isinstance(data, pd.Series):
-            array = data.values
-        else:
-            array = np.asarray(data, dtype=float)
+        array = data.values if isinstance(
+            data, pd.Series) else np.asarray(
+            data, dtype=float)
     except (TypeError, ValueError) as e:
         raise ValueError(f"Cannot convert data to numpy array: {e}")
 
@@ -53,7 +53,8 @@ def to_numpy_array(
     # Check for NaN values
     if not allow_nan and np.isnan(array).any():
         nan_count = int(np.isnan(array).sum())
-        raise ValueError(f"Array contains {nan_count} NaN values (not allowed)")
+        raise ValueError(
+            f"Array contains {nan_count} NaN values (not allowed)")
 
     # Check for infinite values
     if np.isinf(array).any():
@@ -66,11 +67,11 @@ def to_numpy_array(
 
 
 def validate_and_align_arrays(
-    *arrays: Union[List[float], np.ndarray, pd.Series],
+    *arrays: list[float] | np.ndarray | pd.Series,
     min_length: int = 1,
     allow_nan: bool = False,
     alignment: str = "right",
-) -> Tuple[np.ndarray, ...]:
+) -> tuple[np.ndarray, ...]:
     """
     Validate and align multiple arrays to the same length.
 
@@ -133,24 +134,24 @@ def validate_and_align_arrays(
 
     # Validate final length
     if target_length < min_length:
-        raise ValueError(f"Aligned arrays too short: {target_length} < {min_length}")
+        raise ValueError(
+            f"Aligned arrays too short: {target_length} < {min_length}")
 
     # Log alignment info if significant truncation occurred
     max_original = max(original_lengths)
     if max_original - target_length > max_original * 0.1:  # More than 10% truncated
         logger.info(
             f"Array alignment: {original_lengths} -> {target_length} "
-            f"({max_original - target_length} values truncated, alignment='{alignment}')"
-        )
+            f"({max_original - target_length} values truncated, alignment='{alignment}')")
 
     return tuple(aligned_arrays)
 
 
 def safe_divide(
-    numerator: Union[float, np.ndarray],
-    denominator: Union[float, np.ndarray],
+    numerator: float | np.ndarray,
+    denominator: float | np.ndarray,
     default_value: float = 0.0,
-) -> Union[float, np.ndarray]:
+) -> float | np.ndarray:
     """
     Perform safe division avoiding division by zero.
 
@@ -166,17 +167,16 @@ def safe_divide(
     if np.isscalar(numerator) and np.isscalar(denominator):
         try:
             numerator_float = (
-                float(numerator) if isinstance(numerator, (int, float, str)) else 0.0
-            )
+                float(numerator) if isinstance(
+                    numerator, int | float | str) else 0.0)
             denominator_float = (
                 float(denominator)
-                if isinstance(denominator, (int, float, str))
+                if isinstance(denominator, int | float | str)
                 else 1.0
             )
             if denominator_float == 0:
                 return float(default_value)
-            else:
-                return numerator_float / denominator_float
+            return numerator_float / denominator_float
         except (TypeError, ValueError, OverflowError):
             return float(default_value)
 
@@ -194,7 +194,7 @@ def safe_divide(
 
 
 def calculate_returns(
-    prices: Union[List[float], np.ndarray], periods: int = 1, method: str = "simple"
+    prices: list[float] | np.ndarray, periods: int = 1, method: str = "simple"
 ) -> np.ndarray:
     """
     Calculate returns from price series.
@@ -210,26 +210,27 @@ def calculate_returns(
     prices_array = to_numpy_array(prices)
 
     if len(prices_array) <= periods:
-        raise ValueError(f"Price array too short: {len(prices_array)} <= {periods}")
+        raise ValueError(
+            f"Price array too short: {len(prices_array)} <= {periods}")
 
     if method == "simple":
         # Simple returns: (P_t - P_{t-n}) / P_{t-n}
-        returns = (prices_array[periods:] - prices_array[:-periods]) / prices_array[
-            :-periods
-        ]
+        returns = (prices_array[periods:] -
+                   prices_array[:-periods]) / prices_array[:-periods]
 
     elif method == "log":
         # Log returns: ln(P_t / P_{t-n})
         returns = np.log(prices_array[periods:] / prices_array[:-periods])
 
     else:
-        raise ValueError(f"Invalid method: {method}. Must be 'simple' or 'log'")
+        raise ValueError(
+            f"Invalid method: {method}. Must be 'simple' or 'log'")
 
     return returns
 
 
 def calculate_rolling_stats(
-    data: Union[List[float], np.ndarray], window: int, stats: Optional[List[str]] = None
+    data: list[float] | np.ndarray, window: int, stats: list[str] | None = None
 ) -> dict:
     """
     Calculate rolling statistics for a data series.
@@ -261,7 +262,7 @@ def calculate_rolling_stats(
     if "std" in stats:
         results["std"] = np.array(
             [
-                np.std(data_array[i : i + window])
+                np.std(data_array[i: i + window])
                 for i in range(len(data_array) - window + 1)
             ]
         )
@@ -269,7 +270,7 @@ def calculate_rolling_stats(
     if "min" in stats:
         results["min"] = np.array(
             [
-                np.min(data_array[i : i + window])
+                np.min(data_array[i: i + window])
                 for i in range(len(data_array) - window + 1)
             ]
         )
@@ -277,7 +278,7 @@ def calculate_rolling_stats(
     if "max" in stats:
         results["max"] = np.array(
             [
-                np.max(data_array[i : i + window])
+                np.max(data_array[i: i + window])
                 for i in range(len(data_array) - window + 1)
             ]
         )
@@ -285,7 +286,7 @@ def calculate_rolling_stats(
     if "median" in stats:
         results["median"] = np.array(
             [
-                np.median(data_array[i : i + window])
+                np.median(data_array[i: i + window])
                 for i in range(len(data_array) - window + 1)
             ]
         )
@@ -294,8 +295,8 @@ def calculate_rolling_stats(
 
 
 def detect_outliers(
-    data: Union[List[float], np.ndarray], method: str = "iqr", multiplier: float = 1.5
-) -> Tuple[np.ndarray, np.ndarray]:
+    data: list[float] | np.ndarray, method: str = "iqr", multiplier: float = 1.5
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Detect outliers in data series.
 
@@ -359,8 +360,10 @@ def detect_outliers(
 
 
 def smooth_data(
-    data: Union[List[float], np.ndarray], method: str = "sma", window: int = 5, **kwargs
-) -> np.ndarray:
+        data: list[float] | np.ndarray,
+        method: str = "sma",
+        window: int = 5,
+        **kwargs) -> np.ndarray:
     """
     Smooth data using various methods.
 
@@ -390,7 +393,8 @@ def smooth_data(
             if np.isnan(data_array[i]):
                 smoothed[i] = smoothed[i - 1]
             else:
-                smoothed[i] = alpha * data_array[i] + (1 - alpha) * smoothed[i - 1]
+                smoothed[i] = alpha * data_array[i] + \
+                    (1 - alpha) * smoothed[i - 1]
 
     elif method == "gaussian":
         # Gaussian smoothing
@@ -414,7 +418,7 @@ def smooth_data(
     return smoothed
 
 
-def validate_indicator_params(**params) -> Dict[str, Union[int, float, Any]]:
+def validate_indicator_params(**params) -> dict[str, int | float | Any]:
     """
     Validate common indicator parameters.
 
@@ -427,27 +431,30 @@ def validate_indicator_params(**params) -> Dict[str, Union[int, float, Any]]:
     Raises:
         ValueError: If any parameter is invalid
     """
-    validated: Dict[str, Union[int, float, Any]] = {}
+    validated: dict[str, int | float | Any] = {}
 
     # Common validations
     for key, value in params.items():
-        if key.endswith("_period") or key.endswith("_window") or key == "period":
+        if key.endswith(("_period", "_window")) or key == "period":
             if not isinstance(value, int) or value <= 0:
-                raise ValueError(f"{key} must be a positive integer, got {value}")
+                raise ValueError(
+                    f"{key} must be a positive integer, got {value}")
             validated[key] = value
 
         elif key in ["multiplier", "factor", "threshold"]:
-            if not isinstance(value, (int, float)) or value <= 0:
-                raise ValueError(f"{key} must be a positive number, got {value}")
+            if not isinstance(value, int | float) or value <= 0:
+                raise ValueError(
+                    f"{key} must be a positive number, got {value}")
             validated[key] = float(value)
 
         elif key in ["overbought", "oversold"]:
-            if not isinstance(value, (int, float)) or not (0 <= value <= 100):
-                raise ValueError(f"{key} must be between 0 and 100, got {value}")
+            if not isinstance(value, int | float) or not (0 <= value <= 100):
+                raise ValueError(
+                    f"{key} must be between 0 and 100, got {value}")
             validated[key] = float(value)
 
         elif key.endswith("_ratio"):
-            if not isinstance(value, (int, float)) or value < 0:
+            if not isinstance(value, int | float) or value < 0:
                 raise ValueError(f"{key} must be non-negative, got {value}")
             validated[key] = float(value)
 
@@ -459,9 +466,9 @@ def validate_indicator_params(**params) -> Dict[str, Union[int, float, Any]]:
 
 
 def calculate_true_range(
-    highs: Union[List[float], np.ndarray],
-    lows: Union[List[float], np.ndarray],
-    closes: Union[List[float], np.ndarray],
+    highs: list[float] | np.ndarray,
+    lows: list[float] | np.ndarray,
+    closes: list[float] | np.ndarray,
 ) -> np.ndarray:
     """
     Calculate True Range for volatility indicators.
@@ -474,7 +481,8 @@ def calculate_true_range(
     Returns:
         Array of True Range values
     """
-    highs, lows, closes = validate_and_align_arrays(highs, lows, closes, min_length=2)
+    highs, lows, closes = validate_and_align_arrays(
+        highs, lows, closes, min_length=2)
 
     # True Range = max(high-low, high-prev_close, prev_close-low)
     tr_values = []
@@ -494,7 +502,7 @@ def calculate_true_range(
 
 
 def handle_missing_data(
-    data: Union[List[float], np.ndarray],
+    data: list[float] | np.ndarray,
     method: str = "forward_fill",
     max_consecutive: int = 5,
 ) -> np.ndarray:

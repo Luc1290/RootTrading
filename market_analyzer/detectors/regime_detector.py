@@ -8,12 +8,12 @@ This module identifies current market conditions and regimes:
 - Breakout (regime change)
 """
 
-import numpy as np
-import pandas as pd
-from typing import Dict, List, Optional, Union, Tuple, NamedTuple, Any
+import logging
 from dataclasses import dataclass
 from enum import Enum
-import logging
+from typing import Any
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +52,10 @@ class MarketRegime:
     trend_slope: float
     support_resistance_strength: float
     volume_profile: str
-    key_levels: List[float]
-    timestamp: Optional[str] = None
+    key_levels: list[float]
+    timestamp: str | None = None
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convertit en dictionnaire pour export."""
         return {
             "regime_type": self.regime_type.value,
@@ -101,15 +101,15 @@ class RegimeDetector:
         self.volume_threshold = volume_threshold
 
         # Cache pour optimiser les calculs
-        self._cache: Dict[str, Any] = {}
+        self._cache: dict[str, Any] = {}
 
     def detect_regime(
         self,
-        highs: Union[List[float], np.ndarray],
-        lows: Union[List[float], np.ndarray],
-        closes: Union[List[float], np.ndarray],
-        volumes: Union[List[float], np.ndarray],
-        symbol: Optional[str] = None,
+        highs: list[float] | np.ndarray,
+        lows: list[float] | np.ndarray,
+        closes: list[float] | np.ndarray,
+        volumes: list[float] | np.ndarray,
+        symbol: str | None = None,
         include_analysis: bool = True,
         enable_cache: bool = True,
     ) -> MarketRegime:
@@ -149,9 +149,11 @@ class RegimeDetector:
             trend_analysis = self._analyze_trend(
                 highs, lows, closes, symbol, enable_cache
             )  # Passer highs/lows pour ADX
-            momentum_analysis = self._analyze_momentum(closes, symbol, enable_cache)
+            momentum_analysis = self._analyze_momentum(
+                closes, symbol, enable_cache)
             volume_analysis = self._analyze_volume(volumes)
-            structure_analysis = self._analyze_market_structure(highs, lows, closes)
+            structure_analysis = self._analyze_market_structure(
+                highs, lows, closes)
 
             # Détection du régime
             regime_type = self._determine_regime_type(
@@ -167,8 +169,7 @@ class RegimeDetector:
             )
 
             confidence = self._calculate_confidence(
-                volatility_analysis, trend_analysis, momentum_analysis, volume_analysis
-            )
+                volatility_analysis, trend_analysis, momentum_analysis, volume_analysis)
 
             # Durée du régime (estimation)
             duration = self._estimate_regime_duration(closes, regime_type)
@@ -188,8 +189,8 @@ class RegimeDetector:
                 key_levels=key_levels,
             )
 
-        except Exception as e:
-            logger.error(f"Erreur détection régime: {e}")
+        except Exception:
+            logger.exception("Erreur détection régime")
             return self._unknown_regime()
 
     def _analyze_volatility(
@@ -197,12 +198,13 @@ class RegimeDetector:
         highs: np.ndarray,
         lows: np.ndarray,
         closes: np.ndarray,
-        symbol: Optional[str] = None,
+        symbol: str | None = None,
         enable_cache: bool = True,
-    ) -> Dict:
+    ) -> dict:
         """Analyse la volatilité du marché."""
         from ..indicators.volatility.atr import calculate_atr_series
-        from ..indicators.volatility.bollinger import calculate_bollinger_bands_series
+        from ..indicators.volatility.bollinger import \
+            calculate_bollinger_bands_series
 
         # ATR pour volatilité absolue
         atr_series = calculate_atr_series(highs, lows, closes)
@@ -212,7 +214,8 @@ class RegimeDetector:
             return {"current_volatility": 0.0, "volatility_percentile": 50}
 
         current_atr = atr_values[-1]
-        atr_percentile = self._calculate_percentile(atr_values, current_atr, 20)
+        atr_percentile = self._calculate_percentile(
+            atr_values, current_atr, 20)
 
         # Bollinger Bands width pour volatilité relative
         bb_series = calculate_bollinger_bands_series(closes)
@@ -227,7 +230,8 @@ class RegimeDetector:
                 and lower_val is not None
                 and middle_val is not None
             ):
-                width = (float(upper_val) - float(lower_val)) / float(middle_val)
+                width = (float(upper_val) - float(lower_val)) / \
+                    float(middle_val)
                 bb_widths.append(width)
 
         bb_width_percentile = 50.0
@@ -257,12 +261,12 @@ class RegimeDetector:
         highs: np.ndarray,
         lows: np.ndarray,
         closes: np.ndarray,
-        symbol: Optional[str] = None,
+        symbol: str | None = None,
         enable_cache: bool = True,
-    ) -> Dict:
+    ) -> dict:
         """Analyse la tendance."""
+        from ..indicators.trend.adx import calculate_adx_full
         from ..indicators.trend.moving_averages import calculate_ema_series
-        from ..indicators.trend.adx import calculate_adx, calculate_adx_full
 
         # === CALCUL ADX (prioritaire pour classification régime) ===
         adx_full = calculate_adx_full(highs, lows, closes, period=14)
@@ -278,13 +282,13 @@ class RegimeDetector:
 
         if symbol and enable_cache:
             # Use cached individual EMA calculations
-            ema_fast_current = calculate_ema(
+            calculate_ema(
                 closes, ema_periods["fast"], symbol, enable_cache
             )
-            ema_medium_current = calculate_ema(
+            calculate_ema(
                 closes, ema_periods["medium"], symbol, enable_cache
             )
-            ema_slow_current = calculate_ema(
+            calculate_ema(
                 closes, ema_periods["slow"], symbol, enable_cache
             )
 
@@ -345,7 +349,8 @@ class RegimeDetector:
         recent_ema = [x["fast"] for x in valid_emas[-10:]]
         raw_slope = self._calculate_slope(recent_ema)
         avg_price = np.mean(recent_ema)
-        # Normaliser la pente : (pente / prix_moyen) * 100 pour obtenir un pourcentage
+        # Normaliser la pente : (pente / prix_moyen) * 100 pour obtenir un
+        # pourcentage
         slope = (raw_slope / avg_price) * 100 if avg_price > 0 else 0.0
 
         # Force de tendance (distance entre EMAs)
@@ -370,12 +375,13 @@ class RegimeDetector:
     def _analyze_momentum(
         self,
         closes: np.ndarray,
-        symbol: Optional[str] = None,
+        symbol: str | None = None,
         enable_cache: bool = True,
-    ) -> Dict:
+    ) -> dict:
         """Analyse le momentum."""
-        from ..indicators.momentum.rsi import calculate_rsi_series, calculate_rsi
-        from ..indicators.trend.macd import calculate_macd, calculate_macd_series
+        from ..indicators.momentum.rsi import (calculate_rsi,
+                                               calculate_rsi_series)
+        from ..indicators.trend.macd import calculate_macd_series
 
         # RSI pour momentum (with caching if symbol provided)
         if symbol and enable_cache:
@@ -387,7 +393,7 @@ class RegimeDetector:
             rsi_series = calculate_rsi_series(closes)
             current_rsi = rsi_series[-1] if rsi_series else None
 
-        rsi_values = [x for x in rsi_series if x is not None]
+        [x for x in rsi_series if x is not None]
 
         momentum_direction = "neutral"
         momentum_strength: float = 0.0
@@ -411,10 +417,8 @@ class RegimeDetector:
             macd_val = macd_line[i]
             signal_val = macd_signal[i]
             if macd_val is not None and signal_val is not None:
-                if float(macd_val) > float(signal_val):
-                    macd_direction = "bullish"
-                else:
-                    macd_direction = "bearish"
+                macd_direction = "bullish" if float(
+                    macd_val) > float(signal_val) else "bearish"
                 break
 
         # Cohérence momentum - plus nuancée
@@ -423,13 +427,13 @@ class RegimeDetector:
         elif momentum_direction == "neutral" or macd_direction == "neutral":
             # Si l'un est neutre, pas d'incohérence
             momentum_coherent = True
+        # Vérifier si c'est juste un décalage temporel normal
+        # Si la force du momentum est faible, l'incohérence est moins
+        # importante
+        elif momentum_strength < 40:
+            momentum_coherent = True  # Décalage acceptable en momentum faible
         else:
-            # Vérifier si c'est juste un décalage temporel normal
-            # Si la force du momentum est faible, l'incohérence est moins importante
-            if momentum_strength < 40:
-                momentum_coherent = True  # Décalage acceptable en momentum faible
-            else:
-                momentum_coherent = False
+            momentum_coherent = False
 
         return {
             "direction": momentum_direction,
@@ -438,7 +442,7 @@ class RegimeDetector:
             "coherent": momentum_coherent,
         }
 
-    def _analyze_volume(self, volumes: np.ndarray) -> Dict:
+    def _analyze_volume(self, volumes: np.ndarray) -> dict:
         """Analyse le profil de volume."""
         if len(volumes) < 20:
             return {"profile": "insufficient_data", "relative_volume": 1.0}
@@ -447,8 +451,8 @@ class RegimeDetector:
         recent_avg_volume = np.mean(volumes[-20:])
         current_volume = volumes[-1]
         relative_volume = (
-            current_volume / recent_avg_volume if recent_avg_volume > 0 else 1.0
-        )
+            current_volume /
+            recent_avg_volume if recent_avg_volume > 0 else 1.0)
 
         # Classification profil volume
         if relative_volume > 2.0:
@@ -479,7 +483,7 @@ class RegimeDetector:
 
     def _analyze_market_structure(
         self, highs: np.ndarray, lows: np.ndarray, closes: np.ndarray
-    ) -> Dict:
+    ) -> dict:
         """Analyse la structure de marché."""
         # Détection de niveaux de support/résistance basique
         recent_highs = highs[-20:]
@@ -491,7 +495,8 @@ class RegimeDetector:
         sr_strength = 1 - (price_variance / (avg_price**2))  # Normalisé
 
         # Range du marché
-        current_range = (np.max(recent_highs) - np.min(recent_lows)) / avg_price
+        current_range = (np.max(recent_highs) -
+                         np.min(recent_lows)) / avg_price
 
         # Classification structure
         if current_range < 0.02:  # 2%
@@ -508,7 +513,7 @@ class RegimeDetector:
         }
 
     def _determine_regime_type(
-        self, volatility: Dict, trend: Dict, momentum: Dict, structure: Dict
+        self, volatility: dict, trend: dict, momentum: dict, structure: dict
     ) -> RegimeType:
         """Détermine le type de régime avec logique optimisée pour crypto."""
 
@@ -523,8 +528,7 @@ class RegimeDetector:
             f"Volatilité: {volatility['regime']}, Trend: {trend['direction']}, "
             f"Slope: {trend['slope']:.3f}, EMA align: {trend['ema_alignment']}, "
             f"Momentum: {momentum['direction']}, cohérent: {momentum['coherent']}, "
-            f"force: {momentum['strength']}"
-        )
+            f"force: {momentum['strength']}")
 
         # === PRIORITÉ 1: VOLATILITÉ EXTRÊME ===
         if volatility["regime"] == "high":
@@ -532,7 +536,7 @@ class RegimeDetector:
             if momentum["strength"] > 60:
                 if momentum["direction"] == "bullish" or trend["slope"] > 0.2:
                     return RegimeType.BREAKOUT_BULL
-                elif momentum["direction"] == "bearish" or trend["slope"] < -0.2:
+                if momentum["direction"] == "bearish" or trend["slope"] < -0.2:
                     return RegimeType.BREAKOUT_BEAR
             # Sinon juste volatile
             if structure["structure"] == "wide_range":
@@ -556,35 +560,30 @@ class RegimeDetector:
             if adx >= 40:
                 if plus_di > minus_di:
                     return RegimeType.TRENDING_BULL
-                else:
-                    return RegimeType.TRENDING_BEAR
+                return RegimeType.TRENDING_BEAR
 
             # ADX 25-40 = Tendance confirmée
             # Vérifier alignement EMA + Momentum
             if plus_di > minus_di:
                 # Direction bullish selon DI
                 if momentum["direction"] == "bullish" or trend["direction"] in [
-                    "bullish",
-                    "bullish_partial",
-                ]:
+                        "bullish", "bullish_partial", ]:
                     return RegimeType.TRENDING_BULL
-                else:
-                    # Divergence DI/momentum = possiblement début breakout ou transition
-                    if momentum["strength"] > 50:
-                        return RegimeType.TRANSITION
-                    return RegimeType.TRENDING_BULL  # Suivre ADX/DI
-            else:
-                # Direction bearish selon DI
-                if momentum["direction"] == "bearish" or trend["direction"] in [
-                    "bearish",
-                    "bearish_partial",
-                ]:
-                    return RegimeType.TRENDING_BEAR
-                else:
-                    # Divergence DI/momentum
-                    if momentum["strength"] > 50:
-                        return RegimeType.TRANSITION
-                    return RegimeType.TRENDING_BEAR  # Suivre ADX/DI
+                # Divergence DI/momentum = possiblement début breakout ou
+                # transition
+                if momentum["strength"] > 50:
+                    return RegimeType.TRANSITION
+                return RegimeType.TRENDING_BULL  # Suivre ADX/DI
+            # Direction bearish selon DI
+            if momentum["direction"] == "bearish" or trend["direction"] in [
+                "bearish",
+                "bearish_partial",
+            ]:
+                return RegimeType.TRENDING_BEAR
+            # Divergence DI/momentum
+            if momentum["strength"] > 50:
+                return RegimeType.TRANSITION
+            return RegimeType.TRENDING_BEAR  # Suivre ADX/DI
 
         # === FALLBACK (ne devrait presque jamais arriver) ===
         # Si ADX < 25 et pas de condition ci-dessus remplie
@@ -594,7 +593,7 @@ class RegimeDetector:
         return RegimeType.TRANSITION
 
     def _calculate_regime_strength(
-        self, volatility: Dict, trend: Dict, momentum: Dict
+        self, volatility: dict, trend: dict, momentum: dict
     ) -> RegimeStrength:
         """Calcule la force du régime avec seuils adaptés crypto."""
 
@@ -610,23 +609,24 @@ class RegimeDetector:
             100 - volatility["volatility_percentile"]
         )  # Inverse pour trending
 
-        # Crypto : volatilité moins importante, trend et momentum plus importants
+        # Crypto : volatilité moins importante, trend et momentum plus
+        # importants
         composite_score = (
             trend_score * 0.5 + momentum_score * 0.4 + volatility_score * 0.1
         )
 
-        # Seuils plus bas pour crypto (mouvement rapide = fort même si divergent)
+        # Seuils plus bas pour crypto (mouvement rapide = fort même si
+        # divergent)
         if composite_score > 65:  # Baissé de 75 à 65
             return RegimeStrength.EXTREME
-        elif composite_score > 40:  # Baissé de 50 à 40
+        if composite_score > 40:  # Baissé de 50 à 40
             return RegimeStrength.STRONG
-        elif composite_score > 20:  # Baissé de 25 à 20
+        if composite_score > 20:  # Baissé de 25 à 20
             return RegimeStrength.MODERATE
-        else:
-            return RegimeStrength.WEAK
+        return RegimeStrength.WEAK
 
     def _calculate_confidence(
-        self, volatility: Dict, trend: Dict, momentum: Dict, volume: Dict
+        self, volatility: dict, trend: dict, momentum: dict, volume: dict
     ) -> float:
         """Calcule le niveau de confiance."""
 
@@ -637,7 +637,8 @@ class RegimeDetector:
             confidence_factors.append(30)
 
         # Confirmation volume
-        if volume["profile"] in ["high", "spike"] and volume["trend"] == "increasing":
+        if volume["profile"] in ["high",
+                                 "spike"] and volume["trend"] == "increasing":
             confidence_factors.append(25)
 
         # Persistance (si données suffisantes)
@@ -664,7 +665,8 @@ class RegimeDetector:
         # Recherche du dernier changement significatif
         recent_prices = closes[-20:]
         price_changes = np.abs(np.diff(recent_prices))
-        significant_changes = np.where(price_changes > np.std(price_changes) * 2)[0]
+        significant_changes = np.where(
+            price_changes > np.std(price_changes) * 2)[0]
 
         if len(significant_changes) > 0:
             last_change = significant_changes[-1]
@@ -674,9 +676,9 @@ class RegimeDetector:
 
     def _identify_key_levels(
         self, highs: np.ndarray, lows: np.ndarray, closes: np.ndarray
-    ) -> List[float]:
+    ) -> list[float]:
         """Identifie les niveaux de prix clés."""
-        key_levels: List[float] = []
+        key_levels: list[float] = []
 
         if len(closes) < 20:
             return key_levels
@@ -700,17 +702,18 @@ class RegimeDetector:
         return sorted(key_levels)
 
     def _calculate_percentile(
-        self, data: List[float], value: float, min_periods: int = 10
+        self, data: list[float], value: float, min_periods: int = 10
     ) -> float:
         """Calcule le percentile d'une valeur dans un dataset."""
         if len(data) < min_periods:
             return 50.0
 
         recent_data = data[-min_periods:] if len(data) > min_periods else data
-        percentile = (np.sum(np.array(recent_data) <= value) / len(recent_data)) * 100
+        percentile = (np.sum(np.array(recent_data) <= value) /
+                      len(recent_data)) * 100
         return float(percentile)
 
-    def _calculate_slope(self, data: List[float]) -> float:
+    def _calculate_slope(self, data: list[float]) -> float:
         """Calcule la pente d'une série de données."""
         if len(data) < 2:
             return 0.0

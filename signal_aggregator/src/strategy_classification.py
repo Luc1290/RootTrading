@@ -6,6 +6,7 @@ pour permettre une validation adaptative selon le régime de marché.
 """
 
 # Classification des 28 stratégies par famille principale
+from collections import defaultdict
 STRATEGY_FAMILIES = {
     "trend_following": {
         "strategies": [
@@ -69,7 +70,8 @@ STRATEGY_FAMILIES = {
             "VWAP_Support_Resistance_Strategy",
             "Spike_Reaction_Buy_Strategy",
             "MultiTF_ConfluentEntry_Strategy",
-            "Resistance_Rejection_Strategy",  # DÉPLACÉ: Rejection = analyse de structure/niveaux
+            "Resistance_Rejection_Strategy",
+            # DÉPLACÉ: Rejection = analyse de structure/niveaux
         ],
         "best_regimes": [
             "TRENDING_BULL",
@@ -85,7 +87,8 @@ STRATEGY_FAMILIES = {
     # NOUVELLES FAMILLES POUR SCALPING
     "flow": {
         "strategies": [
-            # Stratégies basées sur l'analyse du flux d'ordres (à adapter selon vos stratégies)
+            # Stratégies basées sur l'analyse du flux d'ordres (à adapter selon
+            # vos stratégies)
             "Liquidity_Sweep_Buy_Strategy",  # Déjà dans volume_based mais aussi flow
             "OrderFlow_Imbalance_Strategy",  # Si existe
             "BookPressure_Strategy",  # Si existe
@@ -98,11 +101,13 @@ STRATEGY_FAMILIES = {
     "contrarian": {
         "strategies": [
             # Stratégies contrariennes pures (contre-tendance extrême)
-            "ZScore_Extreme_Reversal_Strategy",  # Déjà dans mean_reversion mais très contrarian
+            "ZScore_Extreme_Reversal_Strategy",
+            # Déjà dans mean_reversion mais très contrarian
             "Exhaustion_Reversal_Strategy",  # Si existe
             "Sentiment_Contrarian_Strategy",  # Si existe
         ],
-        "best_regimes": ["RANGING", "TRANSITION"],  # Optimal en range et transitions
+        # Optimal en range et transitions
+        "best_regimes": ["RANGING", "TRANSITION"],
         "acceptable_regimes": ["VOLATILE"],  # Peut fonctionner en volatilité
         "poor_regimes": [
             "TRENDING_BULL",
@@ -115,7 +120,6 @@ STRATEGY_FAMILIES = {
 }
 
 # Détection des doublons pour debug
-from collections import defaultdict
 
 _dups = defaultdict(list)
 for fam, cfg in STRATEGY_FAMILIES.items():
@@ -125,11 +129,13 @@ DUPLICATE_MEMBERSHIPS = {s: fams for s, fams in _dups.items() if len(fams) > 1}
 if DUPLICATE_MEMBERSHIPS:
     print("⚠️  Doublons de familles détectés:", DUPLICATE_MEMBERSHIPS)
 
-# Mapping inverse : stratégie -> famille PRIMAIRE (évite l'écrasement silencieux)
+# Mapping inverse : stratégie -> famille PRIMAIRE (évite l'écrasement
+# silencieux)
 STRATEGY_TO_FAMILY: dict[str, str] = {}
 for family, config in STRATEGY_FAMILIES.items():
     for strategy in config["strategies"]:
-        # setdefault pour ne PAS écraser la famille primaire (première occurrence)
+        # setdefault pour ne PAS écraser la famille primaire (première
+        # occurrence)
         STRATEGY_TO_FAMILY.setdefault(strategy, family)
 
 # Mapping complet : stratégie -> toutes ses familles (pour features avancées)
@@ -142,13 +148,16 @@ for family, cfg in STRATEGY_FAMILIES.items():
 # Configuration des ajustements de confidence selon le régime
 REGIME_CONFIDENCE_ADJUSTMENTS = {
     "TRENDING_BULL": {
-        "trend_following": {"BUY": 1.2, "SELL": 0.7},  # Boost BUY, pénalise SELL
-        "mean_reversion": {"BUY": 0.6, "SELL": 0.4},  # Très pénalisé en tendance
+        # Boost BUY, pénalise SELL
+        "trend_following": {"BUY": 1.2, "SELL": 0.7},
+        # Très pénalisé en tendance
+        "mean_reversion": {"BUY": 0.6, "SELL": 0.4},
         "breakout": {"BUY": 1.1, "SELL": 0.8},  # Léger boost BUY
         "volume_based": {"BUY": 1.1, "SELL": 0.9},  # Neutre-positif
         "structure_based": {"BUY": 1.0, "SELL": 0.9},  # Quasi-neutre
         "flow": {"BUY": 1.2, "SELL": 0.8},  # Boost BUY car suit le flux
-        "contrarian": {"BUY": 0.4, "SELL": 0.3},  # Très pénalisé contre tendance
+        # Très pénalisé contre tendance
+        "contrarian": {"BUY": 0.4, "SELL": 0.3},
     },
     "TRENDING_BEAR": {
         "trend_following": {
@@ -160,8 +169,10 @@ REGIME_CONFIDENCE_ADJUSTMENTS = {
             "SELL": 0.9,
         },  # CORRIGÉ: Permet rebonds légitimes
         "breakout": {"BUY": 0.7, "SELL": 1.2},  # CORRIGÉ: Moins pénalisant
-        "volume_based": {"BUY": 0.8, "SELL": 1.2},  # CORRIGÉ: Légèrement pénalisé
-        "structure_based": {"BUY": 0.8, "SELL": 1.1},  # CORRIGÉ: Moins pénalisant
+        # CORRIGÉ: Légèrement pénalisé
+        "volume_based": {"BUY": 0.8, "SELL": 1.2},
+        # CORRIGÉ: Moins pénalisant
+        "structure_based": {"BUY": 0.8, "SELL": 1.1},
         "flow": {"BUY": 0.8, "SELL": 1.2},  # Suit le flux baissier
         "contrarian": {
             "BUY": 0.6,
@@ -193,19 +204,25 @@ REGIME_CONFIDENCE_ADJUSTMENTS = {
         "volume_based": {"BUY": 1.3, "SELL": 0.8},  # Fort boost BUY
         "structure_based": {"BUY": 1.1, "SELL": 0.8},  # Léger boost BUY
         "flow": {"BUY": 1.4, "SELL": 0.6},  # Très fort en breakout
-        "contrarian": {"BUY": 0.3, "SELL": 0.2},  # Très dangereux contre breakout
+        # Très dangereux contre breakout
+        "contrarian": {"BUY": 0.3, "SELL": 0.2},
     },
     "BREAKOUT_BEAR": {
-        "trend_following": {"BUY": 0.6, "SELL": 1.2},  # CORRIGÉ: Pénalisé mais viable
+        # CORRIGÉ: Pénalisé mais viable
+        "trend_following": {"BUY": 0.6, "SELL": 1.2},
         "mean_reversion": {
             "BUY": 0.5,
             "SELL": 0.8,
         },  # CORRIGÉ: Minimum viable pour rebonds
-        "breakout": {"BUY": 0.6, "SELL": 1.4},  # CORRIGÉ: Pénalisé mais pas extrême
-        "volume_based": {"BUY": 0.7, "SELL": 1.3},  # CORRIGÉ: Réduit la pénalité
-        "structure_based": {"BUY": 0.7, "SELL": 1.2},  # CORRIGÉ: Plus équilibré
+        # CORRIGÉ: Pénalisé mais pas extrême
+        "breakout": {"BUY": 0.6, "SELL": 1.4},
+        # CORRIGÉ: Réduit la pénalité
+        "volume_based": {"BUY": 0.7, "SELL": 1.3},
+        # CORRIGÉ: Plus équilibré
+        "structure_based": {"BUY": 0.7, "SELL": 1.2},
         "flow": {"BUY": 0.6, "SELL": 1.4},  # Suit le flux baissier
-        "contrarian": {"BUY": 0.5, "SELL": 0.3},  # Très risqué contre breakout bear
+        # Très risqué contre breakout bear
+        "contrarian": {"BUY": 0.5, "SELL": 0.3},
     },
     "TRANSITION": {
         "trend_following": {"BUY": 0.9, "SELL": 0.9},  # Légèrement pénalisé
@@ -214,7 +231,8 @@ REGIME_CONFIDENCE_ADJUSTMENTS = {
         "volume_based": {"BUY": 1.0, "SELL": 1.0},  # Neutre
         "structure_based": {"BUY": 1.0, "SELL": 1.0},  # Neutre
         "flow": {"BUY": 1.0, "SELL": 1.0},  # Neutre
-        "contrarian": {"BUY": 1.1, "SELL": 1.1},  # Légèrement boosté en transition
+        # Légèrement boosté en transition
+        "contrarian": {"BUY": 1.1, "SELL": 1.1},
     },
     "UNKNOWN": {
         # Régime inconnu : on reste conservateur
@@ -222,9 +240,11 @@ REGIME_CONFIDENCE_ADJUSTMENTS = {
         "mean_reversion": {"BUY": 0.9, "SELL": 0.9},
         "breakout": {"BUY": 0.9, "SELL": 0.9},
         "volume_based": {"BUY": 0.9, "SELL": 0.9},
-        "structure_based": {"BUY": 0.95, "SELL": 0.95},  # Moins pénalisé car adaptable
+        # Moins pénalisé car adaptable
+        "structure_based": {"BUY": 0.95, "SELL": 0.95},
         "flow": {"BUY": 0.95, "SELL": 0.95},  # Adaptable comme volume
-        "contrarian": {"BUY": 0.9, "SELL": 0.9},  # Conservateur en régime inconnu
+        # Conservateur en régime inconnu
+        "contrarian": {"BUY": 0.9, "SELL": 0.9},
     },
 }
 
@@ -337,7 +357,9 @@ def get_regime_adjustment(
     return adjustments.get(signal_side, 1.0)
 
 
-def get_min_confidence_for_regime(market_regime: str, signal_side: str) -> float:
+def get_min_confidence_for_regime(
+        market_regime: str,
+        signal_side: str) -> float:
     """
     Retourne la confidence minimum requise selon le régime et la direction.
 
@@ -355,7 +377,9 @@ def get_min_confidence_for_regime(market_regime: str, signal_side: str) -> float
     return REGIME_MIN_CONFIDENCE[regime].get(signal_side, 0.65)
 
 
-def is_strategy_optimal_for_regime(strategy_name: str, market_regime: str) -> bool:
+def is_strategy_optimal_for_regime(
+        strategy_name: str,
+        market_regime: str) -> bool:
     """
     Vérifie si une stratégie est optimale pour le régime actuel.
 
@@ -377,7 +401,9 @@ def is_strategy_optimal_for_regime(strategy_name: str, market_regime: str) -> bo
     return regime in best_regimes
 
 
-def is_strategy_acceptable_for_regime(strategy_name: str, market_regime: str) -> bool:
+def is_strategy_acceptable_for_regime(
+        strategy_name: str,
+        market_regime: str) -> bool:
     """
     Vérifie si une stratégie est au moins acceptable pour le régime actuel.
 
@@ -435,7 +461,7 @@ def should_allow_counter_trend_rebound(
         return conditions_met >= 2
 
     # Permettre les rebonds SELL en marché haussier si conditions réunies
-    elif regime in ["TRENDING_BULL", "BREAKOUT_BULL"] and signal_side == "SELL":
+    if regime in ["TRENDING_BULL", "BREAKOUT_BULL"] and signal_side == "SELL":
         rsi = market_indicators.get("rsi_14", 50)
         volume_ratio = market_indicators.get("volume_ratio", 1.0)
         price_change_24h = market_indicators.get("price_change_24h", 0)
@@ -496,8 +522,11 @@ class AdaptiveRegimeAdjuster:
             stats["successes"] += 1
 
     def get_adaptive_multiplier(
-        self, strategy_name: str, regime: str, side: str, base_multiplier: float
-    ) -> float:
+            self,
+            strategy_name: str,
+            regime: str,
+            side: str,
+            base_multiplier: float) -> float:
         """
         Retourne un multiplicateur ajusté basé sur la performance historique.
 
@@ -560,10 +589,9 @@ class AdaptiveRegimeAdjuster:
         """
         if regime:
             regime = regime.upper()
-            filtered_stats = {
+            return {
                 k: v for k, v in self.performance_history.items() if regime in k
             }
-            return filtered_stats
 
         return self.performance_history.copy()
 
@@ -591,7 +619,8 @@ def get_enhanced_regime_adjustment(
         Multiplicateur de confidence ajusté
     """
     # Obtenir le multiplicateur de base
-    base_multiplier = get_regime_adjustment(strategy_name, market_regime, signal_side)
+    base_multiplier = get_regime_adjustment(
+        strategy_name, market_regime, signal_side)
 
     # Vérifier si c'est un rebond légitime
     if should_allow_counter_trend_rebound(
@@ -604,8 +633,6 @@ def get_enhanced_regime_adjustment(
             )  # Boost significatif mais limité
 
     # Appliquer l'ajustement adaptatif
-    adaptive_multiplier = adaptive_adjuster.get_adaptive_multiplier(
+    return adaptive_adjuster.get_adaptive_multiplier(
         strategy_name, market_regime, signal_side, base_multiplier
     )
-
-    return adaptive_multiplier

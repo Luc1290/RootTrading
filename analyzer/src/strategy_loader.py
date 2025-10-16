@@ -3,20 +3,21 @@ Module de chargement et de gestion des stratégies d'analyse.
 Charge dynamiquement les stratégies disponibles et les exécute sur les données reçues.
 """
 
+from strategies.base_strategy import \
+    BaseStrategy  # type: ignore[import-not-found]
 import importlib
 import inspect
 import logging
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Type, List, Optional, Any
+from typing import Any
 
 # Ajouter le répertoire parent au path pour les imports dynamiques
 analyzer_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
 if analyzer_root not in sys.path:
     sys.path.insert(0, analyzer_root)
 
-from strategies.base_strategy import BaseStrategy  # type: ignore[import-not-found]
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class StrategyLoader:
     """Gestionnaire de chargement dynamique des stratégies."""
 
     def __init__(self) -> None:
-        self.strategies: Dict[str, Type[BaseStrategy]] = {}
+        self.strategies: dict[str, type[BaseStrategy]] = {}
         self.strategies_path = Path(__file__).parent.parent / "strategies"
 
         # Stratégies à exclure du chargement
@@ -36,7 +37,8 @@ class StrategyLoader:
         logger.info("Chargement des stratégies...")
 
         if not self.strategies_path.exists():
-            logger.error(f"Dossier strategies non trouvé: {self.strategies_path}")
+            logger.error(
+                f"Dossier strategies non trouvé: {self.strategies_path}")
             return
 
         # Parcourir tous les fichiers Python dans le dossier strategies
@@ -49,11 +51,12 @@ class StrategyLoader:
 
             try:
                 self._load_strategy_from_file(strategy_name)
-            except Exception as e:
-                logger.error(f"Erreur lors du chargement de {strategy_name}: {e}")
+            except Exception:
+                logger.exception(
+                    "Erreur lors du chargement de {strategy_name}")
 
         logger.info(f"Stratégies chargées: {len(self.strategies)}")
-        for name in self.strategies.keys():
+        for name in self.strategies:
             logger.info(f"  - {name}")
 
     def _load_strategy_from_file(self, strategy_name: str) -> None:
@@ -70,8 +73,9 @@ class StrategyLoader:
 
             # Recherche de la classe de stratégie dans le module
             strategy_class = None
-            for name, obj in inspect.getmembers(module, inspect.isclass):
-                # Vérifier que c'est une sous-classe de BaseStrategy et pas BaseStrategy elle-même
+            for _name, obj in inspect.getmembers(module, inspect.isclass):
+                # Vérifier que c'est une sous-classe de BaseStrategy et pas
+                # BaseStrategy elle-même
                 if (
                     issubclass(obj, BaseStrategy)
                     and obj != BaseStrategy
@@ -90,12 +94,12 @@ class StrategyLoader:
                     f"Aucune classe de stratégie trouvée dans {strategy_name}"
                 )
 
-        except ImportError as e:
-            logger.error(f"Impossible d'importer {strategy_name}: {e}")
-        except Exception as e:
-            logger.error(f"Erreur lors du chargement de {strategy_name}: {e}")
+        except ImportError:
+            logger.exception("Impossible d'importer {strategy_name}")
+        except Exception:
+            logger.exception("Erreur lors du chargement de {strategy_name}")
 
-    def get_strategy(self, strategy_name: str) -> Optional[Type[BaseStrategy]]:
+    def get_strategy(self, strategy_name: str) -> type[BaseStrategy] | None:
         """
         Récupère une stratégie par son nom.
 
@@ -107,7 +111,7 @@ class StrategyLoader:
         """
         return self.strategies.get(strategy_name)
 
-    def get_all_strategies(self) -> Dict[str, Type[BaseStrategy]]:
+    def get_all_strategies(self) -> dict[str, type[BaseStrategy]]:
         """
         Récupère toutes les stratégies chargées.
 
@@ -116,7 +120,7 @@ class StrategyLoader:
         """
         return self.strategies.copy()
 
-    def get_strategy_names(self) -> List[str]:
+    def get_strategy_names(self) -> list[str]:
         """
         Récupère la liste des noms de stratégies disponibles.
 
@@ -144,7 +148,7 @@ class StrategyLoader:
         # Recharger toutes les stratégies
         self.load_strategies()
 
-    def validate_strategy(self, strategy_class: Type[BaseStrategy]) -> bool:
+    def validate_strategy(self, strategy_class: type[BaseStrategy]) -> bool:
         """
         Valide qu'une classe de stratégie respecte l'interface requise.
 
@@ -157,7 +161,8 @@ class StrategyLoader:
         try:
             # Vérifier que c'est une sous-classe de BaseStrategy
             if not issubclass(strategy_class, BaseStrategy):
-                logger.error(f"{strategy_class.__name__} n'hérite pas de BaseStrategy")
+                logger.error(
+                    f"{strategy_class.__name__} n'hérite pas de BaseStrategy")
                 return False
 
             # Vérifier que la méthode generate_signal est implémentée
@@ -182,12 +187,12 @@ class StrategyLoader:
             return True
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Erreur lors de la validation de {strategy_class.__name__}: {e}"
             )
             return False
 
-    def get_strategy_info(self, strategy_name: str) -> Optional[Dict[str, Any]]:
+    def get_strategy_info(self, strategy_name: str) -> dict[str, Any] | None:
         """
         Récupère les informations d'une stratégie.
 
@@ -210,8 +215,8 @@ class StrategyLoader:
         }
 
     def filter_strategies(
-        self, enabled_only: bool = True, categories: Optional[List[str]] = None
-    ) -> Dict[str, Type[BaseStrategy]]:
+        self, enabled_only: bool = True, categories: list[str] | None = None
+    ) -> dict[str, type[BaseStrategy]]:
         """
         Filtre les stratégies selon des critères.
 

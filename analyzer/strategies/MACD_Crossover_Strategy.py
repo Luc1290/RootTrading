@@ -2,10 +2,11 @@
 MACD_Crossover_Strategy - Stratégie basée sur les croisements MACD.
 """
 
-from typing import Dict, Any, Optional
-from .base_strategy import BaseStrategy
 import logging
 import math
+from typing import Any
+
+from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,8 @@ class MACD_Crossover_Strategy(BaseStrategy):
     - SELL: MACD croise en-dessous Signal + confirmations baissières
     """
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres MACD ASSOUPLIS (moins de sur-filtrage)
         self.min_macd_distance = 0.005  # Distance durcie (0.002 → 0.005)
@@ -36,7 +38,7 @@ class MACD_Crossover_Strategy(BaseStrategy):
         self.require_histogram_confirmation = False  # DÉSACTIVÉ (trop strict)
         self.min_confluence_bonus = 55  # Confluence en bonus (pas obligatoire)
 
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs MACD."""
         return {
             # MACD complet
@@ -75,7 +77,7 @@ class MACD_Crossover_Strategy(BaseStrategy):
             "adx_14": self.indicators.get("adx_14"),
         }
 
-    def _get_current_price(self) -> Optional[float]:
+    def _get_current_price(self) -> float | None:
         """Récupère le prix actuel depuis les données OHLCV."""
         try:
             if self.data and "close" in self.data and self.data["close"]:
@@ -84,7 +86,7 @@ class MACD_Crossover_Strategy(BaseStrategy):
             pass
         return None
 
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """
         Génère un signal basé sur les croisements MACD.
         """
@@ -124,15 +126,12 @@ class MACD_Crossover_Strategy(BaseStrategy):
             macd_signal_val = values.get("macd_signal")
             macd_histogram_val = values.get("macd_histogram")
 
-            macd_line = (
-                float(macd_line_val) if _is_valid(macd_line_val) else None
-            )
-            macd_signal = (
-                float(macd_signal_val) if _is_valid(macd_signal_val) else None
-            )
-            macd_histogram = (
-                float(macd_histogram_val) if _is_valid(macd_histogram_val) else None
-            )
+            macd_line = (float(macd_line_val) if macd_line_val is not None and _is_valid(
+                macd_line_val) else None)
+            macd_signal = (float(macd_signal_val) if macd_signal_val is not None and _is_valid(
+                macd_signal_val) else None)
+            macd_histogram = (float(macd_histogram_val) if macd_histogram_val is not None and _is_valid(
+                macd_histogram_val) else None)
         except (ValueError, TypeError) as e:
             return {
                 "side": None,
@@ -164,7 +163,8 @@ class MACD_Crossover_Strategy(BaseStrategy):
         macd_above_signal = macd_line > macd_signal
         macd_distance = abs(macd_line - macd_signal)
 
-        # Vérification que les lignes ne sont pas trop proches (éviter faux signaux)
+        # Vérification que les lignes ne sont pas trop proches (éviter faux
+        # signaux)
         if macd_distance < self.min_macd_distance:
             return {
                 "side": None,
@@ -195,16 +195,13 @@ class MACD_Crossover_Strategy(BaseStrategy):
         # Déterminer la tendance principale
         is_strong_uptrend = False
         is_strong_downtrend = False
-        trend_confirmed = False
 
         if self.trend_filter_enabled and market_regime:
             market_regime_upper = str(market_regime).upper()
             if market_regime_upper in ["TRENDING_BULL", "BREAKOUT_BULL"]:
                 is_strong_uptrend = True
-                trend_confirmed = True
             elif market_regime_upper in ["TRENDING_BEAR", "BREAKOUT_BEAR"]:
                 is_strong_downtrend = True
-                trend_confirmed = True
 
         # Vérification supplémentaire avec trend_alignment (format 0-1 décimal)
         if trend_alignment is not None:
@@ -218,7 +215,7 @@ class MACD_Crossover_Strategy(BaseStrategy):
                 pass
 
         # Histogram validation DURCIE (rejet direct)
-        if _is_valid(macd_histogram):
+        if macd_histogram is not None and _is_valid(macd_histogram):
             # Rejet direct si histogram contradictoire
             if signal_side == "BUY" and macd_histogram < -0.001:
                 return {
@@ -226,15 +223,17 @@ class MACD_Crossover_Strategy(BaseStrategy):
                     "confidence": 0.0,
                     "strength": "weak",
                     "reason": f"Rejet MACD BUY: histogram contradictoire ({macd_histogram:.4f})",
-                    "metadata": {"strategy": self.name},
+                    "metadata": {
+                        "strategy": self.name},
                 }
-            elif signal_side == "SELL" and macd_histogram > 0.001:
+            if signal_side == "SELL" and macd_histogram > 0.001:
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
                     "reason": f"Rejet MACD SELL: histogram contradictoire ({macd_histogram:.4f})",
-                    "metadata": {"strategy": self.name},
+                    "metadata": {
+                        "strategy": self.name},
                 }
 
         # Conditions assouplies (moins de sur-filtrage)
@@ -295,7 +294,9 @@ class MACD_Crossover_Strategy(BaseStrategy):
         confidence_boost += conditions_bonus
 
         # Bonus selon la force de la séparation - SEUILS PLUS STRICTS
-        separation_strength = abs(macd_line - macd_signal) if macd_line is not None and macd_signal is not None else 0.0
+        separation_strength = abs(
+            macd_line -
+            macd_signal) if macd_line is not None and macd_signal is not None else 0.0
         if separation_strength >= self.strong_separation_threshold:  # 0.02
             confidence_boost += 0.18
             reason += f" - séparation TRÈS forte ({separation_strength:.4f})"
@@ -312,9 +313,8 @@ class MACD_Crossover_Strategy(BaseStrategy):
 
         # Confirmation avec Histogram MACD - SEUILS PLUS STRICTS
         if macd_histogram is not None:
-            if (
-                signal_side == "BUY" and macd_histogram > self.histogram_threshold * 2
-            ):  # Double seuil
+            if (signal_side == "BUY" and macd_histogram >
+                    self.histogram_threshold * 2):  # Double seuil
                 confidence_boost += 0.18
                 reason += f" + histogram TRÈS positif ({macd_histogram:.4f})"
             elif (
@@ -328,10 +328,7 @@ class MACD_Crossover_Strategy(BaseStrategy):
             elif signal_side == "SELL" and macd_histogram < -self.histogram_threshold:
                 confidence_boost += 0.12
                 reason += f" + histogram négatif ({macd_histogram:.4f})"
-            elif signal_side == "BUY" and macd_histogram > 0:
-                confidence_boost += 0.06  # Réduit de 0.10
-                reason += f" + histogram favorable ({macd_histogram:.4f})"
-            elif signal_side == "SELL" and macd_histogram < 0:
+            elif (signal_side == "BUY" and macd_histogram > 0) or (signal_side == "SELL" and macd_histogram < 0):
                 confidence_boost += 0.06  # Réduit de 0.10
                 reason += f" + histogram favorable ({macd_histogram:.4f})"
             else:
@@ -355,12 +352,11 @@ class MACD_Crossover_Strategy(BaseStrategy):
 
         # Confirmation avec macd_trend pré-calculé
         macd_trend = values.get("macd_trend")
-        if macd_trend:
-            if (signal_side == "BUY" and macd_trend == "BULLISH") or (
-                signal_side == "SELL" and macd_trend == "BEARISH"
-            ):
-                confidence_boost += 0.10
-                reason += f" + trend MACD {macd_trend}"
+        if macd_trend and (
+            (signal_side == "BUY" and macd_trend == "BULLISH") or (
+                signal_side == "SELL" and macd_trend == "BEARISH")):
+            confidence_boost += 0.10
+            reason += f" + trend MACD {macd_trend}"
 
         # Confirmation avec EMA (base du MACD)
         ema_12 = values.get("ema_12")
@@ -397,7 +393,8 @@ class MACD_Crossover_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
 
-        # Confirmation avec trend_strength (VARCHAR: absent/weak/moderate/strong/very_strong)
+        # Confirmation avec trend_strength (VARCHAR:
+        # absent/weak/moderate/strong/very_strong)
         trend_strength = values.get("trend_strength")
         if trend_strength is not None:
             trend_str = str(trend_strength).lower()
@@ -441,9 +438,8 @@ class MACD_Crossover_Strategy(BaseStrategy):
         if rsi_14 is not None:
             try:
                 rsi = float(rsi_14)
-                if signal_side == "BUY" and rsi < 70:
-                    confidence_boost += 0.05
-                elif signal_side == "SELL" and rsi > 30:
+                if (signal_side == "BUY" and rsi < 70) or (
+                        signal_side == "SELL" and rsi > 30):
                     confidence_boost += 0.05
                 elif signal_side == "BUY" and rsi >= 80:
                     return {
@@ -543,7 +539,7 @@ class MACD_Crossover_Strategy(BaseStrategy):
                 reason += " + signal modéré"
 
         # Confluence OPTIONNELLE avec bonus
-        if _is_valid(confluence_score):
+        if confluence_score is not None and _is_valid(confluence_score):
             try:
                 confluence = float(confluence_score)
                 if confluence > 80:
@@ -563,9 +559,9 @@ class MACD_Crossover_Strategy(BaseStrategy):
 
         # CALCUL FINAL avec modèle standard
         confidence = max(
-            0.0,
-            min(1.0, self.calculate_confidence(base_confidence, 1 + confidence_boost)),
-        )
+            0.0, min(
+                1.0, self.calculate_confidence(
+                    base_confidence, 1 + confidence_boost)), )
 
         # Filtre final confidence
         if confidence < self.min_confidence_threshold:
@@ -628,7 +624,8 @@ class MACD_Crossover_Strategy(BaseStrategy):
 
         for indicator in required:
             if indicator not in self.indicators:
-                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
+                logger.warning(
+                    f"{self.name}: Indicateur manquant: {indicator}")
                 return False
             if self.indicators[indicator] is None:
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")

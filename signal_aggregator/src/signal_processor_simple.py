@@ -3,12 +3,11 @@ Module de traitement des signaux - VERSION ULTRA-SIMPLIFIÉE.
 Remplace l'ancien système complexe par juste consensus adaptatif + filtres critiques.
 """
 
+import hashlib
+import json
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional
-import json
-import uuid
-import hashlib
+from typing import Any
 
 from .adaptive_consensus import AdaptiveConsensusAnalyzer
 from .critical_filters import CriticalFilters
@@ -22,7 +21,11 @@ class SimpleSignalProcessor:
     Logic: Consensus adaptatif + quelques filtres critiques seulement.
     """
 
-    def __init__(self, context_manager, database_manager=None, db_connection=None):
+    def __init__(
+            self,
+            context_manager,
+            database_manager=None,
+            db_connection=None):
         """
         Initialise le processeur simplifié.
 
@@ -46,7 +49,7 @@ class SimpleSignalProcessor:
         self.base_cache_ttl = 5  # Base 5 secondes
 
         # Statistiques détaillées pour debug et optimisation
-        self.stats: Dict[str, Any] = {
+        self.stats: dict[str, Any] = {
             "signals_processed": 0,
             "signals_validated": 0,
             "consensus_rejected": 0,
@@ -63,7 +66,7 @@ class SimpleSignalProcessor:
             "cache_misses": 0,
         }
 
-    async def process_signal(self, signal_data: str) -> Optional[Dict[str, Any]]:
+    async def process_signal(self, signal_data: str) -> dict[str, Any] | None:
         """
         Traite un signal individuel reçu depuis Redis.
         VERSION SIMPLIFIÉE: Juste structure + passage au buffer.
@@ -81,7 +84,7 @@ class SimpleSignalProcessor:
 
             # Validation structure de base uniquement
             if not self._validate_signal_structure(signal):
-                logger.debug(f"Signal rejeté: structure invalide")
+                logger.debug("Signal rejeté: structure invalide")
                 self.stats["errors"] += 1
                 return None
 
@@ -90,13 +93,11 @@ class SimpleSignalProcessor:
             if conf is not None:
                 try:
                     conf_val = float(conf)
-                except:
+                except BaseException:
                     conf_val = 0.0
                 # Clamp entre 0 et 1
-                if conf_val < 0.0:
-                    conf_val = 0.0
-                if conf_val > 1.0:
-                    conf_val = 1.0
+                conf_val = max(conf_val, 0.0)
+                conf_val = min(conf_val, 1.0)
                 signal["confidence"] = conf_val
             else:
                 # Confidence manquante = signal faible par défaut
@@ -120,13 +121,13 @@ class SimpleSignalProcessor:
             signal_excerpt = (
                 signal_data[:200] if len(signal_data) > 200 else signal_data
             )
-            logger.error(
+            logger.exception(
                 f"Erreur parsing JSON signal: {e}. Message brut (200 chars): {signal_excerpt}"
             )
             self.stats["errors"] += 1
             return None
-        except Exception as e:
-            logger.error(f"Erreur traitement signal: {e}")
+        except Exception:
+            logger.exception("Erreur traitement signal")
             self.stats["errors"] += 1
             return None
 
@@ -142,7 +143,7 @@ class SimpleSignalProcessor:
 
     async def _get_cached_context(
         self, symbol: str, timeframe: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Récupère le contexte avec cache TTL dynamique."""
         cache_key = f"{symbol}_{timeframe}"
         now = datetime.utcnow()
@@ -177,7 +178,7 @@ class SimpleSignalProcessor:
 
     async def validate_signal_group(
         self, signals: list, symbol: str, timeframe: str, side: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Valide un groupe de signaux avec le système simplifié.
         REMPLACE TOUTE LA LOGIQUE COMPLEXE DE VALIDATION.
@@ -210,17 +211,20 @@ class SimpleSignalProcessor:
             # Récupération du contexte de marché avec cache
             context = await self._get_cached_context(symbol, timeframe)
             if not context:
-                logger.warning(f"Pas de contexte marché pour {symbol} {timeframe}")
+                logger.warning(
+                    f"Pas de contexte marché pour {symbol} {timeframe}")
                 return None
 
             # ÉTAPE 1: Consensus adaptatif (principal système)
             market_regime = context.get("market_regime", "UNKNOWN")
             logger.info(f"🔍 Market regime pour {symbol}: {market_regime}")
-            logger.info(f"📊 Stratégies: {[s.get('strategy') for s in signals]}")
+            logger.info(
+                f"📊 Stratégies: {[s.get('strategy') for s in signals]}")
 
             # Adapter les critères si c'est un signal post-vague
             if is_wave_winner:
-                # Assouplir légèrement les critères car déjà passé une sélection
+                # Assouplir légèrement les critères car déjà passé une
+                # sélection
                 logger.info("🏆 Critères assouplis pour gagnant de vague")
 
             has_consensus, consensus_analysis = (
@@ -244,7 +248,8 @@ class SimpleSignalProcessor:
                     reason = consensus_analysis.get("reason")
                     if not reason:
                         # Déduire la raison du rejet depuis les données
-                        strength = consensus_analysis.get("consensus_strength", 0)
+                        strength = consensus_analysis.get(
+                            "consensus_strength", 0)
                         min_required = consensus_analysis.get(
                             "min_required_strength", 0
                         )
@@ -256,17 +261,21 @@ class SimpleSignalProcessor:
                             reason = "Consensus rejeté"
 
                     details = consensus_analysis.get("details", "")
-                    rejection_msg = f"{reason}" + (f" - {details}" if details else "")
+                    rejection_msg = f"{reason}" + \
+                        (f" - {details}" if details else "")
                 else:
                     rejection_msg = "Analyse de consensus indisponible"
 
-                logger.info(f"❌ Consensus rejeté {symbol} {side}: {rejection_msg}")
+                logger.info(
+                    f"❌ Consensus rejeté {symbol} {side}: {rejection_msg}")
                 self.stats["consensus_rejected"] += 1
                 return None
 
             # Enregistrer strength brute pour statistiques
-            consensus_strength = consensus_analysis.get("consensus_strength", 0)
-            self.stats["consensus_strength_distribution"].append(consensus_strength)
+            consensus_strength = consensus_analysis.get(
+                "consensus_strength", 0)
+            self.stats["consensus_strength_distribution"].append(
+                consensus_strength)
 
             # Calculer confidence normalisée avec seuil final
             market_regime = consensus_analysis.get(
@@ -290,8 +299,10 @@ class SimpleSignalProcessor:
             )
 
             # ÉTAPE 2: Filtres critiques seulement (éviter les vrais dangers)
-            # Enrichir le contexte avec les métriques de consensus pour fail-safe
-            context["consensus_strength"] = normalized_confidence  # Version normalisée
+            # Enrichir le contexte avec les métriques de consensus pour
+            # fail-safe
+            # Version normalisée
+            context["consensus_strength"] = normalized_confidence
             context["wave_winner"] = is_wave_winner
             context["total_strategies"] = len(signals)
             context["consensus_regime"] = (
@@ -299,8 +310,7 @@ class SimpleSignalProcessor:
             )
 
             filters_pass, filter_reason = self.critical_filters.apply_critical_filters(
-                signals, context
-            )
+                signals, context)
 
             if not filters_pass:
                 logger.info(
@@ -310,15 +320,19 @@ class SimpleSignalProcessor:
                 return None
 
             # ÉTAPE 3: Générer consensus_id pour traçabilité
-            consensus_id = self._generate_consensus_id(signals, symbol, side, timeframe)
+            consensus_id = self._generate_consensus_id(
+                signals, symbol, side, timeframe)
 
-            # Sauvegarder les signaux individuels en base de données (avec consensus_id)
+            # Sauvegarder les signaux individuels en base de données (avec
+            # consensus_id)
             if self.database_manager:
                 for signal in signals:
                     try:
-                        # Vérifier si ce signal a déjà été stocké dans cette vague
+                        # Vérifier si ce signal a déjà été stocké dans cette
+                        # vague
                         signal_hash = self._generate_signal_hash(signal)
-                        if self._is_signal_already_stored(signal_hash, consensus_id):
+                        if self._is_signal_already_stored(
+                                signal_hash, consensus_id):
                             logger.debug(
                                 f"Signal {signal.get('strategy')} déjà stocké pour consensus {consensus_id[:8]}"
                             )
@@ -346,7 +360,8 @@ class SimpleSignalProcessor:
                             },
                         }
                         # Stocker le signal individuel
-                        self.database_manager.store_validated_signal(individual_signal)
+                        self.database_manager.store_validated_signal(
+                            individual_signal)
                     except Exception as e:
                         logger.warning(
                             f"Erreur sauvegarde signal individuel {signal.get('strategy')}: {e}"
@@ -366,7 +381,8 @@ class SimpleSignalProcessor:
                 normalized_confidence,
             )
 
-            # Mettre à jour les statistiques moyennes (avec normalized_confidence)
+            # Mettre à jour les statistiques moyennes (avec
+            # normalized_confidence)
             self.stats["signals_validated"] += 1
             self.stats["avg_strategies_per_consensus"] = (
                 self.stats["avg_strategies_per_consensus"]
@@ -387,31 +403,37 @@ class SimpleSignalProcessor:
                         consensus_signal
                     )
                     if signal_id:
-                        # Ajouter le db_id dans les métadonnées pour que le coordinator puisse le trouver
+                        # Ajouter le db_id dans les métadonnées pour que le
+                        # coordinator puisse le trouver
                         consensus_signal["metadata"]["db_id"] = signal_id
                         logger.debug(
                             f"DB ID {signal_id} ajouté au consensus {consensus_id[:8]} pour {symbol}"
                         )
-                except Exception as e:
-                    logger.error(f"Erreur sauvegarde consensus {consensus_id[:8]}: {e}")
+                except Exception:
+                    logger.exception(
+                        "Erreur sauvegarde consensus {consensus_id[:8]}")
 
             logger.info(
                 f"✅ Signal consensus validé: {symbol} {side} "
                 f"({len(signals)} stratégies, ID: {consensus_id[:8]}, "
                 f"score brut: {consensus_analysis.get('consensus_strength', 0):.2f}, "
-                f"normalisé: {normalized_confidence:.2f})"
-            )
+                f"normalisé: {normalized_confidence:.2f})")
 
             return consensus_signal
 
-        except Exception as e:
-            logger.error(f"Erreur validation groupe signaux: {e}")
+        except Exception:
+            logger.exception("Erreur validation groupe signaux")
             self.stats["errors"] += 1
             return None
 
-    def _validate_signal_structure(self, signal: Dict[str, Any]) -> bool:
+    def _validate_signal_structure(self, signal: dict[str, Any]) -> bool:
         """Valide la structure de base d'un signal."""
-        required_fields = ["strategy", "symbol", "side", "confidence", "timeframe"]
+        required_fields = [
+            "strategy",
+            "symbol",
+            "side",
+            "confidence",
+            "timeframe"]
 
         for field in required_fields:
             if field not in signal:
@@ -448,14 +470,18 @@ class SimpleSignalProcessor:
 
         return f"consensus_{content_hash}"
 
-    def _generate_signal_hash(self, signal: Dict[str, Any]) -> str:
+    def _generate_signal_hash(self, signal: dict[str, Any]) -> str:
         """Génère un hash unique pour un signal individuel."""
         key_fields = f"{signal.get('strategy')}_{signal.get('symbol')}_{signal.get('side')}_{signal.get('timestamp', '')}"
         return hashlib.md5(key_fields.encode()).hexdigest()[:8]
 
-    def _is_signal_already_stored(self, signal_hash: str, consensus_id: str) -> bool:
+    def _is_signal_already_stored(
+            self,
+            signal_hash: str,
+            consensus_id: str) -> bool:
         """Vérifie si un signal a déjà été stocké (simple cache en mémoire)."""
-        # Pour l'instant, cache simple en mémoire (peut être amélioré avec Redis)
+        # Pour l'instant, cache simple en mémoire (peut être amélioré avec
+        # Redis)
         if not hasattr(self, "_stored_signals_cache"):
             self._stored_signals_cache: set[str] = set()
 
@@ -472,21 +498,22 @@ class SimpleSignalProcessor:
         symbol: str,
         timeframe: str,
         side: str,
-        context: Dict[str, Any],
-        consensus_analysis: Dict[str, Any],
+        context: dict[str, Any],
+        consensus_analysis: dict[str, Any],
         filter_status: str,
         is_wave_winner: bool = False,
         consensus_id: str | None = None,
         normalized_confidence: float = 0.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Construit le signal de consensus final."""
 
         # Calculs de base
         strategies_count = len(signals)
-        avg_confidence = sum(float(s["confidence"]) for s in signals) / strategies_count
+        avg_confidence = sum(float(s["confidence"])
+                             for s in signals) / strategies_count
 
         # Analyser la distribution des timeframes
-        timeframe_distribution: Dict[str, int] = {}
+        timeframe_distribution: dict[str, int] = {}
         for signal in signals:
             tf = signal.get(
                 "timeframe", timeframe
@@ -510,12 +537,13 @@ class SimpleSignalProcessor:
         # normalized_confidence déjà passée en paramètre
 
         # Signal de consensus compatible avec StrategySignal
-        consensus_signal = {
+        return {
             "strategy": "CONSENSUS",  # Champ requis pour StrategySignal
             "symbol": symbol,
             "side": side,
             "timestamp": datetime.utcnow().isoformat(),
-            "price": context.get("current_price", 0.0),  # Prix actuel du marché
+            # Prix actuel du marché
+            "price": context.get("current_price", 0.0),
             "confidence": normalized_confidence,  # Déjà validée avec seuil 0.5
             # Toutes les métadonnées dans le champ metadata
             "metadata": {
@@ -549,13 +577,12 @@ class SimpleSignalProcessor:
             },
         }
 
-        return consensus_signal
-
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Retourne les statistiques détaillées du processeur."""
         total_processed: int = int(self.stats["signals_processed"])
         if total_processed > 0:
-            success_rate = (int(self.stats["signals_validated"]) / total_processed) * 100
+            success_rate = (
+                int(self.stats["signals_validated"]) / total_processed) * 100
         else:
             success_rate = 0
 
@@ -570,8 +597,9 @@ class SimpleSignalProcessor:
         )
 
         # Statistiques de consensus strength (valeurs brutes seulement)
-        consensus_strengths: list = list(self.stats["consensus_strength_distribution"])
-        consensus_stats: Dict[str, Any] = {}
+        consensus_strengths: list = list(
+            self.stats["consensus_strength_distribution"])
+        consensus_stats: dict[str, Any] = {}
         if consensus_strengths:
             consensus_stats = {
                 "raw_min": min(consensus_strengths),
@@ -609,7 +637,7 @@ class SimpleSignalProcessor:
     def reset_stats(self):
         """Remet à zéro les statistiques."""
         for key in self.stats:
-            if isinstance(self.stats[key], (int, float)):
+            if isinstance(self.stats[key], int | float):
                 self.stats[key] = 0
             elif isinstance(self.stats[key], dict):
                 self.stats[key] = {}

@@ -3,9 +3,9 @@ Classe de base pour toutes les stratégies de trading.
 Définit l'interface commune que toutes les stratégies doivent implémenter.
 """
 
-from abc import ABC, abstractmethod
-from typing import Dict, Optional, Any
 import logging
+from abc import ABC, abstractmethod
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 class BaseStrategy(ABC):
     """Classe de base abstraite pour toutes les stratégies."""
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         """
         Initialise la stratégie avec les données nécessaires.
 
@@ -28,7 +29,7 @@ class BaseStrategy(ABC):
         self.name = self.__class__.__name__
 
     @abstractmethod
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """
         Génère un signal de trading basé sur la stratégie.
 
@@ -40,7 +41,6 @@ class BaseStrategy(ABC):
             - reason: str description du signal
             - metadata: dict avec infos supplémentaires
         """
-        pass
 
     def validate_data(self) -> bool:
         """
@@ -54,7 +54,10 @@ class BaseStrategy(ABC):
             return False
         return True
 
-    def calculate_confidence(self, base_confidence: float, *factors: float) -> float:
+    def calculate_confidence(
+            self,
+            base_confidence: float,
+            *factors: float) -> float:
         """
         Calcule la confiance finale en multipliant les facteurs.
 
@@ -82,9 +85,8 @@ class BaseStrategy(ABC):
         """
         if confidence >= 0.8:
             return "very_strong"
-        elif confidence >= 0.6:
+        if confidence >= 0.6:
             return "strong"
-        elif confidence >= 0.4:
+        if confidence >= 0.4:
             return "moderate"
-        else:
-            return "weak"
+        return "weak"

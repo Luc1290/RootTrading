@@ -3,9 +3,10 @@ OBV_Crossover_Strategy - Stratégie basée sur les croisements OBV avec sa moyen
 OPTIMISÉE POUR ÉQUILIBRE RÉALISTE - VERSION SÉLECTIVE MAIS PRATICABLE
 """
 
-from typing import Dict, Any, Optional
-from .base_strategy import BaseStrategy
 import logging
+from typing import Any
+
+from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,8 @@ class OBV_Crossover_Strategy(BaseStrategy):
     - SELL: OBV croise en-dessous de sa MA + confirmations baissières
     """
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
 
         # Paramètres OBV ASSOUPLIS - Réalistes pour intraday
@@ -50,7 +52,7 @@ class OBV_Crossover_Strategy(BaseStrategy):
         self.blocked_market_regimes = ["VOLATILE"]  # Seulement volatile
         self.required_trend_strength_min = "moderate"  # Tendance minimum requise
 
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _get_current_values(self) -> dict[str, float | None]:
         """Récupère les valeurs actuelles des indicateurs OBV et volume."""
         return {
             # OBV et sa moyenne mobile
@@ -83,7 +85,7 @@ class OBV_Crossover_Strategy(BaseStrategy):
             "confluence_score": self.indicators.get("confluence_score"),
         }
 
-    def _get_current_price(self) -> Optional[float]:
+    def _get_current_price(self) -> float | None:
         """Récupère le prix actuel depuis les données OHLCV."""
         try:
             if self.data and "close" in self.data and self.data["close"]:
@@ -92,7 +94,8 @@ class OBV_Crossover_Strategy(BaseStrategy):
             pass
         return None
 
-    def _count_confirmations(self, values: Dict[str, Any], signal_side: str) -> tuple:
+    def _count_confirmations(
+            self, values: dict[str, Any], signal_side: str) -> tuple:
         """Compte le nombre de confirmations pour le signal et retourne (count, details)."""
         confirmations = 0
         confirmation_details = []
@@ -107,7 +110,8 @@ class OBV_Crossover_Strategy(BaseStrategy):
             confirmations += 1
             confirmation_details.append(f"tendance {trend_strength}")
         elif trend_strength and str(trend_strength).lower() in ["moderate", "weak"]:
-            # Moderate/weak acceptable mais pas de bonus (plus de rejet pour weak)
+            # Moderate/weak acceptable mais pas de bonus (plus de rejet pour
+            # weak)
             pass
         else:
             # Trend non défini ou nulle
@@ -129,7 +133,8 @@ class OBV_Crossover_Strategy(BaseStrategy):
                 vol_quality = float(volume_quality_score)
                 if vol_quality >= 50:  # Assoupli (65 -> 50)
                     confirmations += 1
-                    confirmation_details.append(f"volume qualité {vol_quality:.0f}")
+                    confirmation_details.append(
+                        f"volume qualité {vol_quality:.0f}")
             except (ValueError, TypeError):
                 pass
 
@@ -142,7 +147,8 @@ class OBV_Crossover_Strategy(BaseStrategy):
                     signal_side == "SELL" and obv_osc < -0.02
                 ):  # Assoupli (0.05 -> 0.02)
                     confirmations += 1
-                    confirmation_details.append(f"OBV oscillator {obv_osc:.3f}")
+                    confirmation_details.append(
+                        f"OBV oscillator {obv_osc:.3f}")
             except (ValueError, TypeError):
                 pass
 
@@ -157,8 +163,7 @@ class OBV_Crossover_Strategy(BaseStrategy):
                 obv_direction = 1 if obv_val > 0 else -1
 
                 if (signal_side == "BUY" and ad_direction == obv_direction == 1) or (
-                    signal_side == "SELL" and ad_direction == obv_direction == -1
-                ):
+                        signal_side == "SELL" and ad_direction == obv_direction == -1):
                     confirmations += 1
                     confirmation_details.append("A/D Line alignée")
             except (ValueError, TypeError):
@@ -171,7 +176,7 @@ class OBV_Crossover_Strategy(BaseStrategy):
         if ema_12 is not None and ema_26 is not None and current_price is not None:
             try:
                 ema12_val = float(ema_12)
-                ema26_val = float(ema_26)
+                float(ema_26)
                 # Plus tolérant - juste prix vs EMA12
                 if (signal_side == "BUY" and current_price > ema12_val) or (
                     signal_side == "SELL" and current_price < ema12_val
@@ -199,10 +204,8 @@ class OBV_Crossover_Strategy(BaseStrategy):
         if rsi_14 is not None:
             try:
                 rsi = float(rsi_14)
-                if signal_side == "BUY" and 30 <= rsi <= 65:  # Assoupli (60 -> 65)
-                    confirmations += 1
-                    confirmation_details.append(f"RSI favorable ({rsi:.1f})")
-                elif signal_side == "SELL" and 35 <= rsi <= 70:  # Assoupli (40 -> 35)
+                if (signal_side == "BUY" and 30 <= rsi <= 65) or (
+                        signal_side == "SELL" and 35 <= rsi <= 70):  # Assoupli (60 -> 65)
                     confirmations += 1
                     confirmation_details.append(f"RSI favorable ({rsi:.1f})")
             except (ValueError, TypeError):
@@ -210,7 +213,7 @@ class OBV_Crossover_Strategy(BaseStrategy):
 
         return confirmations, confirmation_details
 
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """
         Génère un signal basé sur les croisements OBV/MA avec filtres équilibrés.
         """
@@ -231,9 +234,8 @@ class OBV_Crossover_Strategy(BaseStrategy):
         # 1. Vérification des indicateurs OBV essentiels
         try:
             obv = float(values["obv"]) if values["obv"] is not None else None
-            obv_ma = (
-                float(values["obv_ma_10"]) if values["obv_ma_10"] is not None else None
-            )
+            obv_ma = (float(values["obv_ma_10"])
+                      if values["obv_ma_10"] is not None else None)
         except (ValueError, TypeError) as e:
             return {
                 "side": None,
@@ -268,7 +270,8 @@ class OBV_Crossover_Strategy(BaseStrategy):
                 },
             }
 
-        # 3. FILTRE: Volume minimum critique - OBV sans volume = inutile (assoupli)
+        # 3. FILTRE: Volume minimum critique - OBV sans volume = inutile
+        # (assoupli)
         volume_ratio = values.get("volume_ratio")
         if volume_ratio is None or float(volume_ratio) < 0.8:
             return {
@@ -437,7 +440,7 @@ class OBV_Crossover_Strategy(BaseStrategy):
                 reason += f" + tendance {trend_str}"
             elif trend_str == "strong":
                 confidence_boost += 0.08  # Réduit
-                reason += f" + tendance forte"
+                reason += " + tendance forte"
             # Pas de bonus pour moderate - c'est le minimum accepté
 
         # Bonus signal strength
@@ -479,7 +482,8 @@ class OBV_Crossover_Strategy(BaseStrategy):
         # Appliquer pénalités restantes (les rejets ont été traités en amont)
         confidence_boost += confirmations_penalty + bias_penalty
 
-        confidence = max(0.0, min(base_confidence * (1 + confidence_boost), 1.0))
+        confidence = max(0.0, min(base_confidence *
+                         (1 + confidence_boost), 1.0))
 
         if confidence < self.min_confidence_threshold:
             return {
@@ -528,7 +532,8 @@ class OBV_Crossover_Strategy(BaseStrategy):
 
         for indicator in required:
             if indicator not in self.indicators:
-                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
+                logger.warning(
+                    f"{self.name}: Indicateur manquant: {indicator}")
                 return False
             if self.indicators[indicator] is None:
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")

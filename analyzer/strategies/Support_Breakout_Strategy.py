@@ -3,9 +3,10 @@ Support_Breakout_Strategy - Version ULTRA SIMPLIFIÉE pour crypto spot.
 Détecte breakouts support/résistance avec logique bidirectionnelle cohérente.
 """
 
-from typing import Dict, Any, Optional
-from .base_strategy import BaseStrategy
 import logging
+from typing import Any
+
+from .base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +26,15 @@ class Support_Breakout_Strategy(BaseStrategy):
     - BUY: Cassure résistance + confirmations
     """
 
-    def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+    def __init__(self, symbol: str,
+                 data: dict[str, Any], indicators: dict[str, Any]):
         super().__init__(symbol, data, indicators)
 
         # Paramètres DURCIS pour vrais breakouts
         self.breakout_threshold = 0.005  # 0.5% seuil durci (vs bruit 0.3%)
         self.base_confidence = 0.65  # Confiance élevée maintenue
 
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _get_current_values(self) -> dict[str, float | None]:
         """Récupère seulement les indicateurs essentiels."""
         return {
             "nearest_support": self.indicators.get("nearest_support"),
@@ -47,17 +49,20 @@ class Support_Breakout_Strategy(BaseStrategy):
         }
 
     def _detect_breakout(
-        self, values: Dict[str, Any], current_price: float
-    ) -> Dict[str, Any]:
+        self, values: dict[str, Any], current_price: float
+    ) -> dict[str, Any]:
         """Détecte breakout support (SELL) ou résistance (BUY)."""
 
         # Support breakout (SELL)
-        nearest_support = values.get("nearest_support") or values.get("bb_lower")
+        nearest_support = values.get(
+            "nearest_support") or values.get("bb_lower")
         if nearest_support is not None:
             try:
                 support_level = float(nearest_support)
-                if current_price < support_level * (1 - self.breakout_threshold):
-                    breakdown_distance = (support_level - current_price) / support_level
+                if current_price < support_level * \
+                        (1 - self.breakout_threshold):
+                    breakdown_distance = (
+                        support_level - current_price) / support_level
                     return {
                         "is_breakout": True,
                         "signal_side": "SELL",
@@ -69,11 +74,13 @@ class Support_Breakout_Strategy(BaseStrategy):
                 pass
 
         # Resistance breakout (BUY)
-        nearest_resistance = values.get("nearest_resistance") or values.get("bb_upper")
+        nearest_resistance = values.get(
+            "nearest_resistance") or values.get("bb_upper")
         if nearest_resistance is not None:
             try:
                 resistance_level = float(nearest_resistance)
-                if current_price > resistance_level * (1 + self.breakout_threshold):
+                if current_price > resistance_level * \
+                        (1 + self.breakout_threshold):
                     breakout_distance = (
                         current_price - resistance_level
                     ) / resistance_level
@@ -89,7 +96,7 @@ class Support_Breakout_Strategy(BaseStrategy):
 
         return {"is_breakout": False, "reason": "Pas de breakout détecté"}
 
-    def generate_signal(self) -> Dict[str, Any]:
+    def generate_signal(self) -> dict[str, Any]:
         """Version ULTRA SIMPLIFIÉE pour crypto spot breakouts."""
 
         # Validation minimale
@@ -106,7 +113,7 @@ class Support_Breakout_Strategy(BaseStrategy):
         confidence_boost = 0.0
 
         # Prix actuel
-        if not ("close" in self.data and self.data["close"]):
+        if not (self.data.get("close")):
             return {
                 "side": None,
                 "confidence": 0.0,
@@ -146,7 +153,8 @@ class Support_Breakout_Strategy(BaseStrategy):
         directional_bias = values.get("directional_bias")
 
         try:
-            momentum_val = float(momentum_score) if momentum_score is not None else 50.0
+            momentum_val = float(
+                momentum_score) if momentum_score is not None else 50.0
         except (ValueError, TypeError):
             momentum_val = 50.0
 
@@ -157,15 +165,17 @@ class Support_Breakout_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Rejet BUY: momentum trop faible ({momentum_val:.0f})",
-                "metadata": {"strategy": self.name},
+                "metadata": {
+                    "strategy": self.name},
             }
-        elif signal_side == "SELL" and momentum_val > 50:
+        if signal_side == "SELL" and momentum_val > 50:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Rejet SELL: momentum trop fort ({momentum_val:.0f})",
-                "metadata": {"strategy": self.name},
+                "metadata": {
+                    "strategy": self.name},
             }
 
         # Rejet si incohérence signal/bias + BONUS si aligné
@@ -177,9 +187,10 @@ class Support_Breakout_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Rejet {signal_side}: bias contradictoire ({directional_bias})",
-                "metadata": {"strategy": self.name},
+                "metadata": {
+                    "strategy": self.name},
             }
-        elif (signal_side == "BUY" and directional_bias == "BULLISH") or (
+        if (signal_side == "BUY" and directional_bias == "BULLISH") or (
             signal_side == "SELL" and directional_bias == "BEARISH"
         ):
             confidence_boost += 0.10
@@ -190,7 +201,8 @@ class Support_Breakout_Strategy(BaseStrategy):
         # Volume DURCI - évite breakouts neutres
         volume_ratio = values.get("volume_ratio")
         try:
-            vol_ratio = float(volume_ratio) if volume_ratio is not None else 1.0
+            vol_ratio = float(
+                volume_ratio) if volume_ratio is not None else 1.0
             if vol_ratio >= 1.8:  # Seuil plus strict
                 confidence_boost += 0.15
                 reason += f" + volume fort ({vol_ratio:.1f}x)"
@@ -211,7 +223,8 @@ class Support_Breakout_Strategy(BaseStrategy):
         # Confluence avec rejet
         confluence_score = values.get("confluence_score")
         try:
-            conf_val = float(confluence_score) if confluence_score is not None else 0.0
+            conf_val = float(
+                confluence_score) if confluence_score is not None else 0.0
         except (ValueError, TypeError):
             conf_val = 0.0
 
@@ -221,9 +234,11 @@ class Support_Breakout_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Rejet: confluence insuffisante ({conf_val})",
-                "metadata": {"strategy": self.name, "confluence_score": conf_val},
+                "metadata": {
+                    "strategy": self.name,
+                    "confluence_score": conf_val},
             }
-        elif conf_val >= 75:  # Confluence affinée
+        if conf_val >= 75:  # Confluence affinée
             confidence_boost += 0.10
             reason += f" + confluence excellente ({conf_val:.0f})"
         elif conf_val >= 60:
@@ -243,9 +258,11 @@ class Support_Breakout_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Rejet {signal_side}: régime contradictoire ({market_regime})",
-                "metadata": {"strategy": self.name, "market_regime": market_regime},
+                "metadata": {
+                    "strategy": self.name,
+                    "market_regime": market_regime},
             }
-        elif (signal_side == "BUY" and market_regime == "TRENDING_BULL") or (
+        if (signal_side == "BUY" and market_regime == "TRENDING_BULL") or (
             signal_side == "SELL" and market_regime == "TRENDING_BEAR"
         ):
             confidence_boost += 0.08
@@ -287,7 +304,8 @@ class Support_Breakout_Strategy(BaseStrategy):
         )
 
         if not has_level:
-            logger.warning(f"{self.name}: Aucun niveau support/résistance disponible")
+            logger.warning(
+                f"{self.name}: Aucun niveau support/résistance disponible")
             return False
 
         # Seulement momentum requis

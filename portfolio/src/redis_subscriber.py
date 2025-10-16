@@ -1,7 +1,8 @@
-import threading
 import logging
-from shared.src.redis_client import RedisClient
+import threading
+
 from shared.src.config import SYMBOLS
+from shared.src.redis_client import RedisClient
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +22,11 @@ def start_redis_subscriptions():
 
 def _subscribe_market_data():
     redis = RedisClient()
-    channels = [f"roottrading:market:data:{symbol.lower()}" for symbol in SYMBOLS]
+    channels = [
+        f"roottrading:market:data:{symbol.lower()}" for symbol in SYMBOLS]
     redis.subscribe(channels, _handle_market_data)
-    logger.info(f"✅ Abonné à {len(channels)} channels Redis pour le monitoring.")
+    logger.info(
+        f"✅ Abonné à {len(channels)} channels Redis pour le monitoring.")
 
 
 def _handle_market_data(channel, data):
@@ -34,7 +37,8 @@ def _handle_market_data(channel, data):
 def _subscribe_cycle_created():
     redis = RedisClient()
     redis.subscribe("roottrading:cycle:created", _handle_cycle_created)
-    logger.info("✅ Abonné au canal Redis des cycles créés (monitoring uniquement).")
+    logger.info(
+        "✅ Abonné au canal Redis des cycles créés (monitoring uniquement).")
 
 
 def _handle_cycle_created(channel, data):
@@ -52,8 +56,8 @@ def _handle_cycle_created(channel, data):
             f"Symbol: {symbol} | Qty: {quantity} | Prix: {entry_price}"
         )
 
-    except Exception as e:
-        logger.error(f"❌ Erreur lors du monitoring de cycle_created: {str(e)}")
+    except Exception:
+        logger.exception("❌ Erreur lors du monitoring de cycle_created")
 
 
 def _subscribe_cycle_completed():
@@ -82,14 +86,15 @@ def _handle_cycle_completed(channel, data):
             f"Entry: {entry_price} -> Exit: {exit_price}"
         )
 
-    except Exception as e:
-        logger.error(f"❌ Erreur lors du monitoring de cycle_completed: {str(e)}")
+    except Exception:
+        logger.exception("❌ Erreur lors du monitoring de cycle_completed")
 
 
 def _subscribe_cycle_canceled():
     redis = RedisClient()
     redis.subscribe("roottrading:cycle:canceled", _handle_cycle_canceled)
-    logger.info("✅ Abonné au canal Redis des cycles annulés (monitoring uniquement).")
+    logger.info(
+        "✅ Abonné au canal Redis des cycles annulés (monitoring uniquement).")
 
 
 def _handle_cycle_canceled(channel, data):
@@ -106,14 +111,15 @@ def _handle_cycle_canceled(channel, data):
             f"Symbol: {symbol} | Raison: {reason}"
         )
 
-    except Exception as e:
-        logger.error(f"❌ Erreur lors du monitoring de cycle_canceled: {str(e)}")
+    except Exception:
+        logger.exception("❌ Erreur lors du monitoring de cycle_canceled")
 
 
 def _subscribe_cycle_failed():
     redis = RedisClient()
     redis.subscribe("roottrading:cycle:failed", _handle_cycle_failed)
-    logger.info("✅ Abonné au canal Redis des cycles échoués (monitoring uniquement).")
+    logger.info(
+        "✅ Abonné au canal Redis des cycles échoués (monitoring uniquement).")
 
 
 def _handle_cycle_failed(channel, data):
@@ -130,5 +136,5 @@ def _handle_cycle_failed(channel, data):
             f"Symbol: {symbol} | Erreur: {error}"
         )
 
-    except Exception as e:
-        logger.error(f"❌ Erreur lors du monitoring de cycle_failed: {str(e)}")
+    except Exception:
+        logger.exception("❌ Erreur lors du monitoring de cycle_failed")
