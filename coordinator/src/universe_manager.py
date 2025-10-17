@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
+from shared.src.db_pool import real_dict_cursor
+
 logger = logging.getLogger(__name__)
 
 
@@ -142,7 +144,6 @@ class UniverseManager:
     def _calculate_score_from_db(self, symbol: str) -> PairScore:
         """Calcule le score depuis analyzer_data (tout est déjà calculé)"""
         try:
-            from shared.src.db_pool import real_dict_cursor
 
             with real_dict_cursor() as cursor:
                 # Récupérer toutes les données calculées depuis analyzer_data
@@ -249,7 +250,6 @@ class UniverseManager:
         scores = []
 
         try:
-            from shared.src.db_pool import real_dict_cursor
 
             with real_dict_cursor() as cursor:
                 # Récupérer les données de toutes les paires des 15 dernières
@@ -392,7 +392,6 @@ class UniverseManager:
         scores = {}
 
         try:
-            from shared.src.db_pool import real_dict_cursor
 
             with real_dict_cursor() as cursor:
                 # Récupérer toutes les données calculées depuis analyzer_data

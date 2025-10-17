@@ -4,7 +4,7 @@ Module d'exécution principal des ordres sur Binance.
 Version simplifiée qui délègue les tâches spécifiques à d'autres modules.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from shared.src.enums import OrderSide, OrderStatus, TradeRole

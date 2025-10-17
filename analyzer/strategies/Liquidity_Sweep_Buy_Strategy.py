@@ -581,7 +581,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
                 "symbol": self.symbol,
                 "current_price": current_price,
                 "nearest_support": nearest_support,
-                "support_strength": support_strength_raw,
+                "support_strength": values.get("support_strength"),
                 "support_strength_score": support_strength_score,
                 "sweep_bars_ago": sweep_analysis["sweep_bars_ago"],
                 "max_sweep_distance_pct": sweep_analysis["max_sweep_distance"] * 100,

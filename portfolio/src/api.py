@@ -23,6 +23,9 @@ from shared.src.schemas import AssetBalance, PortfolioSummary
 
 from .binance_account_manager import BinanceAccountManager
 from .models import DBManager, PortfolioModel, SharedCache
+from .redis_subscriber import start_redis_subscriptions
+from .startup import initial_sync_binance
+from .sync import start_sync_tasks
 
 # Mesure des performances et des ressources
 process = psutil.Process(os.getpid())
@@ -984,23 +987,19 @@ async def lifespan(_app: FastAPI):
 
     try:
         # Initialiser la synchronisation Binance
-        from .startup import initial_sync_binance
 
         await initial_sync_binance()
 
         # Démarrer les tâches de synchronisation
-        from .sync import start_sync_tasks
 
         start_sync_tasks()
 
         # Démarrer les abonnements Redis
-        from .redis_subscriber import start_redis_subscriptions
 
         start_redis_subscriptions()
 
         # Afficher le portfolio initial
         try:
-            from .models import DBManager, PortfolioModel
 
             db = DBManager()
             portfolio = PortfolioModel(db)

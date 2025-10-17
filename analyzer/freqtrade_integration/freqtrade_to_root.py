@@ -12,6 +12,7 @@ import pandas as pd
 from strategies.base_strategy import BaseStrategy
 
 from .data_converter import DataConverter
+from freqtrade.strategy import IStrategy
 
 # Ajouter le path pour imports ROOT
 analyzer_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
@@ -20,7 +21,6 @@ sys.path.append(analyzer_root)
 
 # Import conditionnel Freqtrade
 try:
-    from freqtrade.strategy import IStrategy
 
     FREQTRADE_AVAILABLE = True
 except ImportError:

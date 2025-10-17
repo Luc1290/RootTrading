@@ -20,6 +20,7 @@ from visualization.src.data_manager import DataManager
 from visualization.src.opportunity_calculator_pro import OpportunityCalculatorPro
 from visualization.src.statistics_service import StatisticsService
 from visualization.src.websocket_hub import WebSocketHub
+from shared.src.config import SYMBOLS
 
 # Ajouter le path pour accéder au module notifications
 sys.path.insert(0, str((Path(__file__).parent / "../..").resolve()))
@@ -450,7 +451,6 @@ async def get_available_symbols():
 async def get_configured_symbols():
     """Get list of configured trading symbols from shared config"""
     try:
-        from shared.src.config import SYMBOLS
     except Exception:
         logger.exception("Error getting configured symbols")
         # Fallback avec symboles par défaut en cas d'erreur

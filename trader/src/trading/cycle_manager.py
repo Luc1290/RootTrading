@@ -6,7 +6,7 @@ Gère la création et le suivi des cycles BUY->SELL sans impacter l'exécution d
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 

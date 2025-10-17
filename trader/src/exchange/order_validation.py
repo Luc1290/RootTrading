@@ -6,6 +6,7 @@ S'assure que les ordres respectent les contraintes de l'exchange.
 import logging
 
 from shared.src.schemas import TradeOrder
+from trader.src.exchange.binance_utils import BinanceUtils
 from trader.src.exchange.constraints import BinanceSymbolConstraints
 
 # Configuration du logging
@@ -90,7 +91,6 @@ class OrderValidator:
                 )
 
             # Validation de notional (quantité * prix)
-            from trader.src.exchange.binance_utils import BinanceUtils
 
             binance_utils = BinanceUtils(
                 "", ""

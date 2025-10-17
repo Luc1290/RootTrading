@@ -7,9 +7,11 @@ import json
 import logging
 import threading
 import time
+from datetime import datetime
 from typing import Any
 
-from shared.src.db_pool import DBConnectionPool
+from shared.src.config import SYMBOLS
+from shared.src.db_pool import DBConnectionPool, DBContextManager
 from shared.src.enums import OrderSide, SignalStrength
 from shared.src.redis_client import RedisClient
 from shared.src.schemas import StrategySignal
@@ -160,7 +162,6 @@ class Coordinator:
     def _init_symbols(self):
         """Initialise les symboles dans Redis depuis .env"""
         try:
-            from shared.src.config import SYMBOLS
 
             # Vérifier si déjà configurés
             existing_symbols = self.redis_client.get("trading:symbols")
@@ -365,7 +366,6 @@ class Coordinator:
 
         try:
             # Utiliser le pool de connexions avec transaction auto
-            from shared.src.db_pool import DBContextManager
 
             with DBContextManager(auto_transaction=True) as cursor:
                 cursor.execute(
@@ -1076,7 +1076,6 @@ class Coordinator:
 
             # Convertir timestamp en epoch si nécessaire
             if isinstance(entry_time, str):
-                from datetime import datetime
 
                 entry_time_dt = datetime.fromisoformat(
                     entry_time.replace("Z", "+00:00")

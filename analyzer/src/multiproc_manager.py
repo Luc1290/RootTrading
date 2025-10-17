@@ -13,6 +13,8 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 
+import psutil  # type: ignore[import-untyped]  # noqa: PLC0415
+
 logger = logging.getLogger(__name__)
 
 
@@ -300,7 +302,6 @@ class MultiProcessManager:
     def _get_memory_usage(self) -> float:
         """Récupère l'utilisation mémoire du processus."""
         try:
-            import psutil  # type: ignore[import-untyped]  # noqa: PLC0415
 
             process = psutil.Process(os.getpid())
             return process.memory_info().rss / 1024 / 1024  # MB

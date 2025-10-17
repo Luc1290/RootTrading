@@ -1,23 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cat:*)",
-      "Bash(python:*)",
-      "Bash(isort:*)",
-      "Bash(autopep8:*)",
-      "Bash(pip install:*)",
-      "Bash(export PATH=\"$PATH:/c/Program Files/Graphviz/bin\")",
-      "Bash(pydeps:*)",
-      "Bash(pyreverse:*)",
-      "Bash(find:*)",
-      "Bash(pip uninstall:*)",
-      "Bash(pip index:*)",
-      "Bash(test:*)",
-      "Bash(ruff check:*)",
-      "Bash(awk:*)",
-      "Bash(vulture:*)"
-    ],
-    "deny": [],
-    "ask": []
-  }
+      "Bash(python scripts/fix_plc0415.py:*)",
+      "Bash(ruff check:*)"
+    ]
+  },
+  "framework": "superclaude",
+  "framework_path": "E:\\RootTrading\\RootTrading\\.claude\\frameworks\\superclaude",
+  "project_root": "E:\\RootTrading\\RootTrading",
+  "theme": "dark",
+  "default_mode": "research"
 }

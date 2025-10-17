@@ -16,6 +16,7 @@ from urllib.parse import urlencode
 import requests  # type: ignore
 
 from shared.src.enums import OrderSide, OrderStatus
+from shared.src.redis_client import RedisClient
 from shared.src.schemas import TradeExecution, TradeOrder
 
 # Configuration de la précision décimale
@@ -212,7 +213,6 @@ class BinanceUtils:
                 pass
 
             try:
-                from shared.src.redis_client import RedisClient
 
                 redis_client = RedisClient()
                 redis_client.publish("roottrading:order:failed", notification)
