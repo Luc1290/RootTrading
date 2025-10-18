@@ -1,13 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python scripts/fix_plc0415.py:*)",
-      "Bash(ruff check:*)",
-      "Bash(mypy \"visualization/src/statistics_service.py\" --no-error-summary)",
-      "Bash(mypy \"visualization/src/statistics_service.py\")",
-      "Bash(mypy \"visualization/src/opportunity_validator.py\" \"visualization/src/statistics_service.py\")",
-      "Bash(mypy \"visualization/src/opportunity_validator.py\")",
-      "Bash(mypy \"gateway/src/main_simple.py\" \"market_analyzer/src/main.py\" \"visualization/src/main.py\" \"visualization/src/opportunity_validator.py\" \"visualization/src/statistics_service.py\")"
+      "file_system_access",
+      "network_access",
+      "execute_code",
+      "install_packages",
+      "access_environment_variables",
+      "access_clipboard",
+      "use_gpu"
     ]
   },
   "framework": "superclaude",
