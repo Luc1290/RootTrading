@@ -346,11 +346,12 @@ class AdaptiveConsensusAnalyzer:
         # Obtenir les requirements pour ce régime ET ce side
 
         regime_requirements = self.regime_family_requirements[regime]
+        requirements: dict[str, int]
         if signal_side in regime_requirements:
-            requirements: dict[str, int] = regime_requirements[signal_side]
+            requirements = regime_requirements[signal_side]
         else:
             # Fallback si le side n'existe pas (ancien format)
-            requirements: dict[str, int] = regime_requirements
+            requirements = regime_requirements
 
         logger.debug(f"🔍 Requirements pour {regime}/{signal_side}: {requirements}")
 
@@ -763,11 +764,12 @@ class AdaptiveConsensusAnalyzer:
 
         # Obtenir les requirements selon le side (MTF)
         regime_requirements = self.regime_family_requirements[regime]
+        requirements: dict[str, int]
         if signal_side in regime_requirements:
-            requirements: dict[str, int] = regime_requirements[signal_side]
+            requirements = regime_requirements[signal_side]
         else:
             # Fallback si le side n'existe pas (ancien format)
-            requirements: dict[str, int] = regime_requirements
+            requirements = regime_requirements
 
         # Ajuster le minimum pour MTF post-conflit
         # Avec 28 stratégies actives, même après conflit on devrait avoir assez
@@ -862,11 +864,12 @@ class AdaptiveConsensusAnalyzer:
 
         # Obtenir les requirements selon le side
         regime_requirements = self.regime_family_requirements[regime]
+        requirements: dict[str, int]
         if signal_side in regime_requirements:
-            requirements: dict[str, int] = regime_requirements[signal_side]
+            requirements = regime_requirements[signal_side]
         else:
             # Fallback si le side n'existe pas (ancien format)
-            requirements: dict[str, int] = regime_requirements
+            requirements = regime_requirements
 
         base_min = requirements.get("total_min", 5)
 

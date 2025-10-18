@@ -10,7 +10,7 @@ from typing import Any
 
 from psycopg2.extras import RealDictCursor
 
-from .field_converters import FieldConverter  # type: ignore[import-not-found]
+from .field_converters import FieldConverter
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +27,13 @@ class ContextManager:
         """
         # Si c'est une connexion, on la garde pour compatibilité
         # Si c'est un dict de config, on créera des connexions à la volée
+        self.db_config: dict[str, Any] | None
         if isinstance(db_connection, dict):
             self.db_config = db_connection
             self.db_connection = None
         else:
             self.db_connection = db_connection
-            self.db_config: dict[str, Any] | None = None
+            self.db_config = None
 
         # Cache pour optimiser les requêtes répétées avec TTL dynamique
         self.context_cache = {}
@@ -208,7 +209,7 @@ class ContextManager:
             )
 
             # Construire le contexte avec champs racine pour compatibility
-            context = {
+            context: dict[str, Any] = {
                 "symbol": symbol,
                 "timeframe": timeframe,
                 "ohlcv_data": ohlcv_data,
@@ -335,6 +336,8 @@ class ContextManager:
             Liste des données OHLCV
         """
         try:
+            if self.db_connection is None:
+                return []
             cursor = self.db_connection.cursor(cursor_factory=RealDictCursor)
             try:
                 cursor.execute(
@@ -381,6 +384,8 @@ class ContextManager:
             Dict des indicateurs avec conversion de type robuste
         """
         try:
+            if self.db_connection is None:
+                return {}
             cursor = self.db_connection.cursor(cursor_factory=RealDictCursor)
             try:
                 cursor.execute(
@@ -669,6 +674,9 @@ class ContextManager:
         try:
             htf_data = {}
 
+            if self.db_connection is None:
+                return htf_data
+
             # Récupérer données 15m (direction + ATR) - JOIN avec market_data
             # pour le close
             cursor = self.db_connection.cursor()
@@ -806,6 +814,8 @@ class ContextManager:
         timeframes_to_try = fallback_sequence.get(original_timeframe, ["3m", "1m"])
 
         try:
+            if self.db_connection is None:
+                return None
             cursor = self.db_connection.cursor(cursor_factory=RealDictCursor)
             try:
                 for fallback_tf in timeframes_to_try:
@@ -852,6 +862,8 @@ class ContextManager:
             Estimation de volume_quality_score (20-80)
         """
         try:
+            if self.db_connection is None:
+                return 50.0
             cursor = self.db_connection.cursor(cursor_factory=RealDictCursor)
             try:
                 # Prendre volume_ratio récent de n'importe quel timeframe
