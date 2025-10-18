@@ -66,78 +66,37 @@ class CCI_Reversal_Strategy(BaseStrategy):
 
         try:
             cci_20 = float(cci_20_raw)
-            return cci_20, None
         except (ValueError, TypeError):
             return None, self._create_rejection_signal(
                 f"CCI invalide: {cci_20_raw}", {}
             )
+        else:
+            return cci_20, None
 
     def _validate_signal_requirements(
         self, signal_side: str, values: dict[str, Any]
     ) -> dict[str, Any] | None:
         """Valide les exigences du signal. Retourne un signal de rejet ou None si valide."""
-        # Validation momentum
-        momentum_score_raw = values.get("momentum_score")
-        momentum_score = 0.0
-        if momentum_score_raw is not None:
-            try:
-                momentum_score = float(momentum_score_raw)
-                if signal_side == "BUY" and momentum_score < 30:
-                    return self._create_rejection_signal(
-                        f"Rejet BUY: momentum encore trop faible ({momentum_score:.1f})",
-                        {"momentum_score": momentum_score},
-                    )
-                if signal_side == "SELL" and momentum_score > 70:
-                    return self._create_rejection_signal(
-                        f"Rejet SELL: momentum encore trop fort ({momentum_score:.1f})",
-                        {"momentum_score": momentum_score},
-                    )
-            except (ValueError, TypeError):
-                pass
+        validations = [
+            ("momentum_score", lambda v: (signal_side == "BUY" and v < 30) or (signal_side == "SELL" and v > 70),
+             lambda v: f"Rejet {signal_side}: momentum {'trop faible' if signal_side == 'BUY' else 'trop fort'} ({v:.1f})"),
+            ("confluence_score", lambda v: v < 30,
+             lambda v: f"Rejet: confluence trop faible ({v:.0f} < 30)"),
+            ("rsi_14", lambda v: (signal_side == "BUY" and v > 65) or (signal_side == "SELL" and v < 35),
+             lambda v: f"Rejet {signal_side}: RSI {'trop haut' if signal_side == 'BUY' else 'trop bas'} ({v:.1f}) pour reversal"),
+            ("volume_ratio", lambda v: v < 0.2,
+             lambda v: f"Rejet: volume trop faible ({v:.2f}x < 0.2x)"),
+        ]
 
-        # Validation confluence
-        confluence_score_raw = values.get("confluence_score")
-        if confluence_score_raw is not None:
-            try:
-                confluence_score = float(confluence_score_raw)
-                if confluence_score < 30:
-                    return self._create_rejection_signal(
-                        f"Rejet: confluence trop faible ({confluence_score:.0f} < 30)",
-                        {"confluence_score": confluence_score},
-                    )
-            except (ValueError, TypeError):
-                pass
-
-        # Validation RSI
-        rsi_raw = values.get("rsi_14")
-        if rsi_raw is not None:
-            try:
-                rsi = float(rsi_raw)
-                if signal_side == "BUY" and rsi > 65:
-                    return self._create_rejection_signal(
-                        f"Rejet BUY: RSI trop haut ({rsi:.1f}) pour reversal",
-                        {"rsi": rsi},
-                    )
-                if signal_side == "SELL" and rsi < 35:
-                    return self._create_rejection_signal(
-                        f"Rejet SELL: RSI trop bas ({rsi:.1f}) pour reversal",
-                        {"rsi": rsi},
-                    )
-            except (ValueError, TypeError):
-                pass
-
-        # Validation volume
-        volume_ratio_raw = values.get("volume_ratio")
-        if volume_ratio_raw is not None:
-            try:
-                volume_ratio = float(volume_ratio_raw)
-                if volume_ratio < 0.2:
-                    return self._create_rejection_signal(
-                        f"Rejet: volume trop faible ({volume_ratio:.2f}x < 0.2x)",
-                        {"volume_ratio": volume_ratio},
-                    )
-            except (ValueError, TypeError):
-                pass
+        for key, condition, message_fn in validations:
+            raw_value = values.get(key)
+            if raw_value is not None:
+                try:
+                    value = float(raw_value)
+                    if condition(value):
+                        return self._create_rejection_signal(message_fn(value), {key: value})
+                except (ValueError, TypeError):
+                    pass
 
         return None
 

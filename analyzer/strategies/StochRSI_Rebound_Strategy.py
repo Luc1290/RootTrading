@@ -65,51 +65,63 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
         directional_bias: str | None,
         confluence_score: float | None,
         adx_14: float | None,
-        stoch_rsi: float,
     ) -> tuple[bool, str | None]:
         """Valide les exigences pour un signal StochRSI. Returns (is_valid, rejection_reason)."""
-        # Rejet momentum contradictoire
-        if momentum_score:
-            if signal_side == "BUY" and momentum_score < 40:
-                return (
-                    False,
-                    f"Rejet StochRSI BUY: momentum trop faible ({momentum_score:.0f})",
-                )
-            if signal_side == "SELL" and momentum_score > 60:
-                return (
-                    False,
-                    f"Rejet StochRSI SELL: momentum trop fort ({momentum_score:.0f})",
-                )
+        # Validation momentum
+        rejection = self._validate_momentum(signal_side, momentum_score)
+        if rejection:
+            return False, rejection
 
-        # Rejet bias contradictoire
-        if directional_bias:
-            bias_upper = directional_bias.upper()
-            if signal_side == "BUY" and bias_upper == "BEARISH":
-                return False, "Rejet StochRSI BUY: bias contraire (BEARISH)"
-            if signal_side == "SELL" and bias_upper == "BULLISH":
-                return False, "Rejet StochRSI SELL: bias contraire (BULLISH)"
+        # Validation directional bias
+        rejection = self._validate_bias(signal_side, directional_bias)
+        if rejection:
+            return False, rejection
 
-        # Rejet confluence faible
+        # Validation confluence
         if confluence_score and confluence_score < 40:
             return (
                 False,
                 f"Rejet StochRSI: confluence insuffisante ({confluence_score:.0f})",
             )
 
-        # Rejet ADX
-        if adx_14:
-            if adx_14 < 15:
-                return (
-                    False,
-                    f"Rejet StochRSI: ADX trop faible ({adx_14:.0f}) - range mou",
-                )
-            if adx_14 > 40:
-                return (
-                    False,
-                    f"Rejet StochRSI: ADX trop fort ({adx_14:.0f}) - tendance trop forte",
-                )
+        # Validation ADX
+        rejection = self._validate_adx(adx_14)
+        if rejection:
+            return False, rejection
 
         return True, None
+
+    def _validate_momentum(
+        self, signal_side: str, momentum_score: float | None
+    ) -> str | None:
+        """Valide le momentum. Retourne un message d'erreur ou None."""
+        if momentum_score:
+            if signal_side == "BUY" and momentum_score < 40:
+                return f"Rejet StochRSI BUY: momentum trop faible ({momentum_score:.0f})"
+            if signal_side == "SELL" and momentum_score > 60:
+                return f"Rejet StochRSI SELL: momentum trop fort ({momentum_score:.0f})"
+        return None
+
+    def _validate_bias(
+        self, signal_side: str, directional_bias: str | None
+    ) -> str | None:
+        """Valide le directional bias. Retourne un message d'erreur ou None."""
+        if directional_bias:
+            bias_upper = directional_bias.upper()
+            if signal_side == "BUY" and bias_upper == "BEARISH":
+                return "Rejet StochRSI BUY: bias contraire (BEARISH)"
+            if signal_side == "SELL" and bias_upper == "BULLISH":
+                return "Rejet StochRSI SELL: bias contraire (BULLISH)"
+        return None
+
+    def _validate_adx(self, adx_14: float | None) -> str | None:
+        """Valide l'ADX. Retourne un message d'erreur ou None."""
+        if adx_14:
+            if adx_14 < 15:
+                return f"Rejet StochRSI: ADX trop faible ({adx_14:.0f}) - range mou"
+            if adx_14 > 40:
+                return f"Rejet StochRSI: ADX trop fort ({adx_14:.0f}) - tendance trop forte"
+        return None
 
     def _get_current_values(self) -> dict[str, Any]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -226,7 +238,6 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                 directional_bias,
                 confluence_score,
                 adx_14,
-                stoch_rsi,
             )
             if not is_valid:
                 return {

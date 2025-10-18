@@ -24,10 +24,21 @@ from shared.logging_config import setup_logging
 
 logger = setup_logging("market_analyzer", log_level="INFO")
 
-# Variables globales
-data_listener = None
-running = True
-start_time = time.time()
+# État global du service
+class ServiceState:
+    """Gestion centralisée de l'état du service."""
+
+    def __init__(self):
+        self.data_listener = None
+        self.running = True
+        self.start_time = time.time()
+        self.shutdown_task = None
+        self.listening_task = None
+        self.historical_task = None
+
+
+# Instance unique de l'état
+_state = ServiceState()
 
 # Routes pour l'API de diagnostic
 routes = web.RouteTableDef()
@@ -36,14 +47,14 @@ routes = web.RouteTableDef()
 @routes.get("/health")
 async def health_check(_request):
     """Point de terminaison santé du service."""
-    uptime = time.time() - start_time
+    uptime = time.time() - _state.start_time
     return web.json_response(
         {
             "status": "ok",
             "timestamp": time.time(),
             "uptime": uptime,
             "service": "market_analyzer",
-            "mode": "active" if running else "stopping",
+            "mode": "active" if _state.running else "stopping",
             "symbols": SYMBOLS,
             "architecture": "clean_calculation_engine",
         }
@@ -53,8 +64,8 @@ async def health_check(_request):
 @routes.get("/stats")
 async def get_stats(_request):
     """Statistiques du Market Analyzer."""
-    if data_listener:
-        stats = await data_listener.get_stats()
+    if _state.data_listener:
+        stats = await _state.data_listener.get_stats()
         return web.json_response(stats)
 
     return web.json_response(
@@ -66,7 +77,7 @@ async def get_stats(_request):
 @routes.post("/process-historical")
 async def process_historical(request):
     """API pour traiter les données historiques."""
-    if not data_listener:
+    if not _state.data_listener:
         return web.json_response({"error": "DataListener not initialized"}, status=503)
 
     try:
@@ -78,9 +89,9 @@ async def process_historical(request):
         timeframe = data.get("timeframe")
         limit = data.get("limit", 1000)
 
-        # Lancer le traitement optimisé en arrière-plan
-        _task = asyncio.create_task(
-            data_listener.process_historical_optimized(symbol, timeframe, limit)
+        # Lancer le traitement optimisé en arrière-plan et stocker la référence
+        _state.historical_task = asyncio.create_task(
+            _state.data_listener.process_historical_optimized(symbol, timeframe, limit)
         )
 
         return web.json_response(
@@ -101,7 +112,7 @@ async def process_historical(request):
 @routes.get("/coverage")
 async def get_coverage(_request):
     """Analyse de couverture des données."""
-    if not data_listener:
+    if not _state.data_listener:
         return web.json_response({"error": "DataListener not initialized"}, status=503)
 
     try:
@@ -123,7 +134,7 @@ async def get_coverage(_request):
             ORDER BY md.symbol, md.timeframe
         """
 
-        async with data_listener.db_pool.acquire() as conn:
+        async with _state.data_listener.db_pool.acquire() as conn:
             rows = await conn.fetch(coverage_query)
 
         coverage_data = []
@@ -172,15 +183,13 @@ async def start_http_server():
 
 async def shutdown(signal_type, loop):
     """Gère l'arrêt propre du service."""
-    global running
-
     logger.info(f"Signal {signal_type.name} reçu, arrêt en cours...")
-    running = False
+    _state.running = False
 
     # Arrêter le DataListener AVANT de fermer la boucle
-    if data_listener:
+    if _state.data_listener:
         try:
-            await data_listener.stop()
+            await _state.data_listener.stop()
             logger.info("✅ DataListener arrêté proprement")
         except Exception:
             logger.exception("❌ Erreur arrêt DataListener")
@@ -212,8 +221,6 @@ async def shutdown(signal_type, loop):
 
 async def main():
     """Fonction principale du Market Analyzer."""
-    global data_listener
-
     logger.info("🚀 Démarrage du Market Analyzer Service")
     logger.info("🎯 Architecture: Calcul TOUS les indicateurs depuis market_data")
     logger.info(f"📊 Symboles surveillés: {', '.join(SYMBOLS)}")
@@ -223,18 +230,20 @@ async def main():
 
     try:
         # Initialiser le DataListener
-        data_listener = DataListener()
-        await data_listener.initialize()
+        _state.data_listener = DataListener()
+        await _state.data_listener.initialize()
 
         logger.info("✅ Market Analyzer initialisé")
 
         # Démarrer l'écoute temps réel IMMÉDIATEMENT (non-bloquant)
         logger.info("🎧 Démarrage de l'écoute temps réel...")
-        _listening_task = asyncio.create_task(data_listener.start_listening())
+        _state.listening_task = asyncio.create_task(
+            _state.data_listener.start_listening()
+        )
 
         # Proposer de traiter l'historique en parallèle
         logger.info("🔍 Vérification de la couverture des données...")
-        stats = await data_listener.get_stats()
+        stats = await _state.data_listener.get_stats()
 
         if stats["missing_analyses"] > 0:
             logger.info(
@@ -243,12 +252,12 @@ async def main():
             logger.info("💡 Démarrage du traitement historique automatique...")
 
             # LIMITÉ à 100k données max au démarrage pour éviter saturation DB
-            await data_listener.process_historical_optimized(limit=100000)
+            await _state.data_listener.process_historical_optimized(limit=100000)
         else:
             logger.info("✅ Toutes les données sont analysées")
 
         # Afficher les statistiques finales
-        final_stats = await data_listener.get_stats()
+        final_stats = await _state.data_listener.get_stats()
         logger.info(
             f"📊 Couverture: {final_stats['coverage_percent']}% ({final_stats['total_analyzer_data']}/{final_stats['total_market_data']})"
         )
@@ -258,7 +267,7 @@ async def main():
 
         # Boucle d'attente au lieu d'attendre le listening_task qui peut ne
         # jamais se terminer
-        while running:
+        while _state.running:
             await asyncio.sleep(1)
 
         logger.info("📟 Arrêt demandé - terminaison en cours...")
@@ -266,8 +275,8 @@ async def main():
     except Exception:
         logger.exception("❌ Erreur critique")
     finally:
-        if data_listener:
-            await data_listener.stop()
+        if _state.data_listener:
+            await _state.data_listener.stop()
 
         # Arrêter le serveur HTTP
         await http_runner.cleanup()
@@ -280,10 +289,15 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
 
     # Configurer les gestionnaires de signaux
+    def make_signal_handler(signal_type: signal.Signals):
+        def handler():
+            # Stocker la référence de la tâche pour éviter les avertissements
+            _state.shutdown_task = asyncio.create_task(shutdown(signal_type, loop))
+
+        return handler
+
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(
-            sig, lambda s=sig: asyncio.create_task(shutdown(s, loop))  # type: ignore
-        )
+        loop.add_signal_handler(sig, make_signal_handler(sig))
 
     try:
         # Exécuter la fonction principale

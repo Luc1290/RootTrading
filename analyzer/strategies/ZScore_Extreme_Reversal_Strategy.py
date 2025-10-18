@@ -527,26 +527,21 @@ class ZScoreExtremeReversalStrategy(BaseStrategy):
         except (ValueError, TypeError):
             momentum_score = 50.0
 
-        # Rejet momentum contradictoire
-        if signal_side == "BUY" and momentum_score < 40:
-            return self._create_rejection_signal(
-                f"Rejet ZScore BUY: momentum trop faible ({momentum_score:.0f})",
-                {"momentum_score": momentum_score},
-            )
-        if signal_side == "SELL" and momentum_score > 60:
-            return self._create_rejection_signal(
-                f"Rejet ZScore SELL: momentum trop fort ({momentum_score:.0f})",
-                {"momentum_score": momentum_score},
-            )
+        critical_checks = [
+            ("momentum_buy", lambda: signal_side == "BUY" and momentum_score < 40,
+             lambda: (f"Rejet ZScore BUY: momentum trop faible ({momentum_score:.0f})", {"momentum_score": momentum_score})),
+            ("momentum_sell", lambda: signal_side == "SELL" and momentum_score > 60,
+             lambda: (f"Rejet ZScore SELL: momentum trop fort ({momentum_score:.0f})", {"momentum_score": momentum_score})),
+            ("bias_buy", lambda: signal_side == "BUY" and str(directional_bias).upper() == "BEARISH",
+             lambda: (f"Rejet ZScore {signal_side}: bias contradictoire ({directional_bias})", {"directional_bias": directional_bias})),
+            ("bias_sell", lambda: signal_side == "SELL" and str(directional_bias).upper() == "BULLISH",
+             lambda: (f"Rejet ZScore {signal_side}: bias contradictoire ({directional_bias})", {"directional_bias": directional_bias})),
+        ]
 
-        # Rejet bias contradictoire
-        if (signal_side == "BUY" and str(directional_bias).upper() == "BEARISH") or (
-            signal_side == "SELL" and str(directional_bias).upper() == "BULLISH"
-        ):
-            return self._create_rejection_signal(
-                f"Rejet ZScore {signal_side}: bias contradictoire ({directional_bias})",
-                {"directional_bias": directional_bias},
-            )
+        for _, condition, message_fn in critical_checks:
+            if condition():
+                reason, metadata = message_fn()
+                return self._create_rejection_signal(reason, metadata)
 
         # BASE CONFIDENCE CORRIGÉE pour aggregator
         base_confidence = 0.65  # Au lieu de 0.55 (passe aggregator)

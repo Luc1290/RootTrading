@@ -124,12 +124,21 @@ class SmartDataFetcher:
         logger.info("🛑 SmartDataFetcher arrêté")
 
 
-# Variables globales
-data_fetcher = None
-ws_client = None
-gap_detector = None
-running = True
-start_time = time.time()
+# État global du service
+class ServiceState:
+    """Gestion centralisée de l'état du service."""
+
+    def __init__(self):
+        self.data_fetcher = None
+        self.ws_client = None
+        self.gap_detector = None
+        self.running = True
+        self.start_time = time.time()
+        self.shutdown_task = None
+
+
+# Instance unique de l'état
+_state = ServiceState()
 
 # Routes pour le serveur HTTP
 routes = web.RouteTableDef()
@@ -138,13 +147,13 @@ routes = web.RouteTableDef()
 @routes.get("/health")
 async def health_check(_request):
     """Point de terminaison pour vérifier l'état du service."""
-    uptime = time.time() - start_time
+    uptime = time.time() - _state.start_time
     return web.json_response(
         {
             "status": "ok",
             "timestamp": time.time(),
             "uptime": uptime,
-            "mode": "active" if running else "stopping",
+            "mode": "active" if _state.running else "stopping",
             "symbols": SYMBOLS,
             "intervals": ["1m", "3m", "5m", "15m", "1h", "1d"],
             "architecture": "multi_timeframe_clean_data",
@@ -157,18 +166,18 @@ async def diagnostic(_request):
     """Point de terminaison pour le diagnostic du service."""
     # État du fetcher
     fetcher_status = {
-        "running": data_fetcher.running if data_fetcher else False,
+        "running": _state.data_fetcher.running if _state.data_fetcher else False,
         "symbols_count": len(SYMBOLS),
         "timeframes": ["1m", "3m", "5m", "15m", "1h", "1d"],
         "data_type": "raw_ohlcv_only",
     }
 
-    is_operational = data_fetcher is not None and data_fetcher.running
+    is_operational = _state.data_fetcher is not None and _state.data_fetcher.running
 
     diagnostic_info = {
         "status": "operational" if is_operational else "stopped",
         "timestamp": time.time(),
-        "uptime": time.time() - start_time,
+        "uptime": time.time() - _state.start_time,
         "data_fetcher": fetcher_status,
         "symbols": SYMBOLS,
         "intervals": ["1m", "3m", "5m", "15m", "1h", "1d"],
@@ -198,22 +207,24 @@ async def shutdown(signal_type, _loop):
     """
     Gère l'arrêt propre du service en cas de signal (SIGINT, SIGTERM).
     """
-    global running
-
     logger.info(f"Signal {signal_type.name} reçu, arrêt en cours...")
-    running = False
+    _state.running = False
 
     try:
         # Arrêter les services avec timeout
         shutdown_tasks: list[asyncio.Task] = []
 
-        if ws_client is not None:
+        if _state.ws_client is not None:
             logger.info("Arrêt WebSocket client...")
-            shutdown_tasks.append(asyncio.wait_for(ws_client.stop(), timeout=5.0))
+            shutdown_tasks.append(
+                asyncio.wait_for(_state.ws_client.stop(), timeout=5.0)
+            )
 
-        if data_fetcher is not None:
+        if _state.data_fetcher is not None:
             logger.info("Arrêt Data fetcher...")
-            shutdown_tasks.append(asyncio.wait_for(data_fetcher.stop(), timeout=5.0))
+            shutdown_tasks.append(
+                asyncio.wait_for(_state.data_fetcher.stop(), timeout=5.0)
+            )
 
         if shutdown_tasks:
             await asyncio.gather(*shutdown_tasks, return_exceptions=True)
@@ -234,8 +245,6 @@ async def main():
     """
     Fonction principale qui démarre le Gateway SIMPLIFIÉ.
     """
-    global data_fetcher, ws_client
-
     logger.info("🚀 Démarrage du service Gateway SIMPLE (données brutes uniquement)...")
     logger.info(
         f"Configuration: {', '.join(SYMBOLS)} @ ['1m', '3m', '5m', '15m', '1h', '1d']"
@@ -247,8 +256,8 @@ async def main():
 
     try:
         # Créer les services intelligents
-        data_fetcher = SmartDataFetcher()
-        ws_client = SimpleBinanceWebSocket(
+        _state.data_fetcher = SmartDataFetcher()
+        _state.ws_client = SimpleBinanceWebSocket(
             symbols=SYMBOLS, intervals=["1m", "3m", "5m", "15m", "1h", "1d"]
         )
 
@@ -257,17 +266,17 @@ async def main():
 
         # 1. D'abord synchroniser les données manquantes
         logger.info("🔍 Phase 1: Synchronisation intelligente...")
-        await data_fetcher.start()
+        await _state.data_fetcher.start()
 
         # 2. Ensuite démarrer le WebSocket temps réel en mode continu
         logger.info("🚀 Phase 2: Démarrage WebSocket temps réel...")
         # Note: WebSocket fonctionne en continu, pas de synchronisation
         # nécessaire
-        await ws_client.start()
+        await _state.ws_client.start()
 
         # 3. Attendre le signal d'arrêt
         logger.info("✅ Gateway démarré - en attente du signal d'arrêt...")
-        while running:
+        while _state.running:
             await asyncio.sleep(1)  # Vérifier le statut toutes les secondes
 
         logger.info("📟 Signal d'arrêt reçu - fermeture en cours...")
@@ -275,10 +284,10 @@ async def main():
     except Exception:
         logger.exception("❌ Erreur critique dans le Gateway")
     finally:
-        if ws_client:
-            await ws_client.stop()
-        if data_fetcher:
-            await data_fetcher.stop()
+        if _state.ws_client:
+            await _state.ws_client.stop()
+        if _state.data_fetcher:
+            await _state.data_fetcher.stop()
 
         # Arrêter le serveur HTTP
         await http_runner.cleanup()
@@ -295,7 +304,8 @@ if __name__ == "__main__":
 
         def make_signal_handler(signal_type: signal.Signals) -> Callable[[], None]:
             def handler() -> None:
-                _task = asyncio.create_task(shutdown(signal_type, loop))
+                # Stocker la référence de la tâche pour éviter les avertissements
+                _state.shutdown_task = asyncio.create_task(shutdown(signal_type, loop))
 
             return handler
 

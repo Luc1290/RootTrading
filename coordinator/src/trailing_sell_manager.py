@@ -6,6 +6,7 @@ Extrait du coordinator pour alléger le code et améliorer la maintenance.
 import json
 import logging
 import time
+import traceback
 from datetime import datetime
 from typing import Any
 
@@ -343,8 +344,7 @@ class TrailingSellManager:
             )
 
         except Exception:
-            logger.exception("❌ Erreur dans check_trailing_sell pour {symbol}")
-            import traceback
+            logger.exception("❌ Erreur dans check_trailing_sell pour {symbol}")           
 
             logger.exception(f"❌ Traceback: {traceback.format_exc()}")
             # En cas d'erreur, autoriser le SELL par sécurité

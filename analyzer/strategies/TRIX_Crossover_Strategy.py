@@ -254,8 +254,7 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                             "strength": min(abs(diff) * 100, 1.0),
                             "tema_dema_diff": diff,
                         }
-
-                    return {
+                    return {  # noqa: TRY300
                         "is_crossover": False,
                         "direction": "neutral",
                         "strength": 0.1,
@@ -273,8 +272,7 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                     "strength": min(abs(diff) * 100, 1.0),
                     "tema_dema_diff": diff,
                 }
-
-            return {
+            return {  # noqa: TRY300
                 "is_crossover": False,
                 "direction": "neutral",
                 "strength": 0.1,

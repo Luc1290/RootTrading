@@ -179,7 +179,8 @@ class StrategyLoader:
                     f"{strategy_class.__name__} manque les paramètres: {missing}"
                 )
                 return False
-            return True
+            else:
+                return True
 
         except Exception:
             logger.exception(

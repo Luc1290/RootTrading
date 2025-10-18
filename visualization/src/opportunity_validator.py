@@ -549,8 +549,8 @@ class OpportunityValidator:
 
         EXCEPTION PUMP: Tolérance RSI/MFI élevés si pump validé
         """
-        details = {}
-        warnings = []
+        details: dict[str, bool | list[str] | float] = {}
+        warnings: list[str] = []
         score = 100.0
 
         # Détecter si c'est un pump validé (volume fort + regime bull + context

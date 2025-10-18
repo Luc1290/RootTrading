@@ -8,12 +8,12 @@ import logging
 import multiprocessing as mp
 import os
 import time
+import psutil
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 
-import psutil  # type: ignore[import-untyped]  # noqa: PLC0415
 
 logger = logging.getLogger(__name__)
 

@@ -93,6 +93,40 @@ class OBV_Crossover_Strategy(BaseStrategy):
             pass
         return None
 
+    def _check_obv_filters(self, values: dict[str, Any], obv: float, obv_ma: float) -> tuple[bool, dict[str, Any] | None, float]:
+        """Vérifie les filtres OBV. Retourne (is_valid, error_dict, obv_distance) ou erreur."""
+        validations = [
+            ("market_regime", lambda: values.get("market_regime") in self.blocked_market_regimes,
+             lambda: {"reason": f"Marché {values.get('market_regime')} défavorable pour OBV", "extra": {"market_regime": values.get("market_regime"), "filter": "market_regime"}}),
+            ("volume", lambda: values.get("volume_ratio") is None or float(values.get("volume_ratio")) < 0.8,
+             lambda: {"reason": f"Volume insuffisant pour OBV ({values.get('volume_ratio')}x < 0.8x)", "extra": {"volume_ratio": values.get("volume_ratio"), "filter": "volume_critical"}}),
+            ("confluence", lambda: values.get("confluence_score") is None or float(values.get("confluence_score")) < 30,
+             lambda: {"reason": f"Confluence insuffisante pour OBV ({values.get('confluence_score')} < 30)", "extra": {"confluence_score": values.get("confluence_score"), "filter": "confluence_critical"}}),
+        ]
+
+        for _, condition, message_fn in validations:
+            if condition():
+                msg = message_fn()
+                return False, {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": msg["reason"],
+                    "metadata": {"strategy": self.name, "symbol": self.symbol, **msg["extra"]},
+                }, 0.0
+
+        obv_distance = abs(obv - obv_ma) / abs(obv_ma) if obv_ma != 0 else 0
+        if obv_distance < self.min_obv_ma_distance:
+            return False, {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Séparation OBV/MA insuffisante ({obv_distance:.3f} < {self.min_obv_ma_distance})",
+                "metadata": {"strategy": self.name, "symbol": self.symbol, "obv": obv, "obv_ma": obv_ma, "distance": obv_distance, "filter": "separation"},
+            }, obv_distance
+
+        return True, None, obv_distance
+
     def _validate_obv_data(
         self,
     ) -> tuple[
@@ -122,12 +156,9 @@ class OBV_Crossover_Strategy(BaseStrategy):
 
         values = self._get_current_values()
 
-        # Vérification des indicateurs OBV essentiels
         try:
             obv = float(values["obv"]) if values["obv"] is not None else None
-            obv_ma = (
-                float(values["obv_ma_10"]) if values["obv_ma_10"] is not None else None
-            )
+            obv_ma = float(values["obv_ma_10"]) if values["obv_ma_10"] is not None else None
         except (ValueError, TypeError) as e:
             return (
                 False,
@@ -160,99 +191,9 @@ class OBV_Crossover_Strategy(BaseStrategy):
                 None,
             )
 
-        # FILTRE: Market regime
-        market_regime = values.get("market_regime")
-        if market_regime in self.blocked_market_regimes:
-            return (
-                False,
-                {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Marché {market_regime} défavorable pour OBV",
-                    "metadata": {
-                        "strategy": self.name,
-                        "symbol": self.symbol,
-                        "market_regime": market_regime,
-                        "filter": "market_regime",
-                    },
-                },
-                None,
-                None,
-                None,
-                None,
-            )
-
-        # FILTRE: Volume minimum critique
-        volume_ratio = values.get("volume_ratio")
-        if volume_ratio is None or float(volume_ratio) < 0.8:
-            return (
-                False,
-                {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Volume insuffisant pour OBV ({volume_ratio}x < 0.8x)",
-                    "metadata": {
-                        "strategy": self.name,
-                        "symbol": self.symbol,
-                        "volume_ratio": volume_ratio,
-                        "filter": "volume_critical",
-                    },
-                },
-                None,
-                None,
-                None,
-                None,
-            )
-
-        # FILTRE: Confluence minimum critique
-        confluence_score = values.get("confluence_score")
-        if confluence_score is None or float(confluence_score) < 30:
-            return (
-                False,
-                {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Confluence insuffisante pour OBV ({confluence_score} < 30)",
-                    "metadata": {
-                        "strategy": self.name,
-                        "symbol": self.symbol,
-                        "confluence_score": confluence_score,
-                        "filter": "confluence_critical",
-                    },
-                },
-                None,
-                None,
-                None,
-                None,
-            )
-
-        # FILTRE: Distance OBV/MA raisonnable
-        obv_distance = abs(obv - obv_ma) / abs(obv_ma) if obv_ma != 0 else 0
-        if obv_distance < self.min_obv_ma_distance:
-            return (
-                False,
-                {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Séparation OBV/MA insuffisante ({obv_distance:.3f} < {self.min_obv_ma_distance})",
-                    "metadata": {
-                        "strategy": self.name,
-                        "symbol": self.symbol,
-                        "obv": obv,
-                        "obv_ma": obv_ma,
-                        "distance": obv_distance,
-                        "filter": "separation",
-                    },
-                },
-                None,
-                None,
-                None,
-                None,
-            )
+        is_valid, error_response, obv_distance = self._check_obv_filters(values, obv, obv_ma)
+        if not is_valid:
+            return False, error_response, None, None, None, None
 
         return True, None, values, obv, obv_ma, obv_distance
 

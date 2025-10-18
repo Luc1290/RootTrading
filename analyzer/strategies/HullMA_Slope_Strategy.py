@@ -116,6 +116,18 @@ class HullMA_Slope_Strategy(BaseStrategy):
             "prev_price_4": None,
         }
 
+    def _classify_trend_from_angle(self, angle: float) -> dict[str, Any]:
+        """Classifie la tendance basée sur l'angle."""
+        if angle >= self.hull_trend_threshold_strong:
+            return {"direction": "strong_bullish", "strength": "strong", "reliable": True, "slope_proxy": angle / 45.0}
+        if angle >= self.hull_trend_threshold_weak:
+            return {"direction": "weak_bullish", "strength": "weak", "reliable": True, "slope_proxy": angle / 45.0}
+        if angle <= -self.hull_trend_threshold_strong:
+            return {"direction": "strong_bearish", "strength": "strong", "reliable": True, "slope_proxy": angle / 45.0}
+        if angle <= -self.hull_trend_threshold_weak:
+            return {"direction": "weak_bearish", "strength": "weak", "reliable": True, "slope_proxy": angle / 45.0}
+        return {"direction": "sideways", "strength": "flat", "reliable": False, "slope_proxy": angle / 45.0}
+
     def _analyze_hull_trend_direction(
         self, values: dict[str, Any], price_data: dict[str, float | None]
     ) -> dict[str, Any]:
@@ -134,93 +146,31 @@ class HullMA_Slope_Strategy(BaseStrategy):
             if trend_angle is not None:
                 try:
                     angle = float(trend_angle)
-                    # Seuils MICRO-TENDANCES plus accessibles
-                    if angle >= self.hull_trend_threshold_strong:  # 1.2°
-                        return {
-                            "direction": "strong_bullish",
-                            "strength": "strong",
-                            "reliable": True,
-                            "slope_proxy": angle / 45.0,
-                        }
-                    if angle >= self.hull_trend_threshold_weak:  # 0.3°
-                        return {
-                            "direction": "weak_bullish",
-                            "strength": "weak",
-                            "reliable": True,
-                            "slope_proxy": angle / 45.0,
-                        }
-                    if angle <= -self.hull_trend_threshold_strong:  # -1.2°
-                        return {
-                            "direction": "strong_bearish",
-                            "strength": "strong",
-                            "reliable": True,
-                            "slope_proxy": angle / 45.0,
-                        }
-                    if angle <= -self.hull_trend_threshold_weak:  # -0.3°
-                        return {
-                            "direction": "weak_bearish",
-                            "strength": "weak",
-                            "reliable": True,
-                            "slope_proxy": angle / 45.0,
-                        }
-                    return {
-                        "direction": "sideways",
-                        "strength": "flat",
-                        "reliable": False,  # Pas de signal en sideways
-                        "slope_proxy": angle / 45.0,
-                    }
+                    return self._classify_trend_from_angle(angle)
                 except (ValueError, TypeError):
                     pass
 
             # Méthode 2: Fallback avec prix relatif et directional_bias
             directional_bias = values.get("directional_bias")
             trend_strength = values.get("trend_strength")
-
-            # Distance prix/Hull MA comme indicateur secondaire
             price_hull_ratio = current_price / hull_val
 
-            if directional_bias == "BULLISH" and trend_strength in [
-                "weak",
-                "moderate",
-                "strong",
-                "very_strong",
-                "extreme",
-            ]:
+            if directional_bias == "BULLISH" and trend_strength in ["weak", "moderate", "strong", "very_strong", "extreme"]:
                 return {
                     "direction": "bullish",
-                    "strength": (
-                        str(trend_strength).lower() if trend_strength else "moderate"
-                    ),
-                    "reliable": trend_strength
-                    in ["moderate", "strong", "very_strong", "extreme"],
-                    "slope_proxy": min(
-                        (price_hull_ratio - 1.0) * 10, 0.1
-                    ),  # Approximation
+                    "strength": str(trend_strength).lower() if trend_strength else "moderate",
+                    "reliable": trend_strength in ["moderate", "strong", "very_strong", "extreme"],
+                    "slope_proxy": min((price_hull_ratio - 1.0) * 10, 0.1),
                 }
-            if directional_bias == "BEARISH" and trend_strength in [
-                "weak",
-                "moderate",
-                "strong",
-                "very_strong",
-                "extreme",
-            ]:
+            elif directional_bias == "BEARISH" and trend_strength in ["weak", "moderate", "strong", "very_strong", "extreme"]:
                 return {
                     "direction": "bearish",
-                    "strength": (
-                        str(trend_strength).lower() if trend_strength else "moderate"
-                    ),
-                    "reliable": trend_strength
-                    in ["moderate", "strong", "very_strong", "extreme"],
-                    "slope_proxy": max(
-                        (price_hull_ratio - 1.0) * 10, -0.1
-                    ),  # Approximation
+                    "strength": str(trend_strength).lower() if trend_strength else "moderate",
+                    "reliable": trend_strength in ["moderate", "strong", "very_strong", "extreme"],
+                    "slope_proxy": max((price_hull_ratio - 1.0) * 10, -0.1),
                 }
-            return {
-                "direction": "sideways",
-                "strength": "weak",
-                "reliable": False,
-                "slope_proxy": 0.0,
-            }
+            else:
+                return {"direction": "sideways", "strength": "weak", "reliable": False, "slope_proxy": 0.0}
 
         except (ValueError, TypeError):
             return {"direction": None, "strength": "unknown", "reliable": False}
@@ -353,6 +303,20 @@ class HullMA_Slope_Strategy(BaseStrategy):
 
         return True, None, hull_val, price_val, volume_penalty, confluence_penalty
 
+    def _check_pullback_conditions(self, hull_trend: dict[str, Any], hull_20: float, current_price: float) -> dict[str, Any] | None:
+        """Vérifie les conditions de pullback. Retourne dict d'erreur ou None."""
+        if hull_trend["direction"] != "bullish" or not hull_trend["reliable"]:
+            return {"is_pullback": False, "reason": "Pas de tendance haussière Hull fiable"}
+        if current_price >= hull_20:
+            return {"is_pullback": False, "reason": f"Prix au-dessus Hull MA ({current_price:.2f} >= {hull_20:.2f})"}
+
+        pullback_pct = (hull_20 - current_price) / hull_20
+        if pullback_pct < self.price_pullback_min:
+            return {"is_pullback": False, "reason": f"Pullback trop faible ({pullback_pct*100:.1f}% < {self.price_pullback_min*100:.1f}%)"}
+        if pullback_pct > self.price_pullback_max:
+            return {"is_pullback": False, "reason": f"Pullback trop important ({pullback_pct*100:.1f}% > {self.price_pullback_max*100:.1f}%) - falling knife"}
+        return None
+
     def _detect_pullback_opportunity(
         self,
         hull_trend: dict[str, Any],
@@ -361,54 +325,21 @@ class HullMA_Slope_Strategy(BaseStrategy):
         values: dict[str, Any],
     ) -> dict[str, Any]:
         """Détecte une opportunité de pullback (prix temporairement contre la tendance Hull)."""
+        error = self._check_pullback_conditions(hull_trend, hull_20, current_price)
+        if error:
+            return error
 
-        if hull_trend["direction"] != "bullish" or not hull_trend["reliable"]:
-            return {
-                "is_pullback": False,
-                "reason": "Pas de tendance haussière Hull fiable",
-            }
-
-        # Prix doit être SOUS Hull MA (pullback dans tendance haussière)
-        if current_price >= hull_20:
-            return {
-                "is_pullback": False,
-                "reason": f"Prix au-dessus Hull MA ({current_price:.2f} >= {hull_20:.2f})",
-            }
-
-        # Calculer l'amplitude du pullback
         pullback_pct = (hull_20 - current_price) / hull_20
-
-        if pullback_pct < self.price_pullback_min:
-            return {
-                "is_pullback": False,
-                "reason": f"Pullback trop faible ({pullback_pct*100:.1f}% < {self.price_pullback_min*100:.1f}%)",
-            }
-
-        if pullback_pct > self.price_pullback_max:
-            return {
-                "is_pullback": False,
-                "reason": f"Pullback trop important ({pullback_pct*100:.1f}% > {self.price_pullback_max*100:.1f}%) - falling knife",
-            }
-
-        # Vérifier oscillateurs survente pour confirmation
         rsi_14 = values.get("rsi_14")
         momentum_score = values.get("momentum_score")
-
         oversold_signals = 0
         oversold_details = []
 
         if rsi_14 is not None and self._is_valid(rsi_14):
             try:
                 rsi = float(rsi_14)
-                # REJET si RSI contradictoire (BUY avec RSI élevé = pas
-                # contrarian)
-                # RSI trop haut pour un BUY contrarian (assoupli)
                 if rsi >= 75:
-                    return {
-                        "is_pullback": False,
-                        "reason": f"RSI contradictoire pour BUY contrarian: {rsi:.1f} trop élevé (>70)",
-                        "rsi_rejection": True,
-                    }
+                    return {"is_pullback": False, "reason": f"RSI contradictoire pour BUY contrarian: {rsi:.1f} trop élevé (>70)", "rsi_rejection": True}
                 if rsi <= self.rsi_oversold_entry:
                     oversold_signals += 1
                     oversold_details.append(f"RSI survente ({rsi:.1f})")
@@ -418,44 +349,44 @@ class HullMA_Slope_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                if momentum <= 45:  # Momentum faible pour BUY (assoupli)
+                if momentum <= 45:
                     oversold_signals += 1
                     oversold_details.append(f"momentum très faible ({momentum:.0f})")
             except (ValueError, TypeError):
                 pass
 
-        # MACD histogram pour retournement momentum
         macd_histogram = values.get("macd_histogram")
         if macd_histogram is not None:
             try:
                 hist = float(macd_histogram)
-                # Chercher un retournement (MACD qui redevient positif)
-                if hist > 0.00005:  # Légèrement positif (seuil assoupli)
+                if hist > 0.00005:
                     oversold_signals += 1
                     oversold_details.append(f"MACD retournement (+{hist:.4f})")
             except (ValueError, TypeError):
                 pass
 
-        # Autoriser 0 confirmation si pullback optimal (1-2%)
         if oversold_signals < 1:
-            if 0.01 <= pullback_pct <= 0.02:  # Zone optimale 1-2%
-                oversold_signals = 1  # Donner 1 confirmation artificielle
+            if 0.01 <= pullback_pct <= 0.02:
+                oversold_signals = 1
                 oversold_details.append("pullback optimal (1-2%)")
             else:
-                return {
-                    "is_pullback": False,
-                    "reason": f"Pullback détecté mais aucune confirmation ({oversold_signals}/1)",
-                    "pullback_pct": pullback_pct,
-                    "oversold_signals": oversold_signals,
-                }
+                return {"is_pullback": False, "reason": f"Pullback détecté mais aucune confirmation ({oversold_signals}/1)", "pullback_pct": pullback_pct, "oversold_signals": oversold_signals}
 
-        return {
-            "is_pullback": True,
-            "pullback_pct": pullback_pct,
-            "oversold_signals": oversold_signals,
-            "oversold_details": oversold_details,
-            "reason": f"Pullback {pullback_pct*100:.1f}% avec {oversold_signals} confirmations",
-        }
+        return {"is_pullback": True, "pullback_pct": pullback_pct, "oversold_signals": oversold_signals, "oversold_details": oversold_details, "reason": f"Pullback {pullback_pct*100:.1f}% avec {oversold_signals} confirmations"}
+
+    def _check_bounce_conditions(self, hull_trend: dict[str, Any], hull_20: float, current_price: float) -> dict[str, Any] | None:
+        """Vérifie les conditions de bounce. Retourne dict d'erreur ou None."""
+        if hull_trend["direction"] != "bearish" or not hull_trend["reliable"]:
+            return {"is_bounce": False, "reason": "Pas de tendance baissière Hull fiable"}
+        if current_price <= hull_20:
+            return {"is_bounce": False, "reason": f"Prix sous Hull MA ({current_price:.2f} <= {hull_20:.2f})"}
+
+        bounce_pct = (current_price - hull_20) / hull_20
+        if bounce_pct < self.price_bounce_min:
+            return {"is_bounce": False, "reason": f"Bounce trop faible ({bounce_pct*100:.1f}% < {self.price_bounce_min*100:.1f}%)"}
+        if bounce_pct > self.price_bounce_max:
+            return {"is_bounce": False, "reason": f"Bounce trop important ({bounce_pct*100:.1f}% > {self.price_bounce_max*100:.1f}%) - dead cat bounce"}
+        return None
 
     def _detect_bounce_opportunity(
         self,
@@ -465,54 +396,21 @@ class HullMA_Slope_Strategy(BaseStrategy):
         values: dict[str, Any],
     ) -> dict[str, Any]:
         """Détecte une opportunité de bounce (prix temporairement contre la tendance Hull)."""
+        error = self._check_bounce_conditions(hull_trend, hull_20, current_price)
+        if error:
+            return error
 
-        if hull_trend["direction"] != "bearish" or not hull_trend["reliable"]:
-            return {
-                "is_bounce": False,
-                "reason": "Pas de tendance baissière Hull fiable",
-            }
-
-        # Prix doit être AU-DESSUS Hull MA (bounce dans tendance baissière)
-        if current_price <= hull_20:
-            return {
-                "is_bounce": False,
-                "reason": f"Prix sous Hull MA ({current_price:.2f} <= {hull_20:.2f})",
-            }
-
-        # Calculer l'amplitude du bounce
         bounce_pct = (current_price - hull_20) / hull_20
-
-        if bounce_pct < self.price_bounce_min:
-            return {
-                "is_bounce": False,
-                "reason": f"Bounce trop faible ({bounce_pct*100:.1f}% < {self.price_bounce_min*100:.1f}%)",
-            }
-
-        if bounce_pct > self.price_bounce_max:
-            return {
-                "is_bounce": False,
-                "reason": f"Bounce trop important ({bounce_pct*100:.1f}% > {self.price_bounce_max*100:.1f}%) - dead cat bounce",
-            }
-
-        # Vérifier oscillateurs surachat pour confirmation
         rsi_14 = values.get("rsi_14")
         momentum_score = values.get("momentum_score")
-
         overbought_signals = 0
         overbought_details = []
 
         if rsi_14 is not None and self._is_valid(rsi_14):
             try:
                 rsi = float(rsi_14)
-                # REJET si RSI contradictoire (SELL avec RSI faible = pas
-                # contrarian)
-                # RSI trop bas pour un SELL contrarian (assoupli)
                 if rsi <= 25:
-                    return {
-                        "is_bounce": False,
-                        "reason": f"RSI contradictoire pour SELL contrarian: {rsi:.1f} trop bas (<30)",
-                        "rsi_rejection": True,
-                    }
+                    return {"is_bounce": False, "reason": f"RSI contradictoire pour SELL contrarian: {rsi:.1f} trop bas (<30)", "rsi_rejection": True}
                 if rsi >= self.rsi_overbought_entry:
                     overbought_signals += 1
                     overbought_details.append(f"RSI surachat ({rsi:.1f})")
@@ -522,44 +420,116 @@ class HullMA_Slope_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                if momentum >= 55:  # Momentum élevé pour SELL (assoupli)
+                if momentum >= 55:
                     overbought_signals += 1
                     overbought_details.append(f"momentum très élevé ({momentum:.0f})")
             except (ValueError, TypeError):
                 pass
 
-        # MACD histogram pour retournement momentum
         macd_histogram = values.get("macd_histogram")
         if macd_histogram is not None:
             try:
                 hist = float(macd_histogram)
-                # Chercher un retournement (MACD qui redevient négatif)
-                if hist < -0.00005:  # Légèrement négatif (seuil assoupli)
+                if hist < -0.00005:
                     overbought_signals += 1
                     overbought_details.append(f"MACD retournement ({hist:.4f})")
             except (ValueError, TypeError):
                 pass
 
-        # Autoriser 0 confirmation si bounce optimal (1-2%)
         if overbought_signals < 1:
-            if 0.01 <= bounce_pct <= 0.02:  # Zone optimale 1-2%
-                overbought_signals = 1  # Donner 1 confirmation artificielle
+            if 0.01 <= bounce_pct <= 0.02:
+                overbought_signals = 1
                 overbought_details.append("bounce optimal (1-2%)")
             else:
+                return {"is_bounce": False, "reason": f"Bounce détecté mais aucune confirmation ({overbought_signals}/1)", "bounce_pct": bounce_pct, "overbought_signals": overbought_signals}
+
+        return {"is_bounce": True, "bounce_pct": bounce_pct, "overbought_signals": overbought_signals, "overbought_details": overbought_details, "reason": f"Bounce {bounce_pct*100:.1f}% avec {overbought_signals} confirmations"}
+
+    def _check_trend_momentum(self, values: dict[str, Any], trend_type: str, hull_trend: dict[str, Any]) -> tuple[str | None, str, dict[str, Any], float] | dict[str, Any]:
+        """Vérifie le momentum pour trend-following. Retourne (signal_side, reason, opportunity_data, confidence_boost) ou dict d'erreur."""
+        momentum_score = values.get("momentum_score", 50)
+        rsi_14 = values.get("rsi_14")
+        momentum_ok = False
+        rsi_ok = False
+        reason_parts = []
+
+        if trend_type == "bullish":
+            if momentum_score is not None:
+                try:
+                    momentum_val = float(momentum_score)
+                    if momentum_val >= self.momentum_bullish_min:
+                        momentum_ok = True
+                        reason_parts.append(f"momentum {momentum_val:.1f}")
+                except (ValueError, TypeError):
+                    pass
+
+            if rsi_14 is not None:
+                try:
+                    rsi_val = float(rsi_14)
+                    if rsi_val >= self.rsi_bullish_min:
+                        rsi_ok = True
+                        reason_parts.append(f"RSI {rsi_val:.0f}")
+                except (ValueError, TypeError):
+                    pass
+
+            if not (momentum_ok or rsi_ok):
                 return {
-                    "is_bounce": False,
-                    "reason": f"Bounce détecté mais aucune confirmation ({overbought_signals}/1)",
-                    "bounce_pct": bounce_pct,
-                    "overbought_signals": overbought_signals,
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Hull tendance haussière mais momentum défavorable (momentum:{momentum_score:.1f}, RSI:{rsi_14:.1f})",
+                    "metadata": {"strategy": self.name, "hull_trend": hull_trend},
                 }
 
-        return {
-            "is_bounce": True,
-            "bounce_pct": bounce_pct,
-            "overbought_signals": overbought_signals,
-            "overbought_details": overbought_details,
-            "reason": f"Bounce {bounce_pct*100:.1f}% avec {overbought_signals} confirmations",
+            signal_side = "BUY"
+            trend_label = "forte" if hull_trend["direction"] == "strong_bullish" else "faible"
+            reason = f"TREND-FOLLOWING BUY: Hull tendance {trend_label} ({hull_trend.get('slope_proxy', 0):.3f})"
+            confidence_boost = 0.25 if hull_trend["direction"] == "strong_bullish" else 0.15
+
+        else:  # bearish
+            if momentum_score is not None:
+                try:
+                    momentum_val = float(momentum_score)
+                    if momentum_val <= self.momentum_bearish_max:
+                        momentum_ok = True
+                        reason_parts.append(f"momentum {momentum_val:.1f}")
+                except (ValueError, TypeError):
+                    pass
+
+            if rsi_14 is not None:
+                try:
+                    rsi_val = float(rsi_14)
+                    if rsi_val <= self.rsi_bearish_max:
+                        rsi_ok = True
+                        reason_parts.append(f"RSI {rsi_val:.0f}")
+                except (ValueError, TypeError):
+                    pass
+
+            if not (momentum_ok or rsi_ok):
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Hull tendance baissière mais momentum défavorable (momentum:{momentum_score:.1f}, RSI:{rsi_14:.1f})",
+                    "metadata": {"strategy": self.name, "hull_trend": hull_trend},
+                }
+
+            signal_side = "SELL"
+            trend_label = "forte" if hull_trend["direction"] == "strong_bearish" else "faible"
+            reason = f"TREND-FOLLOWING SELL: Hull tendance {trend_label} ({hull_trend.get('slope_proxy', 0):.3f})"
+            confidence_boost = 0.25 if hull_trend["direction"] == "strong_bearish" else 0.15
+
+        if reason_parts:
+            reason += f" + {' + '.join(reason_parts)}"
+
+        opportunity_data = {
+            "trend_type": hull_trend["direction"],
+            "momentum_score": momentum_score,
+            "rsi_14": rsi_14,
+            "confirmations": len(reason_parts),
         }
+
+        return signal_side, reason, opportunity_data, confidence_boost
 
     def generate_signal(self) -> dict[str, Any]:
         """
@@ -600,130 +570,20 @@ class HullMA_Slope_Strategy(BaseStrategy):
 
         # === DÉTECTION OPPORTUNITÉS CONTRARIAN ===
 
-        signal_side = None
-        reason = ""
-        opportunity_data = {}
-        base_confidence = 0.55  # Réduit car approche plus accessible
-        confidence_boost = 0.0
+        base_confidence = 0.55
 
         # NOUVELLE LOGIQUE TREND-FOLLOWING (abandon contrarian)
         if hull_trend["direction"] in ["strong_bullish", "weak_bullish"]:
-            # SUIVRE la micro-tendance haussière Hull
-
-            # Vérifier momentum favorable
-            momentum_score = values.get("momentum_score", 50)
-            rsi_14 = values.get("rsi_14")
-
-            # Filtres momentum pour BUY
-            momentum_ok = False
-            rsi_ok = False
-            reason_parts = []
-
-            if momentum_score is not None:
-                try:
-                    momentum_val = float(momentum_score)
-                    if momentum_val >= self.momentum_bullish_min:  # > 50.1
-                        momentum_ok = True
-                        reason_parts.append(f"momentum {momentum_val:.1f}")
-                except (ValueError, TypeError):
-                    pass
-
-            if rsi_14 is not None:
-                try:
-                    rsi_val = float(rsi_14)
-                    if rsi_val >= self.rsi_bullish_min:  # >= 45
-                        rsi_ok = True
-                        reason_parts.append(f"RSI {rsi_val:.0f}")
-                except (ValueError, TypeError):
-                    pass
-
-            # Au moins 1 confirmation momentum nécessaire
-            if momentum_ok or rsi_ok:
-                signal_side = "BUY"
-                trend_label = (
-                    "forte" if hull_trend["direction"] == "strong_bullish" else "faible"
-                )
-                reason = f"TREND-FOLLOWING BUY: Hull tendance {trend_label} ({hull_trend.get('slope_proxy', 0):.3f})"
-                if reason_parts:
-                    reason += f" + {' + '.join(reason_parts)}"
-
-                # Bonus selon force tendance
-                if hull_trend["direction"] == "strong_bullish":
-                    confidence_boost += 0.25  # Tendance forte
-                else:
-                    confidence_boost += 0.15  # Tendance faible
-
-                opportunity_data = {
-                    "trend_type": hull_trend["direction"],
-                    "momentum_score": momentum_score,
-                    "rsi_14": rsi_14,
-                    "confirmations": len(reason_parts),
-                }
-            else:
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Hull tendance haussière mais momentum défavorable (momentum:{momentum_score:.1f}, RSI:{rsi_14:.1f})",
-                    "metadata": {"strategy": self.name, "hull_trend": hull_trend},
-                }
+            result = self._check_trend_momentum(values, "bullish", hull_trend)
+            if isinstance(result, dict):  # Error
+                return result
+            signal_side, reason, opportunity_data, confidence_boost = result
 
         elif hull_trend["direction"] in ["strong_bearish", "weak_bearish"]:
-            # SUIVRE la micro-tendance baissière Hull
-
-            momentum_score = values.get("momentum_score", 50)
-            rsi_14 = values.get("rsi_14")
-
-            momentum_ok = False
-            rsi_ok = False
-            reason_parts = []
-
-            if momentum_score is not None:
-                try:
-                    momentum_val = float(momentum_score)
-                    if momentum_val <= self.momentum_bearish_max:  # < 49.9
-                        momentum_ok = True
-                        reason_parts.append(f"momentum {momentum_val:.1f}")
-                except (ValueError, TypeError):
-                    pass
-
-            if rsi_14 is not None:
-                try:
-                    rsi_val = float(rsi_14)
-                    if rsi_val <= self.rsi_bearish_max:  # <= 55
-                        rsi_ok = True
-                        reason_parts.append(f"RSI {rsi_val:.0f}")
-                except (ValueError, TypeError):
-                    pass
-
-            if momentum_ok or rsi_ok:
-                signal_side = "SELL"
-                trend_label = (
-                    "forte" if hull_trend["direction"] == "strong_bearish" else "faible"
-                )
-                reason = f"TREND-FOLLOWING SELL: Hull tendance {trend_label} ({hull_trend.get('slope_proxy', 0):.3f})"
-                if reason_parts:
-                    reason += f" + {' + '.join(reason_parts)}"
-
-                if hull_trend["direction"] == "strong_bearish":
-                    confidence_boost += 0.25
-                else:
-                    confidence_boost += 0.15
-
-                opportunity_data = {
-                    "trend_type": hull_trend["direction"],
-                    "momentum_score": momentum_score,
-                    "rsi_14": rsi_14,
-                    "confirmations": len(reason_parts),
-                }
-            else:
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Hull tendance baissière mais momentum défavorable (momentum:{momentum_score:.1f}, RSI:{rsi_14:.1f})",
-                    "metadata": {"strategy": self.name, "hull_trend": hull_trend},
-                }
+            result = self._check_trend_momentum(values, "bearish", hull_trend)
+            if isinstance(result, dict):  # Error
+                return result
+            signal_side, reason, opportunity_data, confidence_boost = result
 
         else:  # sideways
             return {

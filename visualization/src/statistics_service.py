@@ -7,7 +7,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,7 @@ class StatisticsService:
         self.data_manager = data_manager
         self.cache = {}
         self.cache_ttl = 60  # Cache TTL en secondes
+        self.pnl_correction_factor = 1.0  # Facteur de correction PnL (par défaut: aucune correction)
 
     async def get_global_statistics(self) -> dict[str, Any]:
         """
@@ -47,11 +48,32 @@ class StatisticsService:
                 return_exceptions=True,
             )
 
-            portfolio = results[0] if not isinstance(results[0], Exception) else {}
-            activity = results[1] if not isinstance(results[1], Exception) else {}
-            performance = results[2] if not isinstance(results[2], Exception) else {}
-            unrealized = results[3] if not isinstance(results[3], Exception) else {}
-            cycles = results[4] if not isinstance(results[4], Exception) else {}
+            # Conversion sûre des résultats avec typage explicite
+            portfolio: dict[str, Any] = (
+                cast(dict[str, Any], results[0])
+                if not isinstance(results[0], Exception)
+                else {}
+            )
+            activity: dict[str, Any] = (
+                cast(dict[str, Any], results[1])
+                if not isinstance(results[1], Exception)
+                else {}
+            )
+            performance: dict[str, Any] = (
+                cast(dict[str, Any], results[2])
+                if not isinstance(results[2], Exception)
+                else {}
+            )
+            unrealized: dict[str, Any] = (
+                cast(dict[str, Any], results[3])
+                if not isinstance(results[3], Exception)
+                else {}
+            )
+            cycles: dict[str, Any] = (
+                cast(dict[str, Any], results[4])
+                if not isinstance(results[4], Exception)
+                else {}
+            )
             results[5] if not isinstance(results[5], Exception) else {}
 
             # PnL total = réalisé (trades complétés 24h) + non réalisé
@@ -226,8 +248,16 @@ class StatisticsService:
                 return_exceptions=True,
             )
 
-            performance = results[0] if not isinstance(results[0], Exception) else {}
-            activity = results[1] if not isinstance(results[1], Exception) else {}
+            performance: dict[str, Any] = (
+                cast(dict[str, Any], results[0])
+                if not isinstance(results[0], Exception)
+                else {}
+            )
+            activity: dict[str, Any] = (
+                cast(dict[str, Any], results[1])
+                if not isinstance(results[1], Exception)
+                else {}
+            )
             results[2] if not isinstance(results[2], Exception) else {}
             results[3] if not isinstance(results[3], Exception) else {}
             results[4] if not isinstance(results[4], Exception) else {}
@@ -369,7 +399,9 @@ class StatisticsService:
 
             for row in rows:
                 raw_pnl = row["total_pnl"] or Decimal("0")
-                corrected_pnl = raw_pnl * Decimal(str(self.pnl_correction_factor))
+                # Conversion explicite pour mypy
+                correction_factor = float(self.pnl_correction_factor)
+                corrected_pnl = raw_pnl * Decimal(str(correction_factor))
                 cumulative_pnl += corrected_pnl
 
                 win_rate = 0
@@ -804,7 +836,7 @@ class StatisticsService:
                 win_rate = (row["winning_cycles"] / row["total_cycles"]) * 100
 
             # Calculer le Profit Factor
-            profit_factor = 0
+            profit_factor = 0.0  # Type float pour éviter erreur mypy
             if row["total_losses"] and float(row["total_losses"]) > 0:
                 profit_factor = float(row["total_wins"] or 0) / float(
                     row["total_losses"]

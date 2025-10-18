@@ -4,16 +4,20 @@ Sauve les données Kafka vers PostgreSQL/TimescaleDB.
 """
 
 import asyncio
+import asyncpg
 import logging
+import threading
+import time
+import traceback
+
 from datetime import datetime, timezone
 from typing import Any
+from shared.src.config import get_db_config, LOG_LEVEL
 
-import asyncpg  # type: ignore[import-untyped]
+# Configuration du logging centralisée
+from shared.logging_config import setup_logging
 
-from shared.src.config import get_db_config
-
-logger = logging.getLogger(__name__)
-
+logger = setup_logging("dispatcher", log_level=LOG_LEVEL)
 
 class DatabasePersister:
     """
@@ -46,8 +50,7 @@ class DatabasePersister:
 
     def start_persister(self):
         """Démarre le thread de persistance."""
-        import threading
-
+        
         def _run_async_loop():
             self.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.loop)
@@ -58,8 +61,7 @@ class DatabasePersister:
             thread = threading.Thread(target=_run_async_loop, daemon=True)
             thread.start()
             # Attendre que la loop soit prête
-            import time
-
+           
             time.sleep(1)
 
     def save_market_data(self, topic: str, message: dict[str, Any]):
@@ -147,8 +149,7 @@ class DatabasePersister:
         # Attendre le résultat avec timeout
         try:
             future.result(timeout=5.0)
-        except Exception as e:
-            import traceback
+        except Exception as e:            
 
             logger.exception("Erreur lors de l'insertion des données de marché")
             logger.exception(f"Type d'erreur: {type(e).__name__}")
@@ -209,8 +210,7 @@ class DatabasePersister:
                     )
 
         except Exception as e:
-            import traceback
-
+         
             logger.exception("Erreur lors de l'insertion OHLCV en base")
             logger.exception(f"Type d'erreur: {type(e).__name__}")
             logger.exception(f"Traceback: {traceback.format_exc()}")

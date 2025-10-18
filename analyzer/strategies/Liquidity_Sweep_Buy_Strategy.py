@@ -116,8 +116,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
                         },
                     ),
                 )
-
-            return nearest_support, support_strength_score, None
+            return nearest_support, support_strength_score, None  # noqa: TRY300
 
         except (ValueError, TypeError) as e:
             return (
@@ -333,11 +332,10 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         """
         Génère un signal basé sur les liquidity sweeps haussiers.
         """
-        if not self.validate_data():
-            logger.debug(
-                f"[{self.symbol}] Liquidity_Sweep rejet: validate_data() failed"
-            )
-            return self._create_rejection_signal("Données insuffisantes", {})
+        # Validations préliminaires
+        rejection = self._validate_initial_conditions()
+        if rejection:
+            return rejection
 
         values = self._get_current_values()
         price_data = self._get_price_volume_data()
@@ -370,6 +368,122 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
                 },
             )
 
+        # Générer et retourner le signal consolidé
+        return self._build_signal(
+            values, sweep_analysis, nearest_support, support_strength_score, current_price
+        )
+
+    def _validate_initial_conditions(self) -> dict[str, Any] | None:
+        """Valide les conditions initiales. Retourne un signal de rejet ou None."""
+        if not self.validate_data():
+            logger.debug(
+                f"[{self.symbol}] Liquidity_Sweep rejet: validate_data() failed"
+            )
+            return self._create_rejection_signal("Données insuffisantes", {})
+        return None
+
+    def _validate_volume(self, values: dict[str, float | None]) -> dict[str, Any] | None:
+        """Valide le volume. Retourne un signal de rejet si volume trop faible, None sinon."""
+        volume_ratio = values.get("volume_ratio")
+        if volume_ratio is not None:
+            try:
+                vol_ratio = float(volume_ratio)
+                if vol_ratio < 0.7:
+                    logger.info(
+                        f"[{self.symbol}] Liquidity_Sweep rejet: volume trop faible ({vol_ratio:.2f}x < 0.7x)"
+                    )
+                    return self._create_rejection_signal(
+                        f"Rejet liquidity sweep: volume trop faible ({vol_ratio:.1f}x < 0.7x)",
+                        {"volume_ratio": vol_ratio},
+                    )
+            except (ValueError, TypeError):
+                pass
+        return None
+
+    def _validate_rsi(self, values: dict[str, float | None]) -> dict[str, Any] | None:
+        """Valide RSI. Retourne un signal de rejet si RSI trop haut, None sinon."""
+        rsi_14 = values.get("rsi_14")
+        if rsi_14 is not None:
+            try:
+                rsi = float(rsi_14)
+                if rsi > 70:
+                    logger.info(
+                        f"[{self.symbol}] Liquidity_Sweep rejet: RSI trop haut ({rsi:.1f} > 70)"
+                    )
+                    return self._create_rejection_signal(
+                        f"Rejet liquidity sweep: RSI trop haut ({rsi:.1f}) pour BUY",
+                        {"rsi": rsi},
+                    )
+            except (ValueError, TypeError):
+                pass
+        return None
+
+    def _apply_volume_boost(
+        self, values: dict[str, float | None], boost: float, reason: str
+    ) -> tuple[float, str]:
+        """Applique les bonus de volume. Retourne (confidence_boost, reason)."""
+        volume_ratio = values.get("volume_ratio")
+        volume_spike_multiplier = values.get("volume_spike_multiplier")
+
+        if volume_ratio is not None:
+            try:
+                vol_ratio = float(volume_ratio)
+                if 0.9 <= vol_ratio < 1.2:
+                    boost += 0.03
+                    reason += f" + volume correct ({vol_ratio:.1f}x)"
+                elif vol_ratio >= 2.0:
+                    boost += 0.20
+                    reason += f" + volume EXCEPTIONNEL ({vol_ratio:.1f}x)"
+                elif vol_ratio >= self.min_volume_spike:
+                    boost += 0.15
+                    reason += f" + volume élevé ({vol_ratio:.1f}x)"
+                else:
+                    boost += 0.05
+                    reason += f" + volume correct ({vol_ratio:.1f}x)"
+            except (ValueError, TypeError):
+                pass
+
+        if volume_spike_multiplier is not None:
+            try:
+                spike_mult = float(volume_spike_multiplier)
+                if spike_mult >= 3.0:
+                    boost += 0.15
+                    reason += f" + spike volume ({spike_mult:.1f}x)"
+            except (ValueError, TypeError):
+                pass
+
+        return boost, reason
+
+    def _apply_rsi_boost(
+        self, values: dict[str, float | None], boost: float, reason: str
+    ) -> tuple[float, str]:
+        """Applique les bonus RSI. Retourne (confidence_boost, reason)."""
+        rsi_14 = values.get("rsi_14")
+        if rsi_14 is not None:
+            try:
+                rsi = float(rsi_14)
+                if 40 <= rsi <= 65:
+                    pass  # Zone neutre
+                elif rsi <= 30:
+                    boost += 0.15
+                    reason += f" + RSI survente ({rsi:.1f})"
+                elif rsi <= 40:
+                    boost += 0.10
+                    reason += f" + RSI favorable ({rsi:.1f})"
+            except (ValueError, TypeError):
+                pass
+        return boost, reason
+
+    def _build_signal(
+        self,
+        values: dict[str, float | None],
+        sweep_analysis: dict[str, Any],
+        nearest_support: float,
+        support_strength_score: float | None,
+        current_price: float
+    ) -> dict[str, Any]:
+        """Construit le signal final avec tous les calculs de confidence."""
+
         # Si on a un sweep setup, générer signal BUY
         signal_side = "BUY"
         reason = f"Liquidity sweep haussier sur support {nearest_support:.2f}"
@@ -398,72 +512,25 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             confidence_boost += 0.08
             reason += f" + recovery modérée (+{recovery_distance*100:.1f}%)"
 
-        # Confirmation volume STRICTE (crucial pour liquidity sweep)
+        # Validation volume (critique - peut rejeter)
+        volume_rejection = self._validate_volume(values)
+        if volume_rejection:
+            return volume_rejection
+
+        # Validation RSI (critique - peut rejeter)
+        rsi_rejection = self._validate_rsi(values)
+        if rsi_rejection:
+            return rsi_rejection
+
+        # Calcul boost confidence depuis volume
+        confidence_boost, reason = self._apply_volume_boost(values, confidence_boost, reason)
+        # Calcul boost confidence depuis RSI
+        confidence_boost, reason = self._apply_rsi_boost(values, confidence_boost, reason)
+
+        # Récupération des variables pour metadata
         volume_ratio = values.get("volume_ratio")
         volume_spike_multiplier = values.get("volume_spike_multiplier")
-
-        if volume_ratio is not None:
-            try:
-                vol_ratio = float(volume_ratio)
-                # Volume trop faible = rejet immédiat (assoupli)
-                if vol_ratio < 0.7:
-                    logger.info(
-                        f"[{self.symbol}] Liquidity_Sweep rejet: volume trop faible ({vol_ratio:.2f}x < 0.7x)"
-                    )
-                    return self._create_rejection_signal(
-                        f"Rejet liquidity sweep: volume trop faible ({vol_ratio:.1f}x < 0.7x)",
-                        {"volume_ratio": vol_ratio},
-                    )
-                if 0.9 <= vol_ratio < 1.2:
-                    confidence_boost += 0.03
-                    reason += f" + volume correct ({vol_ratio:.1f}x)"
-                elif vol_ratio >= 2.0:
-                    confidence_boost += 0.20
-                    reason += f" + volume EXCEPTIONNEL ({vol_ratio:.1f}x)"
-                elif vol_ratio >= self.min_volume_spike:
-                    confidence_boost += 0.15
-                    reason += f" + volume élevé ({vol_ratio:.1f}x)"
-                else:
-                    confidence_boost += 0.05
-                    reason += f" + volume correct ({vol_ratio:.1f}x)"
-            except (ValueError, TypeError):
-                pass
-
-        # Volume spike multiplier
-        if volume_spike_multiplier is not None:
-            try:
-                spike_mult = float(volume_spike_multiplier)
-                if spike_mult >= 3.0:
-                    confidence_boost += 0.15
-                    reason += f" + spike volume ({spike_mult:.1f}x)"
-            except (ValueError, TypeError):
-                pass
-
-        # Confirmation oscillateurs avec rejets contradictoires
         rsi_14 = values.get("rsi_14")
-        if rsi_14 is not None:
-            try:
-                rsi = float(rsi_14)
-                if rsi > 70:  # RSI trop haut = rejet BUY sweep (assoupli)
-                    logger.info(
-                        f"[{self.symbol}] Liquidity_Sweep rejet: RSI trop haut ({rsi:.1f} > 70)"
-                    )
-                    return self._create_rejection_signal(
-                        f"Rejet liquidity sweep: RSI trop haut ({rsi:.1f}) pour BUY",
-                        {"rsi": rsi},
-                    )
-                if 40 <= rsi <= 65:  # RSI neutre - pas de bonus ni malus
-                    pass  # Zone neutre
-                elif rsi <= 30:  # Survente extrême
-                    confidence_boost += 0.15
-                    reason += f" + RSI survente ({rsi:.1f})"
-                elif rsi <= 40:  # Survente modérée
-                    confidence_boost += 0.10
-                    reason += f" + RSI favorable ({rsi:.1f})"
-            except (ValueError, TypeError):
-                pass
-
-        # Stochastic pour confirmation
         stoch_k = values.get("stoch_k")
         stoch_d = values.get("stoch_d")
         if stoch_k is not None and stoch_d is not None:

@@ -222,61 +222,36 @@ class MACD_Crossover_Strategy(BaseStrategy):
         _is_valid,
     ) -> tuple[bool, dict[str, Any] | None]:
         """Valide les exigences pour un signal MACD. Returns (is_valid, rejection_response)."""
-        # Histogram validation
-        if macd_histogram is not None and _is_valid(macd_histogram):
-            if signal_side == "BUY" and macd_histogram < -0.001:
+        validations = [
+            ("histogram_buy", lambda: signal_side == "BUY" and macd_histogram is not None and _is_valid(macd_histogram) and macd_histogram < -0.001,
+             lambda: f"Rejet MACD BUY: histogram contradictoire ({macd_histogram:.4f})"),
+            ("histogram_sell", lambda: signal_side == "SELL" and macd_histogram is not None and _is_valid(macd_histogram) and macd_histogram > 0.001,
+             lambda: f"Rejet MACD SELL: histogram contradictoire ({macd_histogram:.4f})"),
+            ("downtrend_buy", lambda: signal_side == "BUY" and is_strong_downtrend,
+             lambda: "Rejet MACD BUY: regime fortement baissier"),
+            ("uptrend_sell", lambda: signal_side == "SELL" and is_strong_uptrend,
+             lambda: "Rejet MACD SELL: regime fortement haussier"),
+        ]
+
+        for _, condition, message_fn in validations:
+            if condition():
                 return False, {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Rejet MACD BUY: histogram contradictoire ({macd_histogram:.4f})",
-                    "metadata": {"strategy": self.name},
-                }
-            if signal_side == "SELL" and macd_histogram > 0.001:
-                return False, {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Rejet MACD SELL: histogram contradictoire ({macd_histogram:.4f})",
+                    "reason": message_fn(),
                     "metadata": {"strategy": self.name},
                 }
 
-        # Rejet contre-tendance forte
-        if signal_side == "BUY" and is_strong_downtrend:
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Rejet MACD BUY: regime fortement baissier",
-                "metadata": {"strategy": self.name},
-            }
-        if signal_side == "SELL" and is_strong_uptrend:
-            return False, {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Rejet MACD SELL: regime fortement haussier",
-                "metadata": {"strategy": self.name},
-            }
-
-        # RSI validation
         if rsi_14 is not None:
             try:
                 rsi = float(rsi_14)
-                if signal_side == "BUY" and rsi >= 80:
+                if (signal_side == "BUY" and rsi >= 80) or (signal_side == "SELL" and rsi <= 20):
                     return False, {
                         "side": None,
                         "confidence": 0.0,
                         "strength": "weak",
-                        "reason": f"Rejet MACD BUY: RSI surachat ({rsi:.1f})",
-                        "metadata": {"strategy": self.name},
-                    }
-                if signal_side == "SELL" and rsi <= 20:
-                    return False, {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet MACD SELL: RSI survente ({rsi:.1f})",
+                        "reason": f"Rejet MACD {signal_side}: RSI {'surachat' if signal_side == 'BUY' else 'survente'} ({rsi:.1f})",
                         "metadata": {"strategy": self.name},
                     }
             except (ValueError, TypeError):

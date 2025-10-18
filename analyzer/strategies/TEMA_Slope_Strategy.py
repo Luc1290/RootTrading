@@ -335,41 +335,58 @@ class TEMA_Slope_Strategy(BaseStrategy):
         self, values: dict[str, Any], signal_side: str
     ) -> tuple[bool, str | None]:
         """Valide les exigences obligatoires pour un signal TEMA. Returns (is_valid, rejection_reason)."""
-        # VALIDATION CONFLUENCE
+        # Validation confluence
+        rejection = self._validate_confluence(values)
+        if rejection:
+            return False, rejection
+
+        # Validation volume
+        rejection = self._validate_volume_ratio(values)
+        if rejection:
+            return False, rejection
+
+        # Validation régime/bias
+        rejection = self._validate_regime_bias(values, signal_side)
+        if rejection:
+            return False, rejection
+
+        return True, None
+
+    def _validate_confluence(self, values: dict[str, Any]) -> str | None:
+        """Valide la confluence. Retourne un message d'erreur ou None."""
         confluence_score = values.get("confluence_score", 0)
         if (
             not confluence_score
             or float(confluence_score) < self.min_confluence_required
         ):
-            return (
-                False,
-                f"Confluence insuffisante ({confluence_score}) < {self.min_confluence_required} - signal TEMA rejeté",
-            )
+            return f"Confluence insuffisante ({confluence_score}) < {self.min_confluence_required} - signal TEMA rejeté"
+        return None
 
-        # VALIDATION VOLUME
+    def _validate_volume_ratio(self, values: dict[str, Any]) -> str | None:
+        """Valide le volume ratio. Retourne un message d'erreur ou None."""
         volume_ratio = values.get("volume_ratio", 0)
         if not volume_ratio or float(volume_ratio) < self.min_volume_required:
-            return (
-                False,
-                f"Volume insuffisant ({volume_ratio}) < {self.min_volume_required} - signal TEMA rejeté",
-            )
+            return f"Volume insuffisant ({volume_ratio}) < {self.min_volume_required} - signal TEMA rejeté"
+        return None
 
-        # VALIDATION REGIME/BIAS
+    def _validate_regime_bias(
+        self, values: dict[str, Any], signal_side: str
+    ) -> str | None:
+        """Valide le régime de marché et le bias. Retourne un message d'erreur ou None."""
         market_regime = values.get("market_regime")
         directional_bias = values.get("directional_bias")
 
         if signal_side == "BUY":
             if market_regime == "TRENDING_BEAR":
-                return False, "Rejet TEMA: BUY interdit en TRENDING_BEAR"
+                return "Rejet TEMA: BUY interdit en TRENDING_BEAR"
             if str(directional_bias).upper() == "BEARISH":
-                return False, "Rejet TEMA: bias contradictoire (BEARISH)"
+                return "Rejet TEMA: bias contradictoire (BEARISH)"
         elif signal_side == "SELL":
             if market_regime == "TRENDING_BULL":
-                return False, "Rejet TEMA: SELL interdit en TRENDING_BULL"
+                return "Rejet TEMA: SELL interdit en TRENDING_BULL"
             if str(directional_bias).upper() == "BULLISH":
-                return False, "Rejet TEMA: bias contradictoire (BULLISH)"
-
-        return True, None
+                return "Rejet TEMA: bias contradictoire (BULLISH)"
+        return None
 
     def _create_tema_slope_signal(
         self,

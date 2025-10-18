@@ -451,6 +451,9 @@ async def get_available_symbols():
 async def get_configured_symbols():
     """Get list of configured trading symbols from shared config"""
     try:
+        # Vérifier que SYMBOLS est accessible et valide
+        if not SYMBOLS:
+            raise ValueError("SYMBOLS configuration is empty")
     except Exception:
         logger.exception("Error getting configured symbols")
         # Fallback avec symboles par défaut en cas d'erreur

@@ -1377,20 +1377,23 @@ class Coordinator:
                     time.sleep(2)
 
                     return worst_position["value_usdc"]
-                logger.error(
-                    f"❌ Échec ordre de liquidation pour {worst_position['symbol']}"
-                )
-                return 0.0
-            if worst_position and worst_position["performance_pct"] >= 0:
+                else:
+                    logger.error(
+                        f"❌ Échec ordre de liquidation pour {worst_position['symbol']}"
+                    )
+                    return 0.0
+            elif worst_position and worst_position["performance_pct"] >= 0:
                 logger.info(
                     f"💚 Pire position {worst_position['symbol']} est gagnante "
                     f"({worst_position['performance_pct']:+.2f}%) - Pas de vente"
                 )
+                return 0.0
             elif worst_position:
                 logger.warning(
                     f"💔 Position en perte {worst_position['symbol']} trop petite "
                     f"({worst_position['value_usdc']:.2f} USDC < {usdc_needed * 0.8:.2f} requis)"
                 )
+                return 0.0
             else:
                 logger.warning("Aucune position éligible pour liquidation trouvée")
                 return 0.0

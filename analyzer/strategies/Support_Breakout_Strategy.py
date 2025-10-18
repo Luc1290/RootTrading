@@ -100,37 +100,28 @@ class Support_Breakout_Strategy(BaseStrategy):
         market_regime: str | None,
     ) -> tuple[bool, str | None]:
         """Valide les conditions pour un signal de breakout. Returns (is_valid, rejection_reason)."""
-        # Rejet momentum
-        if signal_side == "BUY" and momentum_val < 50:
-            return False, f"Rejet BUY: momentum trop faible ({momentum_val:.0f})"
-        if signal_side == "SELL" and momentum_val > 50:
-            return False, f"Rejet SELL: momentum trop fort ({momentum_val:.0f})"
+        validations = [
+            ("momentum_buy", lambda: signal_side == "BUY" and momentum_val < 50,
+             lambda: f"Rejet BUY: momentum trop faible ({momentum_val:.0f})"),
+            ("momentum_sell", lambda: signal_side == "SELL" and momentum_val > 50,
+             lambda: f"Rejet SELL: momentum trop fort ({momentum_val:.0f})"),
+            ("bias_buy", lambda: signal_side == "BUY" and directional_bias == "BEARISH",
+             lambda: f"Rejet {signal_side}: bias contradictoire ({directional_bias})"),
+            ("bias_sell", lambda: signal_side == "SELL" and directional_bias == "BULLISH",
+             lambda: f"Rejet {signal_side}: bias contradictoire ({directional_bias})"),
+            ("volume", lambda: vol_ratio < 1.1,
+             lambda: f"Rejet: volume trop faible ({vol_ratio:.1f}x)"),
+            ("confluence", lambda: conf_val < 40,
+             lambda: f"Rejet: confluence insuffisante ({conf_val})"),
+            ("regime_buy", lambda: signal_side == "BUY" and market_regime == "TRENDING_BEAR",
+             lambda: f"Rejet {signal_side}: régime contradictoire ({market_regime})"),
+            ("regime_sell", lambda: signal_side == "SELL" and market_regime == "TRENDING_BULL",
+             lambda: f"Rejet {signal_side}: régime contradictoire ({market_regime})"),
+        ]
 
-        # Rejet bias contradictoire
-        if (signal_side == "BUY" and directional_bias == "BEARISH") or (
-            signal_side == "SELL" and directional_bias == "BULLISH"
-        ):
-            return (
-                False,
-                f"Rejet {signal_side}: bias contradictoire ({directional_bias})",
-            )
-
-        # Rejet volume faible
-        if vol_ratio < 1.1:
-            return False, f"Rejet: volume trop faible ({vol_ratio:.1f}x)"
-
-        # Rejet confluence faible
-        if conf_val < 40:
-            return False, f"Rejet: confluence insuffisante ({conf_val})"
-
-        # Rejet régime contradictoire
-        if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or (
-            signal_side == "SELL" and market_regime == "TRENDING_BULL"
-        ):
-            return (
-                False,
-                f"Rejet {signal_side}: régime contradictoire ({market_regime})",
-            )
+        for _, condition, message_fn in validations:
+            if condition():
+                return False, message_fn()
 
         return True, None
 
