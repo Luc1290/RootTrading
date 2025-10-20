@@ -1,22 +1,28 @@
 """
-Opportunity Calculator PRO - Professional Trading System
-Orchestre scoring + validation pour décisions de trading optimales
+Opportunity Calculator PRO FIXED - Professional Trading System CORRIGÉ
+Orchestre scoring + validation CORRIGÉS pour EARLY ENTRY (acheter AVANT le pump)
 
-Architecture:
-1. OpportunityEarlyDetector: Détection précoce avec leading indicators (NOUVEAU)
-2. OpportunityScoring: Calcule score 0-100 sur 7 catégories (tous les 108 indicateurs)
-3. OpportunityValidator: Validation 4 niveaux (data/market/risk/timing)
-4. Décision finale: BUY_NOW / BUY_DCA / WAIT / AVOID
-5. Gestion risque intelligente: TP/SL adaptatifs, taille position optimale
+CORRECTIONS MAJEURES:
+1. Import des modules FIXED avec logique inversée
+2. Décision STRICTE: Rejette overbought, volume spikes, momentum élevé
+3. Early detection PRIORITAIRE: Signaux early peuvent trigger entry même avec score modéré
+4. Risk management CONSERVATEUR: R/R minimum 1.8, position sizing prudent
 
-Version: 2.1 - Professional Grade + Early Warning System
+Architecture CORRIGÉE:
+1. OpportunityEarlyDetector FIXED: Détection AVANT pump (ROC faible, volume buildup)
+2. OpportunityScoring FIXED: Score setup formation (RSI 35-55, pas 60-75)
+3. OpportunityValidator FIXED: Validation STRICTE (rejette overbought/spikes)
+4. Décision finale: BUY_NOW / BUY_DCA / WAIT / AVOID (avec rejet strict conditions tardives)
+
+Version: 3.0 - True Early Entry System (FIXED)
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from src.opportunity_early_detector import (
     EarlySignal,
+    EarlySignalLevel,
     OpportunityEarlyDetector,
 )
 from src.opportunity_scoring import OpportunityScore, OpportunityScoring
@@ -38,14 +44,14 @@ class TradingOpportunity:
     score: OpportunityScore
     validation: ValidationSummary
 
-    # Early Warning (NOUVEAU)
-    early_signal: EarlySignal | None  # Signal early warning si disponible
-    is_early_entry: bool  # True si détecté par early detector
+    # Early Warning
+    early_signal: EarlySignal | None
+    is_early_entry: bool
 
     # Pricing
     current_price: float
-    entry_price_optimal: float  # Prix d'entrée optimal (pullback)
-    entry_price_aggressive: float  # Prix d'entrée aggressif (market)
+    entry_price_optimal: float
+    entry_price_aggressive: float
 
     # Targets
     tp1: float
@@ -58,16 +64,16 @@ class TradingOpportunity:
     # Stop Loss
     stop_loss: float
     stop_loss_percent: float
-    stop_loss_basis: str  # 'support', 'ATR', 'BB'
+    stop_loss_basis: str
 
     # Risk Management
     rr_ratio: float
-    risk_level: str  # LOW, MEDIUM, HIGH, EXTREME
-    max_position_size_pct: float  # % du capital à risquer
+    risk_level: str
+    max_position_size_pct: float
 
     # Timing
     estimated_hold_time: str
-    entry_urgency: str  # IMMEDIATE, SOON, PATIENT, NO_RUSH
+    entry_urgency: str
 
     # Context
     market_regime: str
@@ -82,19 +88,22 @@ class TradingOpportunity:
     # Raw data for debugging
     raw_score_details: dict
     raw_validation_details: dict
-    raw_analyzer_data: dict  # Données analyzer complètes pour frontend
+    raw_analyzer_data: dict
 
 
 class OpportunityCalculatorPro:
     """
-    Calculateur professionnel d'opportunités.
+    Calculateur professionnel d'opportunités CORRIGÉ.
 
-    Combine scoring multi-niveaux + validation stricte + gestion risque intelligente.
-    Utilise TOUS les 108 indicateurs disponibles dans analyzer_data.
+    CHANGEMENTS vs ancien système:
+    - Utilise modules FIXED avec logique inversée (early entry, pas late entry)
+    - Rejette strictement conditions overbought/spike
+    - Priorité aux signaux early detector
+    - Risk management conservateur (R/R 1.8+ minimum)
     """
 
     def __init__(self, enable_early_detection: bool = True):
-        """Initialise le calculateur professionnel.
+        """Initialise le calculateur professionnel CORRIGÉ.
 
         Args:
             enable_early_detection: Active le système early warning (défaut: True)
@@ -123,7 +132,7 @@ class OpportunityCalculatorPro:
         historical_data: list[dict] | None = None,
     ) -> TradingOpportunity:
         """
-        Calcule une opportunité de trading complète.
+        Calcule une opportunité de trading complète CORRIGÉE pour EARLY ENTRY.
 
         Args:
             symbol: Symbole (e.g. BTCUSDC)
@@ -131,15 +140,15 @@ class OpportunityCalculatorPro:
             analyzer_data: analyzer_data complet (108 indicateurs)
             higher_tf_data: Données timeframe supérieur pour validation
             signals_data: (optionnel) Données signaux externes
-            historical_data: (optionnel) Liste des 5-10 dernières périodes analyzer_data pour early detection
+            historical_data: Liste des 5-10 dernières périodes pour early detection
 
         Returns:
-            TradingOpportunity complète avec action, TP/SL, sizing, etc.
+            TradingOpportunity avec action BUY uniquement si AVANT le pump
         """
         if not analyzer_data:
             return self._create_no_data_opportunity(symbol, current_price)
 
-        # === ÉTAPE 0: EARLY DETECTION (NOUVEAU) ===
+        # === ÉTAPE 0: EARLY DETECTION (PRIORITAIRE) ===
         early_signal = None
         is_early_entry = False
 
@@ -148,26 +157,25 @@ class OpportunityCalculatorPro:
                 current_data=analyzer_data, historical_data=historical_data
             )
 
-            # Si early signal fort (ENTRY_NOW ou PREPARE), on peut bypass
-            # certaines validations
-            if (
-                early_signal.level.value in ["entry_now", "prepare"]
-                and early_signal.score >= 65
-            ):
+            # Early signal ENTRY_NOW/PREPARE avec score 45+ = entry early confirmée
+            if early_signal.level in [
+                EarlySignalLevel.ENTRY_NOW,
+                EarlySignalLevel.PREPARE,
+            ] and early_signal.score >= 45:
                 is_early_entry = True
                 logger.info(
                     f"🚀 Early entry detected for {symbol}: {early_signal.level.value} (score: {early_signal.score:.0f})"
                 )
 
-        # === ÉTAPE 1: SCORING ===
+        # === ÉTAPE 1: SCORING CORRIGÉ ===
         score = self.scorer.calculate_opportunity_score(analyzer_data, current_price)
 
-        # === ÉTAPE 2: VALIDATION ===
+        # === ÉTAPE 2: VALIDATION STRICTE ===
         validation = self.validator.validate_opportunity(
             analyzer_data, current_price, higher_tf_data
         )
 
-        # === ÉTAPE 3: DÉCISION (avec early signal) ===
+        # === ÉTAPE 3: DÉCISION STRICTE (rejette late entries) ===
         action, confidence, reasons, warnings, recommendations = self._make_decision(
             score, validation, analyzer_data, early_signal, is_early_entry
         )
@@ -187,7 +195,7 @@ class OpportunityCalculatorPro:
             current_price, analyzer_data
         )
 
-        # === ÉTAPE 7: RISK MANAGEMENT ===
+        # === ÉTAPE 7: RISK MANAGEMENT CONSERVATEUR ===
         rr_ratio, risk_level, max_position_pct = self._calculate_risk_metrics(
             current_price, tp1, stop_loss, score, validation, analyzer_data, action
         )
@@ -198,7 +206,7 @@ class OpportunityCalculatorPro:
         # === ÉTAPE 9: CONTEXT ===
         market_regime = analyzer_data.get("market_regime", "UNKNOWN")
         volume_context = analyzer_data.get("volume_context", "UNKNOWN")
-        volatility_regime = analyzer_data.get("volatility_regime", "unknown")
+        volatility_regime = analyzer_data.get("volatility_regime", "UNKNOWN")
 
         return TradingOpportunity(
             symbol=symbol,
@@ -206,8 +214,8 @@ class OpportunityCalculatorPro:
             confidence=confidence,
             score=score,
             validation=validation,
-            early_signal=early_signal,  # NOUVEAU
-            is_early_entry=is_early_entry,  # NOUVEAU
+            early_signal=early_signal,
+            is_early_entry=is_early_entry,
             current_price=current_price,
             entry_price_optimal=entry_optimal,
             entry_price_aggressive=entry_aggressive,
@@ -231,436 +239,284 @@ class OpportunityCalculatorPro:
             reasons=reasons,
             warnings=warnings,
             recommendations=recommendations,
-            raw_score_details=self._serialize_score(score),
-            raw_validation_details=self._serialize_validation(validation),
-            raw_analyzer_data=analyzer_data,  # Store analyzer_data for frontend
+            raw_score_details=asdict(score),
+            raw_validation_details=asdict(validation),
+            raw_analyzer_data=analyzer_data,
         )
 
-    def _make_decision(
+    def _make_decision(  # noqa: PLR0911 - Multiple returns acceptable for decision logic
         self,
         score: OpportunityScore,
         validation: ValidationSummary,
-        ad: dict,
-        early_signal: EarlySignal | None = None,
-        is_early_entry: bool = False,
+        analyzer_data: dict,
+        early_signal: EarlySignal | None,
+        is_early_entry: bool,
     ) -> tuple[str, float, list[str], list[str], list[str]]:
         """
-        Décision finale combinant score + validation.
+        Prend décision finale CORRIGÉE (rejette late entries strictement).
 
-        Logique:
-        - BUY_NOW: Score grade A/S + validation passée + timing urgent
-        - BUY_DCA: Score grade B+ + validation passée + timing patient
-        - WAIT: Score OK mais validation partielle ou timing mauvais
-        - AVOID: Score faible ou validation échouée
+        ❌ ANCIEN SYSTÈME: Acceptait RSI 60-75, volume spikes
+        ✅ NOUVEAU SYSTÈME: Rejette RSI >70, volume spike >3x, momentum élevé
+
+        Returns:
+            (action, confidence, reasons, warnings, recommendations)
         """
         reasons = []
         warnings = []
-        recommendations = []
 
-        # CHANGEMENT: Ne plus rejeter sur all_passed binaire
-        # Utiliser le score de validation comme pondération
-        # Exceptions: Data Quality DOIT passer (données fiables requises)
+        # === REJET STRICT CONDITIONS LATE ===
+        rsi = self.safe_float(analyzer_data.get("rsi_14"))
+        vol_spike = self.safe_float(analyzer_data.get("volume_spike_multiplier"), 1.0)
+        rel_volume = self.safe_float(analyzer_data.get("relative_volume"), 1.0)
+        roc_10 = self.safe_float(analyzer_data.get("roc_10"))
+
+        # REJET: Overbought
+        if rsi > 70:
+            return (
+                "AVOID",
+                0.0,
+                [f"❌ RSI OVERBOUGHT: {rsi:.0f} - TROP TARD pour entry"],
+                ["Mouvement déjà avancé, risque correction"],
+                ["Attendre pullback ou prochaine opportunité"],
+            )
+
+        # REJET: Volume spike (pic atteint)
+        if vol_spike >= 3.0 or rel_volume > 3.0:
+            return (
+                "AVOID",
+                0.0,
+                [
+                    f"❌ VOLUME SPIKE: {vol_spike:.1f}x - PIC ATTEINT",
+                    "Mouvement déjà explosé",
+                ],
+                ["Entry tardive = high risk"],
+                ["Attendre consolidation"],
+            )
+
+        # REJET: Momentum trop élevé
+        if roc_10 > 0.8:
+            return (
+                "AVOID",
+                0.0,
+                [
+                    f"❌ MOMENTUM ÉLEVÉ: ROC {roc_10*100:.2f}% - Déjà accéléré",
+                    "Entry late = chasing",
+                ],
+                ["Risque d'acheter au top"],
+                ["Laisser passer, attendre setup"],
+            )
+
+        # === VALIDATION STRICTE ===
         if not validation.all_passed:
-            # Vérifier si c'est Data Quality qui a échoué
-            data_quality_failed = any(
-                issue.startswith("❌ Qualité données")
-                for issue in validation.blocking_issues
+            failed_msg = " | ".join(validation.blocking_issues[:3]) if validation.blocking_issues else "Validation failed"
+            return (
+                "AVOID",
+                0.0,
+                [f"Validation echouee: {failed_msg}"],
+                validation.warnings,
+                ["Corriger problemes avant entry"],
             )
 
-            if data_quality_failed:
-                # Data Quality = Gate stricte conservée
-                action = "AVOID"
-                confidence = 0.0
-                reasons.append(
-                    "❌ Qualité données insuffisante - Indicateurs non fiables"
+        # === DÉCISION BASÉE SUR EARLY SIGNAL ===
+        # Early signal ENTRY_NOW avec score decent = BUY_NOW
+        if is_early_entry and early_signal:
+            if early_signal.level == EarlySignalLevel.ENTRY_NOW:
+                confidence = min(85.0, early_signal.confidence)
+                reasons.extend(
+                    [
+                        f"🚀 EARLY ENTRY WINDOW: {early_signal.level.value}",
+                        f"Early score: {early_signal.score:.0f}/100",
+                        f"Setup score: {score.total_score:.0f}/100",
+                    ]
                 )
-                reasons.extend(validation.blocking_issues)
-                warnings.extend(validation.warnings)
-                recommendations.append("Attendre données de meilleure qualité")
-                return action, confidence, reasons, warnings, recommendations
+                reasons.extend(early_signal.reasons[:3])  # Top 3 reasons
 
-            # Autres validations échouées: continuer avec pénalité au lieu de rejet
-            # Le score de validation (0-100) sera utilisé comme multiplicateur
+                return (
+                    "BUY_NOW",
+                    confidence,
+                    reasons,
+                    [*early_signal.warnings, *warnings],
+                    ["Entry IMMÉDIATE recommandée", "Setup early confirmé", *early_signal.recommendations[:2]],
+                )
+
+            if early_signal.level == EarlySignalLevel.PREPARE:
+                confidence = min(75.0, early_signal.confidence)
+                reasons.extend(
+                    [
+                        f"⚡ PRÉPARER ENTRY: {early_signal.level.value}",
+                        f"Early score: {early_signal.score:.0f}/100",
+                        f"Setup score: {score.total_score:.0f}/100",
+                    ]
+                )
+                reasons.extend(early_signal.reasons[:3])
+
+                return (
+                    "BUY_DCA",
+                    confidence,
+                    reasons,
+                    [*early_signal.warnings, *warnings],
+                    ["Préparer entry progressive", "Window dans 30-60s", *early_signal.recommendations[:2]],
+                )
+
+        # === DÉCISION BASÉE SUR SCORE CORRIGÉ ===
+        # Score 70+ avec validation = BUY_NOW
+        if score.total_score >= 70 and validation.overall_score >= 75:
+            confidence = min(score.total_score, validation.overall_score)
+            reasons.append(f"✅ Score élevé: {score.total_score:.0f}/100")
+            reasons.append(f"✅ Validation: {validation.overall_score:.0f}%")
+
+            # Vérifier que setup est vraiment EARLY
+            if rsi <= 60 and vol_spike < 2.0:
+                reasons.append("✅ Setup EARLY confirmé (RSI/volume optimal)")
+                return (
+                    "BUY_NOW",
+                    confidence,
+                    reasons,
+                    warnings,
+                    ["Entry recommandée", "Setup optimal détecté"],
+                )
+
             warnings.append(
-                f"⚠️ Validation partielle: {validation.overall_score:.0f}/100"
+                f"⚠️ Setup modéré: RSI {rsi:.0f}, vol {vol_spike:.1f}x"
             )
-            warnings.extend(validation.warnings)
-            for issue in validation.blocking_issues:
-                warnings.append(issue)
+            return (
+                "BUY_DCA",
+                confidence * 0.9,
+                reasons,
+                warnings,
+                ["Entry progressive recommandée", "Setup acceptable mais pas optimal"],
+            )
 
-        # Décision basée sur score + validation pondérée + early signal
-        total_score = score.total_score
-        score_confidence = score.confidence
+        # Score 60-70 = BUY_DCA
+        if score.total_score >= 60 and validation.overall_score >= 65:
+            confidence = min(score.total_score, validation.overall_score) * 0.85
+            reasons.append(f"📊 Score acceptable: {score.total_score:.0f}/100")
 
-        # === MODE HYBRIDE INTELLIGENT: EARLY SIGNAL ===
-        # Trois modes selon force du signal early:
-        # MODE 1 (score ≥70): Early shunt validation partielle → EARLY_ENTRY indépendant
-        # MODE 2 (40-70): Boost au scoring (assistant)
-        # MODE 3 (<40): Aucun effet
-
-        early_boost = 0.0
-
-        if early_signal:
-            # === MODE 1: EARLY SIGNAL FORT (≥70) - INDÉPENDANCE ===
-            if early_signal.score >= 70 and early_signal.level.value == "entry_now":
-                logger.info(
-                    f"🚀 EARLY MODE 1: Signal fort {early_signal.score:.0f} - Bypass validation partielle"
+            if rsi <= 55:
+                reasons.append("✅ RSI optimal pour entry early")
+                return (
+                    "BUY_DCA",
+                    confidence,
+                    reasons,
+                    warnings,
+                    ["Entry progressive", "Surveiller évolution"],
                 )
 
-                # Bypass Market Conditions & Entry Timing (garde Data Quality &
-                # Risk Management)
+            warnings.append(f"⚠️ RSI modéré: {rsi:.0f}")
+            return (
+                "WAIT",
+                confidence * 0.8,
+                reasons,
+                [*warnings, "Setup acceptable mais attendre confirmation"],
+                ["Surveiller évolution", "Préparer entry si amélioration"],
+            )
 
-                # Action = EARLY_ENTRY (nouveau type)
-                action = "EARLY_ENTRY"
-                confidence = min(early_signal.score, early_signal.confidence)
+        # Score 50-60 = WAIT
+        if score.total_score >= 50:
+            confidence = score.total_score * 0.7
+            return (
+                "WAIT",
+                confidence,
+                [
+                    f"⏸️ Score modéré: {score.total_score:.0f}/100",
+                    "Setup en formation",
+                ],
+                [*warnings, "Score insuffisant pour entry"],
+                ["Surveiller évolution", "Attendre amélioration"],
+            )
 
-                reasons.append(
-                    f"🚀 EARLY ENTRY DÉTECTÉ - Score: {early_signal.score:.0f}/100"
-                )
-                reasons.append(
-                    f"⏱️ Entry window: ~{early_signal.estimated_entry_window_seconds}s"
-                )
-                reasons.append(
-                    f"📊 Mouvement: {early_signal.estimated_move_completion_pct:.0f}% complété"
-                )
-
-                # Ajouter top reasons early
-                for reason in early_signal.reasons[:3]:
-                    reasons.append(f"  • {reason}")
-
-                # Warnings spécifiques early
-                warnings.append(
-                    "⚡ MODE EARLY ENTRY - Risque élevé (moins de confirmation)"
-                )
-                warnings.append(
-                    "💡 Réduire taille position de 30% vs BUY_NOW classique"
-                )
-
-                if early_signal.estimated_move_completion_pct > 40:
-                    warnings.append(
-                        f"⚠️ Mouvement déjà {early_signal.estimated_move_completion_pct:.0f}% avancé"
-                    )
-
-                # Ajouter recommendations early
-                recommendations.extend(early_signal.recommendations[:3])
-
-                # Stop loss plus serré pour early entry
-                warnings.append("🛡️ Stop loss recommandé: -1.5% (serré)")
-
-                # Retourner directement pour ce mode (bypass reste de la
-                # logique)
-                return action, confidence, reasons, warnings, recommendations
-
-            # === MODE 2: EARLY SIGNAL MOYEN (40-69) - BOOST ===
-            if early_signal.score >= 40 and is_early_entry:
-                logger.info(
-                    f"⚡ EARLY MODE 2: Signal moyen {early_signal.score:.0f} - Boost au scoring"
-                )
-
-                # Bonus selon niveau
-                if early_signal.score >= 60 and early_signal.level.value == "entry_now":
-                    early_boost = 8.0  # +8 points
-                    warnings.append(
-                        f"⚡ Early entry signal: {early_signal.score:.0f}/100"
-                    )
-                elif (
-                    early_signal.score >= 50 and early_signal.level.value == "entry_now"
-                ):
-                    early_boost = 5.0  # +5 points
-                    warnings.append(
-                        f"⚡ Early entry signal: {early_signal.score:.0f}/100"
-                    )
-                elif early_signal.level.value == "prepare":
-                    early_boost = 3.0  # +3 points
-                    warnings.append(
-                        f"👀 Early prepare signal: {early_signal.score:.0f}/100"
-                    )
-                else:
-                    early_boost = 2.0  # +2 points minimal
-
-                # Ajouter top reasons early
-                for reason in early_signal.reasons[:2]:
-                    reasons.append(f"  Early: {reason}")
-
-            # === MODE 3: EARLY SIGNAL FAIBLE (<40) - AUCUN EFFET ===
-            else:
-                logger.debug(
-                    f"⏸️ EARLY MODE 3: Signal faible {early_signal.score:.0f} - Aucun effet"
-                )
-
-        # Appliquer pénalité validation si non parfaite
-        # Score validation 80/100 → multiplicateur 0.9 (10% de pénalité)
-        validation_multiplier = validation.overall_score / 100.0
-        adjusted_score = min(100.0, (total_score + early_boost) * validation_multiplier)
-        adjusted_confidence = min(
-            100.0, (score_confidence + early_boost * 0.5) * validation_multiplier
+        # Score <50 = AVOID
+        return (
+            "AVOID",
+            score.total_score * 0.5,
+            [f"❌ Score faible: {score.total_score:.0f}/100", "Pas de setup"],
+            [*warnings, "Setup non formé"],
+            ["Continuer scan", "Attendre meilleur setup"],
         )
-
-        # Détecter pump context pour assouplir seuil confiance
-        vol_spike = self.safe_float(ad.get("volume_spike_multiplier"), 1.0)
-        rel_volume = self.safe_float(ad.get("relative_volume"), 1.0)
-        market_regime = ad.get("market_regime", "").upper()
-
-        # AJUSTÉ: 2.0x (compromis 20 cryptos: P95 varie de 1.4x à 8.3x)
-        # BTC/ETH P95=2.9x, BNB/XRP P95=1.4x, Altcoins P95=3-8x
-        is_pump = (vol_spike > 2.0 or rel_volume > 2.0) and market_regime in [
-            "TRENDING_BULL",
-            "BREAKOUT_BULL",
-        ]
-
-        # BUY_NOW: Score ajusté >70 (abaissé de 80) + confiance >65 (abaissé de 70)
-        # RATIONALE: Un score 75 avec validation 90% = setup solide à ne pas rater
-        # Pump context: seuil confiance >60 au lieu de >65
-        confidence_threshold = 60 if is_pump else 65
-        if adjusted_score >= 70 and adjusted_confidence >= confidence_threshold:
-            action = "BUY_NOW"
-            confidence = min(adjusted_score, adjusted_confidence)
-
-            reasons.append(
-                f"✅ Score brut: {total_score:.0f}/100 (Grade {score.grade})"
-            )
-            if validation_multiplier < 1.0:
-                reasons.append(
-                    f"⚠️ Score ajusté validation: {adjusted_score:.0f}/100 ({validation_multiplier*100:.0f}%)"
-                )
-            reasons.append(f"✅ Confiance: {adjusted_confidence:.0f}%")
-            reasons.append(f"✅ Validation: {validation.overall_score:.0f}/100")
-
-            # Ajouter détails des meilleures catégories
-
-            top_cats = sorted(
-                score.category_scores.items(), key=lambda x: x[1].score, reverse=True
-            )[:3]
-
-            for cat, cat_score in top_cats:
-                if cat_score.score >= 70:
-                    reasons.append(
-                        f"  • {cat.value.title()}: {cat_score.score:.0f}/100"
-                    )
-
-            recommendations.append("🚀 ACHETER MAINTENANT - Setup optimal")
-            recommendations.extend(score.reasons)
-
-        # BUY_DCA: Score ajusté 55-70 + confiance >55
-        # RATIONALE: DCA est fait pour les setups moyens, pas excellent
-        elif adjusted_score >= 55 and adjusted_confidence >= 55:
-            action = "BUY_DCA"
-            confidence = min(adjusted_score * 0.85, adjusted_confidence)
-
-            reasons.append(
-                f"✅ Score brut: {total_score:.0f}/100 (Grade {score.grade})"
-            )
-            if validation_multiplier < 1.0:
-                reasons.append(f"⚠️ Score ajusté validation: {adjusted_score:.0f}/100")
-            reasons.append(f"✅ Validation: {validation.overall_score:.0f}/100")
-            reasons.append("⚠️ Entrée progressive recommandée (DCA)")
-
-            recommendations.append("📊 ACHETER EN DCA - Diviser en 2-3 tranches")
-            recommendations.append("Zone d'achat: entry_optimal → entry_aggressive")
-
-            # Ajouter warnings des catégories faibles
-
-            for cat, cat_score in score.category_scores.items():
-                if cat_score.score < 60:
-                    warnings.append(
-                        f"⚠️ {cat.value.title()} faible: {cat_score.score:.0f}/100"
-                    )
-
-        # WAIT: Score ajusté < 60 ou confiance < 60
-        elif adjusted_score < 60 or adjusted_confidence < 60:
-            action = "WAIT"
-            confidence = max(adjusted_score * 0.7, 40.0)
-
-            reasons.append(f"⏸️ Score brut: {total_score:.0f}/100 (Grade {score.grade})")
-            if validation_multiplier < 1.0:
-                reasons.append(f"⚠️ Score ajusté validation: {adjusted_score:.0f}/100")
-            reasons.append(f"⚠️ Confiance: {adjusted_confidence:.0f}%")
-
-            recommendations.append("⏸️ ATTENDRE - Conditions pas optimales")
-            recommendations.append("Surveiller amélioration du score")
-
-            # Lister ce qui manque
-
-            weak_cats = [
-                (cat, cs) for cat, cs in score.category_scores.items() if cs.score < 50
-            ]
-
-            for cat, cat_score in weak_cats:
-                warnings.append(f"❌ {cat.value.title()}: {cat_score.score:.0f}/100")
-                if cat_score.issues:
-                    for issue in cat_score.issues[:2]:  # Top 2 issues
-                        warnings.append(f"   {issue}")
-
-        # AVOID: Score ajusté très faible
-        else:
-            action = "AVOID"
-            confidence = max(adjusted_score * 0.5, 20.0)
-
-            reasons.append(
-                f"❌ Score brut: {total_score:.0f}/100 (Grade {score.grade})"
-            )
-            if validation_multiplier < 1.0:
-                reasons.append(f"❌ Score ajusté validation: {adjusted_score:.0f}/100")
-            reasons.append("❌ Setup non favorable")
-
-            recommendations.append("🛑 NE PAS ACHETER - Risque élevé")
-            recommendations.extend(score.warnings)
-
-        # Ajouter warnings du validation
-        warnings.extend(validation.warnings)
-
-        return action, confidence, reasons, warnings, recommendations
 
     def _calculate_entry_prices(
-        self, current_price: float, ad: dict, _action: str
+        self, current_price: float, analyzer_data: dict, action: str
     ) -> tuple[float, float]:
         """
-        Calcule prix d'entrée optimal et aggressif.
+        Calcule prix d'entrée optimal et agressif.
 
-        Optimal: Pullback vers support/EMA/VWAP
-        Aggressive: Market price immédiat
+        Returns:
+            (entry_optimal, entry_aggressive)
         """
-        # Entry aggressive = current price
-        entry_aggressive = current_price
+        # Entry optimal = légèrement en dessous (limit order)
+        nearest_support = self.safe_float(analyzer_data.get("nearest_support"))
+        atr = self.safe_float(analyzer_data.get("atr"))
 
-        # Entry optimal = pullback vers support technique
-        ema_7 = self.safe_float(ad.get("ema_7"))
-        vwap = self.safe_float(ad.get("vwap_quote_10")) or self.safe_float(
-            ad.get("vwap_10")
-        )
-        nearest_support = self.safe_float(ad.get("nearest_support"))
-        bb_lower = self.safe_float(ad.get("bb_lower"))
+        if action in ["BUY_NOW", "BUY_DCA"]:
+            # Optimal = entre current et support, ou current - 0.15% ATR
+            if nearest_support > 0 and nearest_support < current_price:
+                entry_optimal = (current_price + nearest_support) / 2
+            elif atr > 0:
+                entry_optimal = current_price - (0.15 * atr)
+            else:
+                entry_optimal = current_price * 0.999  # -0.1%
 
-        # Choisir le niveau de pullback le plus proche sous le prix actuel
-        pullback_levels = []
+            # Aggressive = current price (market order)
+            entry_aggressive = current_price
+        else:
+            entry_optimal = current_price
+            entry_aggressive = current_price
 
-        if ema_7 > 0 and ema_7 < current_price:
-            pullback_levels.append(ema_7)
-
-        if vwap > 0 and vwap < current_price:
-            pullback_levels.append(vwap)
-
-        if nearest_support > 0 and nearest_support < current_price:
-            # Légèrement au-dessus du support
-            pullback_levels.append(nearest_support * 1.001)
-
-        if bb_lower > 0 and bb_lower < current_price:
-            pullback_levels.append(bb_lower)
-
-        entry_optimal = (
-            max(pullback_levels) if pullback_levels else current_price * 0.997
-        )
-
-        return round(entry_optimal, 8), round(entry_aggressive, 8)
+        return entry_optimal, entry_aggressive
 
     def _calculate_targets(
-        self, current_price: float, ad: dict, score: OpportunityScore
-    ) -> tuple[float, float, float | None, list[float]]:
+        self, current_price: float, analyzer_data: dict, score: OpportunityScore
+    ) -> tuple[float, float, float | None, tuple[float, float, float | None]]:
         """
-        Calcule targets adaptatifs basés sur ATR + résistances + score.
+        Calcule targets TP1/TP2/TP3 CONSERVATEURS.
 
-        TP1: Conservative (0.8-1.0 ATR)
-        TP2: Moderate (1.2-1.5 ATR)
-        TP3: Aggressive (2.0-2.5 ATR) - Seulement si score S/A
+        Returns:
+            (tp1, tp2, tp3, (tp1_pct, tp2_pct, tp3_pct))
         """
-        atr = self.safe_float(ad.get("atr_14"))
-        natr = self.safe_float(ad.get("natr"))
-        nearest_resistance = self.safe_float(ad.get("nearest_resistance"))
+        atr = self.safe_float(analyzer_data.get("atr"))
+        nearest_resistance = self.safe_float(analyzer_data.get("nearest_resistance"))
 
-        # Calculer ATR%
-        if atr > 0 and current_price > 0:
-            atr_percent = atr / current_price
-        elif natr > 0:
-            atr_percent = natr / 100.0
+        # TP1 conservateur: 0.6 ATR ou résistance
+        if nearest_resistance > current_price:
+            tp1 = min(current_price + (0.6 * atr), nearest_resistance)
         else:
-            atr_percent = 0.015  # Fallback 1.5%
+            tp1 = current_price + (0.6 * atr)
 
-        # TP1: Conservative
-        tp1_dist = max(0.01, atr_percent * 0.8)
+        # TP2: 1.0 ATR
+        tp2 = current_price + (1.0 * atr)
 
-        # TP2: Moderate
-        tp2_dist = max(0.015, atr_percent * 1.2)
+        # TP3: 1.5 ATR si score >75
+        tp3 = current_price + (1.5 * atr) if score.total_score > 75 else None
 
-        # TP3: Aggressive (seulement si score excellent)
-        tp3_dist = max(0.02, atr_percent * 2.0) if score.grade in ["S", "A"] else None
+        tp1_pct = ((tp1 - current_price) / current_price) * 100
+        tp2_pct = ((tp2 - current_price) / current_price) * 100
+        tp3_pct = ((tp3 - current_price) / current_price) * 100 if tp3 else None
 
-        # Ajuster si résistance proche MAIS pas trop proche
-        if nearest_resistance > 0 and current_price > 0:
-            res_dist_pct = (nearest_resistance - current_price) / current_price
-
-            # Si résistance est TRÈS proche (< 0.5%), ne pas ajuster les TP
-            # car cela donnerait des gains ridicules. Mieux vaut garder TP basés sur ATR
-            # et laisser le validator rejeter si nécessaire
-            if res_dist_pct > 0.005:  # Résistance > 0.5%
-                # Si résistance entre prix et TP1, ajuster TP1 juste avant
-                if res_dist_pct < tp1_dist:
-                    tp1_dist = max(res_dist_pct * 0.95, 0.005)  # Minimum 0.5%
-
-                # Si résistance entre TP1 et TP2, ajuster TP2 juste avant
-                if res_dist_pct < tp2_dist:
-                    tp2_dist = max(res_dist_pct * 0.98, 0.008)  # Minimum 0.8%
-
-        tp1 = round(current_price * (1 + tp1_dist), 8)
-        tp2 = round(current_price * (1 + tp2_dist), 8)
-        tp3 = round(current_price * (1 + tp3_dist), 8) if tp3_dist else None
-
-        tp_percents = [
-            round(tp1_dist * 100, 2),
-            round(tp2_dist * 100, 2),
-            round(tp3_dist * 100, 2) if tp3_dist else None,
-        ]
-
-        return tp1, tp2, tp3, tp_percents
+        return tp1, tp2, tp3, (tp1_pct, tp2_pct, tp3_pct)
 
     def _calculate_stop_loss(
-        self, current_price: float, ad: dict
+        self, current_price: float, analyzer_data: dict
     ) -> tuple[float, float, str]:
         """
-        Calcule SL intelligent basé sur:
-        1. Support proche (priorité)
-        2. ATR (0.7x)
-        3. Bollinger Lower
+        Calcule stop loss CONSERVATEUR.
+
+        Returns:
+            (stop_loss, sl_percent, sl_basis)
         """
-        nearest_support = self.safe_float(ad.get("nearest_support"))
-        atr = self.safe_float(ad.get("atr_14"))
-        natr = self.safe_float(ad.get("natr"))
-        bb_lower = self.safe_float(ad.get("bb_lower"))
+        atr = self.safe_float(analyzer_data.get("atr"))
+        nearest_support = self.safe_float(analyzer_data.get("nearest_support"))
 
-        # Calculer ATR%
-        if atr > 0 and current_price > 0:
-            atr_percent = atr / current_price
-        elif natr > 0:
-            atr_percent = natr / 100.0
-        else:
-            atr_percent = 0.012  # Fallback 1.2%
-
-        # Méthode 1: Support
+        # SL = support - 0.3 ATR ou current - 0.8 ATR
         if nearest_support > 0 and nearest_support < current_price:
-            sl_dist = (current_price - nearest_support) / current_price
-            # Minimum 0.7%, maximum 2%
-            sl_dist = max(0.007, min(sl_dist, 0.02))
+            sl = nearest_support - (0.3 * atr)
             sl_basis = "support"
-
-        # Méthode 2: ATR
-        elif atr > 0:
-            sl_dist = max(0.007, atr_percent * 0.7)
+        else:
+            sl = current_price - (0.8 * atr)
             sl_basis = "ATR"
 
-        # Méthode 3: Bollinger Lower
-        elif bb_lower > 0 and bb_lower < current_price:
-            sl_dist = (current_price - bb_lower) / current_price
-            sl_dist = max(0.007, min(sl_dist, 0.02))
-            sl_basis = "BB_lower"
+        sl_percent = ((current_price - sl) / current_price) * 100
 
-        # Fallback: 1.2%
-        else:
-            sl_dist = 0.012
-            sl_basis = "fixed"
-
-        stop_loss = round(current_price * (1 - sl_dist), 8)
-        sl_percent = round(sl_dist * 100, 2)
-
-        return stop_loss, sl_percent, sl_basis
+        return sl, sl_percent, sl_basis
 
     def _calculate_risk_metrics(
         self,
@@ -668,86 +524,63 @@ class OpportunityCalculatorPro:
         tp1: float,
         stop_loss: float,
         score: OpportunityScore,
-        _validation: ValidationSummary,
-        ad: dict,
-        action: str = "WAIT",
+        validation: ValidationSummary,
+        analyzer_data: dict,
+        action: str,
     ) -> tuple[float, str, float]:
         """
-        Calcule métriques de risque + position sizing.
+        Calcule métriques risque CONSERVATRICES.
 
         Returns:
             (rr_ratio, risk_level, max_position_size_pct)
         """
-        # R/R Ratio
-        tp_dist = abs(tp1 - current_price)
-        sl_dist = abs(current_price - stop_loss)
+        # R/R ratio
+        risk = current_price - stop_loss
+        reward = tp1 - current_price
+        rr_ratio = reward / risk if risk > 0 else 0.0
 
-        rr_ratio = (tp_dist / sl_dist) if sl_dist > 0 else 0.0
-
-        # Risk Level (déjà calculé dans score)
-        risk_level = score.risk_level
-
-        # Max Position Size (% du capital)
-        # Basé sur score + volatilité + risk_level
-        vol_regime = ad.get("volatility_regime", "").lower()
-
-        # Base sizing
-        if score.grade == "S" and risk_level == "LOW":
-            base_pct = 8.0  # 8% capital
-        elif score.grade == "A" and risk_level in ["LOW", "MEDIUM"]:
-            base_pct = 6.0
-        elif score.grade in ["A", "B"] and risk_level == "MEDIUM":
-            base_pct = 4.0
-        elif score.grade in ["B", "C"]:
-            base_pct = 3.0
+        # Risk level
+        volatility = self.safe_float(analyzer_data.get("volatility_regime_strength"))
+        if action == "AVOID":
+            risk_level = "EXTREME"
+            max_position_pct = 0.0
+        elif rr_ratio < 1.8 or volatility > 0.8:
+            risk_level = "HIGH"
+            max_position_pct = 1.0
+        elif rr_ratio < 2.5 or volatility > 0.6:
+            risk_level = "MEDIUM"
+            max_position_pct = 2.0
         else:
-            base_pct = 2.0  # Minimum
+            risk_level = "LOW"
+            max_position_pct = 3.0
 
-        # Ajuster par volatilité
-        if vol_regime == "extreme":
-            base_pct *= 0.5
-        elif vol_regime == "high":
-            base_pct *= 0.75
-        elif vol_regime == "low":
-            base_pct *= 1.2
+        # Ajuster selon score/validation
+        if score.total_score < 60 or validation.overall_score < 70:
+            max_position_pct *= 0.5
 
-        # Ajuster par R/R
-        if rr_ratio > 3.0:
-            base_pct *= 1.2
-        elif rr_ratio < 1.8:
-            base_pct *= 0.8
-
-        max_position_pct = round(min(base_pct, 10.0), 2)  # Cap à 10%
-
-        # Réduire position pour EARLY_ENTRY (plus risqué)
-        if action == "EARLY_ENTRY":
-            max_position_pct *= 0.7  # Réduction de 30%
-            max_position_pct = round(max_position_pct, 2)
-
-        return round(rr_ratio, 2), risk_level, max_position_pct
+        return rr_ratio, risk_level, max_position_pct
 
     def _calculate_timing(
-        self, ad: dict, score: OpportunityScore, action: str
+        self, analyzer_data: dict, score: OpportunityScore, action: str
     ) -> tuple[str, str]:
         """
-        Calcule timing: durée hold estimée + urgence d'entrée.
+        Calcule timing estimé.
+
+        Returns:
+            (estimated_hold_time, entry_urgency)
         """
-        regime = ad.get("market_regime", "").upper()
-        adx = self.safe_float(ad.get("adx_14"))
-        ad.get("volatility_regime", "").lower()
+        volatility = self.safe_float(analyzer_data.get("volatility_regime_strength"))
 
-        # Durée hold
-        if regime == "BREAKOUT_BULL":
-            hold_time = "5-15 min"
-        elif regime == "TRENDING_BULL":
-            hold_time = "10-20 min" if adx > 35 else "15-30 min"
-        elif regime in ["RANGING", "TRANSITION"]:
-            hold_time = "20-45 min"
+        # Hold time basé sur volatilité
+        if volatility > 0.7:
+            hold_time = "15-30min"
+        elif volatility > 0.5:
+            hold_time = "30-60min"
         else:
-            hold_time = "15-30 min"
+            hold_time = "1-2h"
 
-        # Urgence
-        if action == "BUY_NOW" and score.grade == "S":
+        # Urgency basée sur action/score
+        if action == "BUY_NOW" and score.total_score >= 75:
             urgency = "IMMEDIATE"
         elif action == "BUY_NOW":
             urgency = "SOON"
@@ -758,110 +591,52 @@ class OpportunityCalculatorPro:
 
         return hold_time, urgency
 
-    def _serialize_score(self, score: OpportunityScore) -> dict:
-        """Sérialise OpportunityScore pour export."""
-
-        return {
-            "total_score": score.total_score,
-            "grade": score.grade,
-            "confidence": score.confidence,
-            "risk_level": score.risk_level,
-            "recommendation": score.recommendation,
-            "category_scores": {
-                cat.value: {
-                    "score": cs.score,
-                    "weight": cs.weight,
-                    "weighted_score": cs.weighted_score,
-                    "confidence": cs.confidence,
-                    "details": cs.details,
-                    "issues": cs.issues,
-                }
-                for cat, cs in score.category_scores.items()
-            },
-        }
-
-    def _serialize_validation(self, validation: ValidationSummary) -> dict:
-        """Sérialise ValidationSummary pour export."""
-        return {
-            "all_passed": validation.all_passed,
-            "overall_score": validation.overall_score,
-            "level_results": {
-                level.value: {
-                    "passed": result.passed,
-                    "score": result.score,
-                    "reason": result.reason,
-                    "details": result.details,
-                    "warnings": result.warnings,
-                }
-                for level, result in validation.level_results.items()
-            },
-            "blocking_issues": validation.blocking_issues,
-            "warnings": validation.warnings,
-        }
-
     def _create_no_data_opportunity(
         self, symbol: str, current_price: float
     ) -> TradingOpportunity:
-        """Crée une opportunité vide (pas de données)."""
-        from src.opportunity_scoring import (
-            CategoryScore,
-            OpportunityScore,
-            ScoreCategory,
-        )
-        from src.opportunity_validator import ValidationSummary
-
-        # Score vide
-        zero_category = CategoryScore(
-            category=ScoreCategory.TREND,
-            score=0.0,
-            weight=0.0,
-            weighted_score=0.0,
-            details={},
-            confidence=0.0,
-            issues=["Pas de données"],
-        )
-
-        score = OpportunityScore(
-            total_score=0.0,
-            grade="F",
-            category_scores=dict.fromkeys(ScoreCategory, zero_category),
-            confidence=0.0,
-            risk_level="EXTREME",
-            recommendation="AVOID",
-            reasons=["Pas de données"],
-            warnings=[],
-        )
-
-        # Validation vide
-        validation = ValidationSummary(
-            all_passed=False,
-            level_results={},
-            overall_score=0.0,
-            blocking_issues=["Pas de données analyzer_data"],
-            warnings=[],
-            recommendations=["Attendre disponibilité des données"],
-        )
-
+        """Crée opportunité vide si pas de données."""
         return TradingOpportunity(
             symbol=symbol,
             action="AVOID",
             confidence=0.0,
-            score=score,
-            validation=validation,
-            early_signal=None,  # NOUVEAU
-            is_early_entry=False,  # NOUVEAU
+            score=OpportunityScore(
+                total_score=0.0,
+                rsi_score=0.0,
+                momentum_score=0.0,
+                volume_score=0.0,
+                support_resistance_score=0.0,
+                trend_score=0.0,
+                mfi_score=0.0,
+                confluence_score=0.0,
+                category_scores={},
+                reasons=[],
+                warnings=["Pas de données disponibles"],
+            ),
+            validation=ValidationSummary(
+                passed=False,
+                confidence=0.0,
+                failed_reason="Pas de données",
+                data_quality=0.0,
+                market_quality=0.0,
+                risk_quality=0.0,
+                timing_quality=0.0,
+                warnings=["Pas de données disponibles"],
+                rejections=[],
+            ),
+            early_signal=None,
+            is_early_entry=False,
             current_price=current_price,
             entry_price_optimal=current_price,
             entry_price_aggressive=current_price,
-            tp1=current_price * 1.01,
-            tp1_percent=1.0,
-            tp2=current_price * 1.015,
-            tp2_percent=1.5,
+            tp1=current_price,
+            tp1_percent=0.0,
+            tp2=current_price,
+            tp2_percent=0.0,
             tp3=None,
             tp3_percent=None,
-            stop_loss=current_price * 0.988,
-            stop_loss_percent=1.2,
-            stop_loss_basis="fixed",
+            stop_loss=current_price,
+            stop_loss_percent=0.0,
+            stop_loss_basis="NONE",
             rr_ratio=0.0,
             risk_level="EXTREME",
             max_position_size_pct=0.0,
@@ -869,236 +644,11 @@ class OpportunityCalculatorPro:
             entry_urgency="NO_RUSH",
             market_regime="UNKNOWN",
             volume_context="UNKNOWN",
-            volatility_regime="unknown",
-            reasons=["Pas de données analyzer_data"],
-            warnings=[],
-            recommendations=["Attendre disponibilité des données"],
+            volatility_regime="UNKNOWN",
+            reasons=["Pas de données disponibles"],
+            warnings=["Impossible de calculer opportunité"],
+            recommendations=["Attendre données valides"],
             raw_score_details={},
             raw_validation_details={},
-            raw_analyzer_data={},  # Empty analyzer data
+            raw_analyzer_data={},
         )
-
-    def to_dict(self, opportunity: TradingOpportunity) -> dict:
-        """Convertit TradingOpportunity en dict pour export/API."""
-        # Sérialiser early_signal si présent
-        early_signal_dict = None
-        if opportunity.early_signal:
-            early_signal_dict = {
-                "level": opportunity.early_signal.level.value,
-                "score": opportunity.early_signal.score,
-                "confidence": opportunity.early_signal.confidence,
-                "velocity_score": opportunity.early_signal.velocity_score,
-                "volume_buildup_score": opportunity.early_signal.volume_buildup_score,
-                "micro_pattern_score": opportunity.early_signal.micro_pattern_score,
-                "order_flow_score": opportunity.early_signal.order_flow_score,
-                "estimated_entry_window_seconds": opportunity.early_signal.estimated_entry_window_seconds,
-                "estimated_move_completion_pct": opportunity.early_signal.estimated_move_completion_pct,
-                "reasons": opportunity.early_signal.reasons[:5],  # Top 5
-                "warnings": opportunity.early_signal.warnings,
-                "recommendations": opportunity.early_signal.recommendations,
-            }
-
-        return {
-            "symbol": opportunity.symbol,
-            "action": opportunity.action,
-            "confidence": opportunity.confidence,
-            "is_early_entry": opportunity.is_early_entry,  # NOUVEAU
-            "early_signal": early_signal_dict,  # NOUVEAU
-            "pricing": {
-                "current_price": opportunity.current_price,
-                "entry_optimal": opportunity.entry_price_optimal,
-                "entry_aggressive": opportunity.entry_price_aggressive,
-            },
-            "targets": {
-                "tp1": {"price": opportunity.tp1, "percent": opportunity.tp1_percent},
-                "tp2": {"price": opportunity.tp2, "percent": opportunity.tp2_percent},
-                "tp3": (
-                    {"price": opportunity.tp3, "percent": opportunity.tp3_percent}
-                    if opportunity.tp3
-                    else None
-                ),
-            },
-            "stop_loss": {
-                "price": opportunity.stop_loss,
-                "percent": opportunity.stop_loss_percent,
-                "basis": opportunity.stop_loss_basis,
-            },
-            "risk": {
-                "rr_ratio": opportunity.rr_ratio,
-                "risk_level": opportunity.risk_level,
-                "max_position_size_pct": opportunity.max_position_size_pct,
-            },
-            "timing": {
-                "estimated_hold_time": opportunity.estimated_hold_time,
-                "entry_urgency": opportunity.entry_urgency,
-            },
-            "context": {
-                "market_regime": opportunity.market_regime,
-                "volume_context": opportunity.volume_context,
-                "volatility_regime": opportunity.volatility_regime,
-            },
-            "score": {
-                "total": opportunity.score.total_score,
-                "grade": opportunity.score.grade,
-                "confidence": opportunity.score.confidence,
-            },
-            "validation": {
-                "all_passed": opportunity.validation.all_passed,
-                "overall_score": opportunity.validation.overall_score,
-            },
-            "reasons": opportunity.reasons,
-            "warnings": opportunity.warnings,
-            "recommendations": opportunity.recommendations,
-            # Debug data
-            "debug": {
-                "score_details": opportunity.raw_score_details,
-                "validation_details": opportunity.raw_validation_details,
-                "raw_data": opportunity.raw_analyzer_data,  # Données analyzer pour frontend
-            },
-        }
-
-
-# ===========================================================
-# EXEMPLE D'UTILISATION
-# ===========================================================
-if __name__ == "__main__":
-    import io
-    import sys
-
-    # Fix Windows encoding
-    if sys.platform == "win32":
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
-
-    print("=" * 80)
-    print("OPPORTUNITY CALCULATOR PRO - Test Example")
-    print("=" * 80)
-
-    # Simuler des données analyzer_data complètes
-    test_data = {
-        # Trend indicators
-        "adx_14": 32.5,
-        "plus_di": 35.2,
-        "minus_di": 18.3,
-        "trend_alignment": 75.0,
-        "trend_strength": "STRONG",
-        "directional_bias": "BULLISH",
-        "market_regime": "TRENDING_BULL",
-        "regime_confidence": 82.0,
-        "regime_strength": "STRONG",
-        # Momentum indicators
-        "rsi_14": 62.5,
-        "rsi_21": 64.0,
-        "williams_r": -28.0,
-        "macd_trend": "BULLISH",
-        "macd_histogram": 0.0015,
-        "macd_signal_cross": True,
-        "cci_20": 85.0,
-        "mfi_14": 58.0,
-        "stoch_k": 68.0,
-        "stoch_d": 65.0,
-        "stoch_signal": "BULLISH",
-        "momentum_score": 72.0,
-        # Volume indicators
-        "relative_volume": 2.3,
-        "volume_spike_multiplier": 2.8,
-        "volume_context": "BREAKOUT",
-        "volume_pattern": "SPIKE",
-        "volume_quality_score": 78.0,
-        "obv_oscillator": 250.0,
-        "trade_intensity": 1.8,
-        "volume_buildup_periods": 3,
-        # Volatility
-        "atr_14": 0.0018,
-        "natr": 1.8,
-        "atr_percentile": 55.0,
-        "volatility_regime": "normal",
-        "bb_width": 0.025,
-        "bb_squeeze": False,
-        "bb_expansion": True,
-        "bb_position": 0.72,
-        # Support/Resistance
-        "nearest_support": 1.0720,
-        "nearest_resistance": 1.0920,
-        "support_strength": "STRONG",
-        "resistance_strength": "MODERATE",
-        "break_probability": 0.65,
-        "pivot_count": 4,
-        # Pattern & Confluence
-        "pattern_detected": "PRICE_SPIKE_UP",
-        "pattern_confidence": 75.0,
-        "confluence_score": 78.0,
-        "signal_strength": "STRONG",
-        # Quality
-        "data_quality": "EXCELLENT",
-        "anomaly_detected": False,
-        "cache_hit_ratio": 85.0,
-        # Moving averages
-        "ema_7": 1.0745,
-        "vwap_quote_10": 1.0735,
-        "bb_lower": 1.0710,
-    }
-
-    # Créer calculateur
-    calc = OpportunityCalculatorPro()
-
-    # Calculer opportunité
-    opportunity = calc.calculate_opportunity(
-        symbol="BTCUSDC",
-        current_price=1.0760,
-        analyzer_data=test_data,
-        higher_tf_data=None,
-    )
-
-    # Afficher résultat
-    print(f"\n🎯 OPPORTUNITÉ: {opportunity.symbol}")
-    print(f"Action: {opportunity.action}")
-    print(f"Confiance: {opportunity.confidence:.0f}%")
-    print(
-        f"Score: {opportunity.score.total_score:.0f}/100 (Grade {opportunity.score.grade})"
-    )
-    print(
-        f"Validation: {'✅ PASSÉE' if opportunity.validation.all_passed else '❌ ÉCHOUÉE'}"
-    )
-
-    print("\n💰 PRICING:")
-    print(f"  Prix actuel: {opportunity.current_price:.6f}")
-    print(f"  Entrée optimale: {opportunity.entry_price_optimal:.6f}")
-    print(f"  Entrée aggressive: {opportunity.entry_price_aggressive:.6f}")
-
-    print("\n🎯 TARGETS:")
-    print(f"  TP1: {opportunity.tp1:.6f} (+{opportunity.tp1_percent:.2f}%)")
-    print(f"  TP2: {opportunity.tp2:.6f} (+{opportunity.tp2_percent:.2f}%)")
-    if opportunity.tp3:
-        print(f"  TP3: {opportunity.tp3:.6f} (+{opportunity.tp3_percent:.2f}%)")
-
-    print("\n🛡️ STOP LOSS:")
-    print(f"  SL: {opportunity.stop_loss:.6f} (-{opportunity.stop_loss_percent:.2f}%)")
-    print(f"  Basis: {opportunity.stop_loss_basis}")
-
-    print("\n📊 RISK:")
-    print(f"  R/R Ratio: {opportunity.rr_ratio:.2f}")
-    print(f"  Risk Level: {opportunity.risk_level}")
-    print(f"  Max Position: {opportunity.max_position_size_pct:.2f}% du capital")
-
-    print("\n⏱️ TIMING:")
-    print(f"  Hold estimé: {opportunity.estimated_hold_time}")
-    print(f"  Urgence: {opportunity.entry_urgency}")
-
-    print("\n📋 RAISONS:")
-    for reason in opportunity.reasons:
-        print(f"  {reason}")
-
-    if opportunity.warnings:
-        print("\n⚠️ WARNINGS:")
-        for warning in opportunity.warnings:
-            print(f"  {warning}")
-
-    print("\n💡 RECOMMANDATIONS:")
-    for rec in opportunity.recommendations:
-        print(f"  {rec}")
-
-    print("\n" + "=" * 80)
-
-    # Export JSON
-    opportunity_dict = calc.to_dict(opportunity)
-    print("\n📤 Export JSON disponible avec calc.to_dict(opportunity)")

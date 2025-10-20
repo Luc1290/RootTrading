@@ -252,9 +252,36 @@ function ManualTradingPage() {
         })
       );
 
-      // Filtrer les nulls seulement (tri fait dans useEffect après chargement des signaux)
+      // Filtrer les nulls ET TRIER UNE SEULE FOIS (évite boucle de re-render)
       const validOpportunities = opportunitiesData
-        .filter((opp): opp is TradingOpportunity => opp !== null);
+        .filter((opp): opp is TradingOpportunity => opp !== null)
+        .sort((a, b) => {
+          // 1. BUY_NOW en premier absolu
+          if (a.action === 'BUY_NOW' && b.action !== 'BUY_NOW') return -1;
+          if (a.action !== 'BUY_NOW' && b.action === 'BUY_NOW') return 1;
+
+          // 2. EARLY_ENTRY en deuxième (signaux précoces prioritaires)
+          if (a.action === 'EARLY_ENTRY' && !['BUY_NOW'].includes(b.action)) return -1;
+          if (b.action === 'EARLY_ENTRY' && !['BUY_NOW'].includes(a.action)) return 1;
+
+          // 3. BUY_DCA en troisième
+          if (a.action === 'BUY_DCA' && !['BUY_NOW', 'EARLY_ENTRY'].includes(b.action)) return -1;
+          if (b.action === 'BUY_DCA' && !['BUY_NOW', 'EARLY_ENTRY'].includes(a.action)) return 1;
+
+          // 4. Ensuite par score total (système PRO)
+          const aScore = a.score?.total || 0;
+          const bScore = b.score?.total || 0;
+
+          if (aScore !== bScore) {
+            return bScore - aScore; // Score décroissant
+          }
+
+          // 5. Si scores égaux, par validation score
+          const aValidation = a.validation?.overall_score || 0;
+          const bValidation = b.validation?.overall_score || 0;
+
+          return bValidation - aValidation;
+        });
 
       setOpportunities(validOpportunities);
       setLastUpdate(new Date());
@@ -281,52 +308,13 @@ function ManualTradingPage() {
   useEffect(() => {
     const loadData = async () => {
       await loadTopSignals(); // Charger les signaux d'abord
-      await loadOpportunities(); // Puis les opportunités (pour tri par net_signal)
+      await loadOpportunities(); // Puis les opportunités (tri fait dans loadOpportunities)
     };
     loadData();
 
     const interval = setInterval(loadData, 60000); // Refresh toutes les 60s (1min = plus court timeframe)
     return () => clearInterval(interval);
   }, []);
-
-  // Retrier les opportunités par score PRO
-  useEffect(() => {
-    if (opportunities.length > 0) {
-      const sorted = [...opportunities].sort((a, b) => {
-        // 1. BUY_NOW en premier absolu
-        if (a.action === 'BUY_NOW' && b.action !== 'BUY_NOW') return -1;
-        if (a.action !== 'BUY_NOW' && b.action === 'BUY_NOW') return 1;
-
-        // 2. EARLY_ENTRY en deuxième (signaux précoces prioritaires)
-        if (a.action === 'EARLY_ENTRY' && !['BUY_NOW'].includes(b.action)) return -1;
-        if (b.action === 'EARLY_ENTRY' && !['BUY_NOW'].includes(a.action)) return 1;
-
-        // 3. BUY_DCA en troisième
-        if (a.action === 'BUY_DCA' && !['BUY_NOW', 'EARLY_ENTRY'].includes(b.action)) return -1;
-        if (b.action === 'BUY_DCA' && !['BUY_NOW', 'EARLY_ENTRY'].includes(a.action)) return 1;
-
-        // 3. Ensuite par score total (système PRO)
-        const aScore = a.score?.total || 0;
-        const bScore = b.score?.total || 0;
-
-        if (aScore !== bScore) {
-          return bScore - aScore; // Score décroissant
-        }
-
-        // 4. Si scores égaux, par validation score
-        const aValidation = a.validation?.overall_score || 0;
-        const bValidation = b.validation?.overall_score || 0;
-
-        return bValidation - aValidation;
-      });
-
-      // Vérifier si l'ordre a changé avant de mettre à jour (éviter boucle infinie)
-      const orderChanged = sorted.some((opp, idx) => opp.symbol !== opportunities[idx].symbol);
-      if (orderChanged) {
-        setOpportunities(sorted);
-      }
-    }
-  }, [opportunities]); // Plus besoin de topSignals
 
   // Calculateur variation en temps réel
   useEffect(() => {

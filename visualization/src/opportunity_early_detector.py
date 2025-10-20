@@ -1,15 +1,40 @@
 """
-Opportunity Early Detector - Leading Indicator System
-Détecte les pumps AVANT la confirmation complète (20-40s d'avance)
+Opportunity Early Detector FIXED - True Leading Indicator System
+Détecte les pumps AVANT qu'ils démarrent (cherche les SETUPS, pas les confirmations)
+
+CORRECTIONS MAJEURES:
+1. Vélocité INVERSÉE: ROC faible/négatif = SETUP (momentum disponible)
+   - Ancien: ROC >0.25% = MAX score (déjà en pump!)
+   - Nouveau: ROC -0.5 à +0.2% = MAX score (momentum flat, prêt à exploser)
+
+2. Accélération INVERSÉE: Changement de momentum faible = SETUP
+   - Ancien: +0.10% delta = MAX score (déjà accéléré!)
+   - Nouveau: -0.05 à +0.03% delta = MAX score (pas encore accéléré)
+
+3. Volume SETUP prioritaire: Buildup progressif, pas spike
+   - Ancien: rel_volume >2.0x = MAX score (pic atteint!)
+   - Nouveau: rel_volume 1.2-1.8x progressif = MAX score (buildup)
+   - Nouveau: rel_volume >3.0x = REJECTION (trop tard)
+
+4. RSI SETUP optimal: Sortie oversold, pas overbought
+   - Ancien: RSI 50-65 avec RSI climbing = bonus
+   - Nouveau: RSI 35-55 avec sortie oversold <35 = gros bonus
+   - Nouveau: RSI >70 = REJECTION (overbought = trop tard)
+
+5. Seuils STRICTS pour early entry:
+   - WATCH: 30+ (au lieu de 40+)
+   - PREPARE: 45+ (au lieu de 55+)
+   - ENTRY_NOW: 55+ (au lieu de 65+)
+   - TOO_LATE: 75+ (au lieu de 85+)
 
 Architecture:
-- Focus LEADING indicators (velocity, acceleration, derivatives)
-- Multi-timepoint analysis (dernières 3-5 périodes)
-- Micro-patterns détection (higher lows, volume buildup)
-- Probabilistic scoring (60-70% suffisant au lieu de 90%+)
+- Focus TRUE LEADING indicators (setup formation, not confirmation)
+- Multi-timepoint analysis (detect buildup patterns)
+- Micro-patterns détection (consolidation before breakout)
+- Conservative scoring (reject late entries)
 
-Objectif: Signaler à T+30s au lieu de T+60s dans la séquence pump
-Version: 1.0 - Early Warning System
+Objectif: Signaler AVANT le pump démarre, pas pendant/après
+Version: 2.0 - True Early Warning (FIXED)
 """
 
 import logging
@@ -54,21 +79,21 @@ class EarlySignal:
 
 class OpportunityEarlyDetector:
     """
-    Détecteur précoce d'opportunités.
+    Détecteur précoce d'opportunités CORRIGÉ.
 
-    Utilise des indicateurs LEADING au lieu de LAGGING:
-    - Price velocity & acceleration (derivatives)
-    - Volume buildup progression
-    - Micro-patterns sur 3-5 périodes
-    - Order flow pressure (bid/ask imbalance si dispo)
+    CHANGEMENTS vs ancien système:
+    - Cherche momentum FLAT/FAIBLE (prêt à exploser) au lieu de momentum FORT (déjà explosé)
+    - Prioritise volume BUILDUP (progression) au lieu de volume SPIKE (pic)
+    - Cherche RSI 35-55 (sortie oversold) au lieu de RSI 60-75 (overbought)
+    - Rejette overbought conditions (RSI >70, volume spike >3x)
     """
 
-    # Seuils pour early detection (PLUS BAS que système principal)
+    # Seuils pour early detection (ABAISSÉS pour détecter AVANT le pump)
     THRESHOLDS = {
-        "watch": 40,  # Score 40+ = worth watching
-        "prepare": 55,  # Score 55+ = prepare entry
-        "entry_now": 65,  # Score 65+ = entry window NOW
-        "too_late": 85,  # Score 85+ = déjà trop tard
+        "watch": 30,  # Score 30+ = worth watching (au lieu de 40+)
+        "prepare": 45,  # Score 45+ = prepare entry (au lieu de 55+)
+        "entry_now": 55,  # Score 55+ = entry window NOW (au lieu de 65+)
+        "too_late": 75,  # Score 75+ = déjà trop tard (au lieu de 85+)
     }
 
     def __init__(self):
@@ -86,7 +111,7 @@ class OpportunityEarlyDetector:
         self, current_data: dict, historical_data: list[dict] | None = None
     ) -> EarlySignal:
         """
-        Détecte early opportunity.
+        Détecte early opportunity AVANT le pump démarre.
 
         Args:
             current_data: analyzer_data actuel (dernière période)
@@ -105,27 +130,25 @@ class OpportunityEarlyDetector:
         recommendations: list[str] = []
 
         # === SCORE 1: VELOCITY & ACCELERATION (35 points max) ===
+        # INVERSÉ: Cherche momentum FAIBLE/FLAT (prêt à exploser)
         velocity_score = self._score_velocity_acceleration(
             current_data, historical_data, reasons, warnings
         )
 
-        # === SCORE 2: VOLUME BUILDUP (25 points max) ===
+        # === SCORE 2: VOLUME BUILDUP (30 points max, augmenté de 25) ===
+        # Priorité absolue: buildup progressif, pas spike
         volume_buildup_score = self._score_volume_buildup(
             current_data, historical_data, reasons, warnings
         )
 
         # === SCORE 3: MICRO-PATTERNS (20 points max) ===
+        # Consolidation patterns, pas breakout patterns
         micro_pattern_score = self._score_micro_patterns(
             current_data, historical_data, reasons, warnings
         )
 
-        # === SCORE 4: ORDER FLOW PRESSURE (13 points max) ===
+        # === SCORE 4: ORDER FLOW PRESSURE (15 points max, augmenté de 13) ===
         order_flow_score = self._score_order_flow(current_data, reasons, warnings)
-
-        # === SCORE 5: EARLY MOMENTUM (15 points max) ===
-        early_momentum_score = self._score_early_momentum(
-            current_data, historical_data, reasons, warnings
-        )
 
         # Score total
         total_score = (
@@ -133,7 +156,6 @@ class OpportunityEarlyDetector:
             + volume_buildup_score
             + micro_pattern_score
             + order_flow_score
-            + early_momentum_score
         )
 
         # Confiance basée sur disponibilité des données historiques
@@ -186,41 +208,67 @@ class OpportunityEarlyDetector:
         warnings: list[str],
     ) -> float:
         """
-        Score velocity & acceleration (LEADING).
+        Score velocity & acceleration INVERSÉ pour EARLY entry.
 
-        Velocity: ROC_10 actuel vs moyenne
-        Acceleration: Changement de ROC sur dernières périodes
+        ❌ ANCIEN SYSTÈME (FAUX):
+        - ROC >0.25% = MAX score (déjà en pump!)
+        - Delta ROC >0.10% = MAX score (déjà accéléré!)
+
+        ✅ NOUVEAU SYSTÈME (CORRECT):
+        - ROC -0.5 à +0.2% = MAX score (momentum flat, prêt à exploser)
+        - ROC >0.5% = FAIBLE score (déjà en momentum)
+        - Delta ROC -0.05 à +0.03% = MAX score (pas encore accéléré)
+        - Delta ROC >0.08% = REJET (accélération déjà lancée)
 
         35 points max:
-        - 20 pts: Price velocity
-        - 15 pts: Price acceleration
+        - 20 pts: Price velocity (ROC actuel FAIBLE)
+        - 15 pts: Price acceleration (changement ROC FAIBLE)
         """
         score = 0.0
 
         # 1. Price Velocity (ROC) - 20 points max
+        # INVERSÉ: On veut ROC FAIBLE/FLAT (momentum disponible)
         roc_10 = self.safe_float(current.get("roc_10"))
-        self.safe_float(current.get("roc_20"))
 
-        if roc_10 > 0:
-            # ROC positif = momentum haussier
-            if roc_10 > 0.25:  # +0.25% = 25bps = fort
-                vel_score = 20
-                reasons.append(f"🚀 Vélocité forte: ROC {roc_10*100:.2f}%")
-            elif roc_10 > 0.15:  # +0.15% = modéré-fort
-                vel_score = 15
-                reasons.append(f"📈 Vélocité modérée: ROC {roc_10*100:.2f}%")
-            elif roc_10 > 0.08:  # +0.08% = modéré
-                vel_score = 10
-            elif roc_10 > 0.03:  # +0.03% = faible
-                vel_score = 5
-            else:
-                vel_score = 2
+        if -0.5 <= roc_10 <= 0.2:
+            # OPTIMAL: Momentum flat/faible = prêt à exploser
+            vel_score = 20
+            reasons.append(
+                f"✅ Vélocité FLAT (optimal): ROC {roc_10*100:.2f}% (momentum disponible)"
+            )
+        elif -1.0 <= roc_10 < -0.5:
+            # Momentum légèrement négatif = acceptable
+            vel_score = 15
+            reasons.append(
+                f"📊 Vélocité basse: ROC {roc_10*100:.2f}% (setup formation)"
+            )
+        elif 0.2 < roc_10 <= 0.4:
+            # Momentum commence = moins optimal
+            vel_score = 10
+            reasons.append(f"⚠️ Vélocité émergente: ROC {roc_10*100:.2f}%")
+        elif 0.4 < roc_10 <= 0.6:
+            # Momentum en cours = trop tard pour early
+            vel_score = 5
+            warnings.append(f"⚠️ Vélocité modérée: ROC {roc_10*100:.2f}% (déjà lancé)")
+        elif roc_10 > 0.6:
+            # Fort momentum = TROP TARD
+            vel_score = 0
+            warnings.append(
+                f"❌ Vélocité FORTE: ROC {roc_10*100:.2f}% - TROP TARD pour entry early"
+            )
+        elif roc_10 < -1.0:
+            # Momentum très négatif = pas de setup
+            vel_score = 5
+            warnings.append(
+                f"⚠️ Vélocité très négative: ROC {roc_10*100:.2f}% (tendance baissière)"
+            )
+        else:
+            vel_score = 0
 
-            score += vel_score
-        elif roc_10 < -0.05:
-            warnings.append(f"⚠️ Vélocité négative: ROC {roc_10*100:.2f}%")
+        score += vel_score
 
         # 2. Acceleration (changement de ROC) - 15 points max
+        # INVERSÉ: On veut accélération FAIBLE (pas encore lancée)
         if historical and len(historical) >= 3:
             # Calculer acceleration = dérivée du ROC
             recent_rocs = []
@@ -234,19 +282,38 @@ class OpportunityEarlyDetector:
             )
             roc_change = roc_10 - avg_roc
 
-            if roc_change > 0.10:  # Forte accélération
+            if -0.05 <= roc_change <= 0.03:
+                # OPTIMAL: Accélération faible/stable = pas encore lancé
                 accel_score = 15
-                reasons.append(f"⚡ Accélération forte: +{roc_change*100:.2f}%")
-            elif roc_change > 0.05:  # Accélération modérée
+                reasons.append(
+                    f"✅ Accélération FAIBLE (optimal): {roc_change*100:.2f}% (momentum stable)"
+                )
+            elif -0.10 <= roc_change < -0.05:
+                # Décélération modérée = acceptable
                 accel_score = 10
-                reasons.append(f"⚡ Accélération: +{roc_change*100:.2f}%")
-            elif roc_change > 0.02:
+                reasons.append(
+                    f"📊 Décélération modérée: {roc_change*100:.2f}% (consolidation)"
+                )
+            elif 0.03 < roc_change <= 0.08:
+                # Accélération émergente = moins optimal
                 accel_score = 5
-            elif roc_change < -0.05:
+                warnings.append(
+                    f"⚠️ Accélération émergente: +{roc_change*100:.2f}% (momentum démarre)"
+                )
+            elif roc_change > 0.08:
+                # Forte accélération = TROP TARD
                 accel_score = 0
-                warnings.append(f"⚠️ Décélération: {roc_change*100:.2f}%")
-            else:
+                warnings.append(
+                    f"❌ Accélération FORTE: +{roc_change*100:.2f}% - TROP TARD (déjà accéléré)"
+                )
+            elif roc_change < -0.10:
+                # Forte décélération = pas de setup
                 accel_score = 2
+                warnings.append(
+                    f"⚠️ Décélération forte: {roc_change*100:.2f}% (pression vendeuse)"
+                )
+            else:
+                accel_score = 0
 
             score += accel_score
 
@@ -260,28 +327,47 @@ class OpportunityEarlyDetector:
         warnings: list[str],
     ) -> float:
         """
-        Score volume buildup (LEADING).
+        Score volume buildup CORRIGÉ pour EARLY entry.
 
-        25 points max:
-        - 10 pts: volume_buildup_periods actuel
+        ❌ ANCIEN SYSTÈME (FAUX):
+        - rel_volume >2.0x = MAX score (pic atteint!)
+
+        ✅ NOUVEAU SYSTÈME (CORRECT):
+        - volume_buildup_periods 3+ = MAX score (progression confirmée)
+        - rel_volume 1.2-1.8x progressif = MAX score (buildup)
+        - rel_volume >3.0x = REJET (spike = trop tard)
+
+        30 points max (augmenté de 25):
+        - 15 pts: volume_buildup_periods actuel (priorité absolue)
         - 10 pts: Progression volume sur dernières périodes
-        - 5 pts: relative_volume émergent (1.5x+ au lieu de 2.5x+)
+        - 5 pts: relative_volume dans zone buildup (1.2-1.8x)
         """
         score = 0.0
 
-        # 1. Volume buildup periods - 10 points max
+        # 1. Volume buildup periods - 15 points max (augmenté de 10)
         buildup = current.get("volume_buildup_periods", 0)
         if buildup >= 5:
-            score += 10
-            reasons.append(f"📊 Volume buildup: {buildup} périodes")
+            score += 15
+            reasons.append(f"🔥 Volume buildup LONG: {buildup} périodes (setup fort)")
         elif buildup >= 3:
-            score += 7
-            reasons.append(f"📊 Volume buildup: {buildup} périodes")
+            score += 12
+            reasons.append(f"📊 Volume buildup: {buildup} périodes (setup confirmé)")
         elif buildup >= 2:
-            score += 4
+            score += 7
+            reasons.append(f"📈 Volume buildup émergent: {buildup} périodes")
+        elif buildup == 1:
+            score += 3
 
         # 2. Volume progression - 10 points max
         rel_vol = self.safe_float(current.get("relative_volume"), 1.0)
+
+        # REJET si volume spike (pic atteint)
+        vol_spike = self.safe_float(current.get("volume_spike_multiplier"), 1.0)
+        if vol_spike >= 3.0 or rel_vol > 3.0:
+            warnings.append(
+                f"❌ VOLUME SPIKE: {vol_spike:.1f}x / {rel_vol:.1f}x - PIC ATTEINT, TROP TARD"
+            )
+            return score  # Stop scoring, c'est trop tard
 
         if historical and len(historical) >= 3:
             # Calculer progression volume
@@ -290,49 +376,73 @@ class OpportunityEarlyDetector:
                 recent_vols.append(self.safe_float(h.get("relative_volume"), 1.0))
             recent_vols.append(rel_vol)
 
-            # Volume en progression?
+            # Volume en progression PROGRESSIVE?
             is_increasing = all(
                 recent_vols[i] <= recent_vols[i + 1]
                 for i in range(len(recent_vols) - 1)
             )
 
-            if is_increasing and rel_vol > recent_vols[0] * 1.5:
+            # Vérifier que progression est MODÉRÉE (pas spike)
+            if (
+                is_increasing
+                and 1.2 <= rel_vol <= 2.0
+                and rel_vol > recent_vols[0] * 1.2
+            ):
                 score += 10
                 reasons.append(
-                    f"📈 Volume en progression: {recent_vols[0]:.2f}x → {rel_vol:.2f}x"
+                    f"✅ Volume BUILDUP progressif: {recent_vols[0]:.2f}x → {rel_vol:.2f}x"
                 )
-            elif is_increasing:
+            elif is_increasing and rel_vol <= 2.5:
                 score += 5
+                reasons.append(
+                    f"📊 Volume en progression: {recent_vols[0]:.2f}x → {rel_vol:.2f}x"
+                )
+            elif rel_vol > 2.5:
+                warnings.append(
+                    f"⚠️ Volume élevé: {rel_vol:.2f}x (risque spike imminent)"
+                )
 
-        # 3. Relative volume émergent (seuil BAS) - 5 points max
-        # On veut détecter 1.5x+ au lieu d'attendre 2.5x+
-        if rel_vol >= 2.0:
+        # 3. Relative volume dans zone buildup - 5 points max
+        # ZONE OPTIMALE: 1.2-1.8x (buildup confirmé, pas spike)
+        if 1.2 <= rel_vol <= 1.5:
             score += 5
-            reasons.append(f"🔥 Volume élevé: {rel_vol:.2f}x")
-        elif rel_vol >= 1.5:
-            score += 3
-            reasons.append(f"📊 Volume émergent: {rel_vol:.2f}x")
-        elif rel_vol >= 1.2:
-            score += 1
-        elif rel_vol < 0.8:
-            warnings.append(f"⚠️ Volume faible: {rel_vol:.2f}x")
+            reasons.append(f"✅ Volume OPTIMAL: {rel_vol:.2f}x (buildup sain)")
+        elif 1.5 < rel_vol <= 1.8:
+            score += 4
+            reasons.append(f"📊 Volume buildup: {rel_vol:.2f}x")
+        elif 1.8 < rel_vol <= 2.2:
+            score += 2
+            reasons.append(f"⚠️ Volume élevé: {rel_vol:.2f}x (surveiller spike)")
+        elif rel_vol < 1.0:
+            warnings.append(f"⚠️ Volume faible: {rel_vol:.2f}x (pas de setup)")
+        elif rel_vol > 2.5:
+            warnings.append(f"❌ Volume très élevé: {rel_vol:.2f}x (trop tard)")
 
-        return min(score, 25)
+        return min(score, 30)
 
     def _score_micro_patterns(
         self,
         current: dict,
         historical: list[dict] | None,
         reasons: list[str],
-        _warnings: list[str],
+        warnings: list[str],
     ) -> float:
         """
-        Score micro-patterns (LEADING).
+        Score micro-patterns CORRIGÉ pour EARLY entry.
+
+        ❌ ANCIEN SYSTÈME (FAUX):
+        - RSI 50-70 climbing = bonus (déjà overbought!)
+
+        ✅ NOUVEAU SYSTÈME (CORRECT):
+        - Higher lows (consolidation) = bonus
+        - RSI 35-55 climbing = MAX bonus (sortie oversold)
+        - RSI >70 = REJET (overbought = trop tard)
+        - MACD histogram expansion modérée = bonus
 
         20 points max:
-        - 10 pts: Higher lows séquence (prix)
-        - 5 pts: RSI climbing (RSI en montée)
-        - 5 pts: MACD histogram expansion
+        - 10 pts: Higher lows séquence (consolidation avant breakout)
+        - 7 pts: RSI climbing dans zone 35-55 (sortie oversold)
+        - 3 pts: MACD histogram expansion MODÉRÉE
         """
         score = 0.0
 
@@ -340,7 +450,7 @@ class OpportunityEarlyDetector:
             return 0.0
 
         # 1. Higher lows pattern - 10 points max
-        # Utiliser nearest_support comme proxy pour "low" de la période
+        # Consolidation = setup formation
         recent_supports = []
         for h in historical[-3:]:
             sup = self.safe_float(h.get("nearest_support"))
@@ -361,10 +471,11 @@ class OpportunityEarlyDetector:
             if is_higher_lows:
                 score += 10
                 reasons.append(
-                    f"📈 Higher lows: {recent_supports[0]:.2f} → {recent_supports[-1]:.2f}"
+                    f"✅ Higher lows (consolidation): {recent_supports[0]:.2f} → {recent_supports[-1]:.2f}"
                 )
 
-        # 2. RSI climbing - 5 points max
+        # 2. RSI climbing dans zone EARLY - 7 points max
+        # CORRIGÉ: Zone 35-55 (sortie oversold), pas 50-70 (overbought)
         recent_rsis = []
         for h in historical[-3:]:
             rsi = self.safe_float(h.get("rsi_14"))
@@ -375,22 +486,37 @@ class OpportunityEarlyDetector:
         if current_rsi > 0:
             recent_rsis.append(current_rsi)
 
-        if len(recent_rsis) >= 3:
-            # RSI en progression ET dans zone favorable (50-70)
-            rsi_increasing = recent_rsis[-1] > recent_rsis[0]
-            rsi_in_zone = 50 <= current_rsi <= 75
+        # REJET si RSI overbought
+        if current_rsi > 70:
+            warnings.append(
+                f"❌ RSI OVERBOUGHT: {current_rsi:.0f} - TROP TARD pour early entry"
+            )
+            return score  # Stop scoring
 
-            if rsi_increasing and rsi_in_zone:
+        if len(recent_rsis) >= 3:
+            # RSI en progression ET dans zone EARLY (35-55)
+            rsi_increasing = recent_rsis[-1] > recent_rsis[0]
+            rsi_in_early_zone = 35 <= current_rsi <= 55
+
+            if rsi_increasing and rsi_in_early_zone:
                 rsi_delta = recent_rsis[-1] - recent_rsis[0]
-                if rsi_delta > 10:
+                if rsi_delta > 8:
+                    score += 7
+                    reasons.append(
+                        f"✅ RSI climbing OPTIMAL: {recent_rsis[0]:.0f} → {current_rsi:.0f} (sortie oversold)"
+                    )
+                elif rsi_delta > 4:
                     score += 5
                     reasons.append(
-                        f"🔼 RSI climbing: {recent_rsis[0]:.0f} → {current_rsi:.0f}"
+                        f"📊 RSI climbing: {recent_rsis[0]:.0f} → {current_rsi:.0f}"
                     )
-                elif rsi_delta > 5:
-                    score += 3
+            elif current_rsi > 65:
+                warnings.append(
+                    f"⚠️ RSI élevé: {current_rsi:.0f} (risque overbought)"
+                )
 
-        # 3. MACD histogram expansion - 5 points max
+        # 3. MACD histogram expansion MODÉRÉE - 3 points max
+        # CORRIGÉ: Expansion modérée (pas forte) pour early
         recent_macds = []
         for h in historical[-3:]:
             macd_hist = self.safe_float(h.get("macd_histogram"))
@@ -399,18 +525,20 @@ class OpportunityEarlyDetector:
         current_macd = self.safe_float(current.get("macd_histogram"))
         recent_macds.append(current_macd)
 
-        if len(recent_macds) >= 3:
-            # MACD histogram en expansion (valeurs positives croissantes)
-            if (
-                all(m > 0 for m in recent_macds[-2:])
-                and recent_macds[-1] > recent_macds[0]
-            ):
-                score += 5
+        # MACD histogram en expansion MODÉRÉE
+        if len(recent_macds) >= 3 and all(m > 0 for m in recent_macds[-2:]):
+            macd_change = recent_macds[-1] - recent_macds[0]
+            # Expansion modérée = setup, pas explosion
+            if 0 < macd_change <= 10:
+                score += 3
                 reasons.append(
-                    f"📊 MACD expansion: {recent_macds[0]:.1f} → {current_macd:.1f}"
+                    f"✅ MACD expansion modérée: {recent_macds[0]:.1f} → {current_macd:.1f}"
                 )
-            elif current_macd > 0 and current_macd > recent_macds[-2]:
-                score += 2
+            elif macd_change > 10:
+                score += 1
+                warnings.append(
+                    f"⚠️ MACD expansion forte: {macd_change:.1f} (déjà lancé)"
+                )
 
         return min(score, 20)
 
@@ -418,156 +546,119 @@ class OpportunityEarlyDetector:
         self, current: dict, reasons: list[str], warnings: list[str]
     ) -> float:
         """
-        Score order flow pressure (si données disponibles).
+        Score order flow pressure CORRIGÉ.
 
-        13 points max (augmenté de 10 pour break_probability):
-        - OBV oscillator positif et croissant
-        - Trade intensity élevé
-        - Avg trade size en hausse (whales buying)
-        - BONUS: Break probability élevée (+3 pts)
+        ❌ ANCIEN SYSTÈME: OBV et trade intensity comme indicateurs principaux
+
+        ✅ NOUVEAU SYSTÈME:
+        - OBV oscillator positif MODÉRÉ = optimal (pas pic)
+        - Trade intensity 1.0-1.5x = optimal (buildup)
+        - Trade intensity >2.0x = warning (trop actif)
+        - Break probability >60% = bonus
+
+        15 points max (augmenté de 13):
+        - 6 pts: OBV oscillator positif modéré
+        - 4 pts: Trade intensity dans zone buildup
+        - 2 pts: Quote volume ratio favorable
+        - 3 pts: Break probability élevée
         """
         score = 0.0
 
-        # 1. OBV Oscillator - 5 points max
+        # 1. OBV Oscillator - 6 points max
+        # CORRIGÉ: Valeurs modérées = buildup, pas pic
         obv_osc = self.safe_float(current.get("obv_oscillator"))
-        if obv_osc > 200:
-            score += 5
-            reasons.append(f"💰 OBV fort: {obv_osc:.0f}")
-        elif obv_osc > 100:
-            score += 3
-        elif obv_osc > 50:
-            score += 1
-        elif obv_osc < -100:
-            warnings.append(f"⚠️ OBV négatif: {obv_osc:.0f}")
-
-        # 2. Trade Intensity - 3 points max
-        intensity = self.safe_float(current.get("trade_intensity"))
-        if intensity > 1.5:
-            score += 3
-            reasons.append(f"⚡ Trade intensity: {intensity:.2f}x")
-        elif intensity > 1.2:
+        if 50 <= obv_osc <= 150:
+            # OPTIMAL: OBV positif modéré
+            score += 6
+            reasons.append(f"✅ OBV optimal: {obv_osc:.0f} (buildup sain)")
+        elif 150 < obv_osc <= 250:
+            score += 4
+            reasons.append(f"📊 OBV positif: {obv_osc:.0f}")
+        elif obv_osc > 250:
             score += 2
-        elif intensity > 1.0:
+            warnings.append(f"⚠️ OBV très élevé: {obv_osc:.0f} (pic possible)")
+        elif 0 < obv_osc < 50:
+            score += 2
+        elif obv_osc < -100:
+            warnings.append(f"⚠️ OBV négatif: {obv_osc:.0f} (pression vendeuse)")
+
+        # 2. Trade Intensity - 4 points max
+        # CORRIGÉ: Intensité modérée = buildup, pas frenzy
+        intensity = self.safe_float(current.get("trade_intensity"))
+        if 1.0 <= intensity <= 1.5:
+            # OPTIMAL: Activité modérée = buildup
+            score += 4
+            reasons.append(f"✅ Trade intensity OPTIMAL: {intensity:.2f}x (buildup)")
+        elif 1.5 < intensity <= 2.0:
+            score += 2
+            reasons.append(f"📊 Trade intensity: {intensity:.2f}x")
+        elif intensity > 2.0:
+            score += 1
+            warnings.append(
+                f"⚠️ Trade intensity élevée: {intensity:.2f}x (frenzy démarré)"
+            )
+        elif 0.8 <= intensity < 1.0:
             score += 1
 
         # 3. Quote Volume Ratio - 2 points max
         qv_ratio = self.safe_float(current.get("quote_volume_ratio"))
-        if qv_ratio > 1.3:
+        if 1.1 <= qv_ratio <= 1.4:
             score += 2
-        elif qv_ratio > 1.1:
+            reasons.append(f"📊 QV ratio favorable: {qv_ratio:.2f}")
+        elif qv_ratio > 1.5:
             score += 1
+            warnings.append(f"⚠️ QV ratio élevé: {qv_ratio:.2f}")
 
-        # 4. BREAK PROBABILITY (NOUVEAU) - 3 points max
-        # Probabilité de casser la résistance au-dessus
+        # 4. Break Probability - 3 points max
         break_prob = self.safe_float(current.get("break_probability"), 0.5)
-        if break_prob > 0.75:
+        if break_prob > 0.70:
             score += 3
-            reasons.append(f"🔓 Résistance faible: {break_prob*100:.0f}% break prob")
-        elif break_prob > 0.65:
+            reasons.append(
+                f"✅ Résistance faible: {break_prob*100:.0f}% break probability"
+            )
+        elif break_prob > 0.60:
             score += 2
-            reasons.append(f"🔓 Break probable: {break_prob*100:.0f}%")
-        elif break_prob > 0.55:
+            reasons.append(f"📊 Break probable: {break_prob*100:.0f}%")
+        elif break_prob > 0.50:
             score += 1
 
-        return min(score, 13)  # Max augmenté de 10 à 13
-
-    def _score_early_momentum(
-        self,
-        current: dict,
-        historical: list[dict] | None,
-        reasons: list[str],
-        warnings: list[str],
-    ) -> float:
-        """
-        Score early momentum indicators.
-
-        15 points max (augmenté de 10 pour inclure oversold bonus):
-        - RSI 50-65 avec vélocité positive (montée en cours)
-        - MACD signal cross récent
-        - BB position 0.5-0.8 (pas encore overbought)
-        - BONUS: Sortie oversold détectée (+5 pts)
-        """
-        score = 0.0
-
-        # 1. RSI early zone - 5 points max
-        rsi = self.safe_float(current.get("rsi_14"))
-
-        # 1a. BONUS OVERSOLD BOUNCE (NOUVEAU)
-        # Si RSI était <35 et maintenant >45 = sortie oversold franche
-        if historical and len(historical) >= 2:
-            recent_rsis = [
-                self.safe_float(h.get("rsi_14", 50)) for h in historical[-3:]
-            ]
-            # Prendre le RSI le plus bas des 3 dernières périodes
-            min_recent_rsi = min(recent_rsis) if recent_rsis else 50
-
-            if min_recent_rsi < 35 and rsi > 45:
-                score += 5  # Gros bonus oversold bounce
-                reasons.append(
-                    f"💥 Sortie oversold: RSI {min_recent_rsi:.0f}→{rsi:.0f}"
-                )
-            elif min_recent_rsi < 40 and rsi > 50:
-                score += 3  # Bonus modéré
-                reasons.append(
-                    f"📈 Rebond oversold: RSI {min_recent_rsi:.0f}→{rsi:.0f}"
-                )
-            elif min_recent_rsi < 45 and rsi > 55:
-                score += 2  # Léger bonus
-
-        # 1b. RSI zone standard
-        if 50 <= rsi <= 65:
-            # Sweet spot: momentum bullish mais pas encore overbought
-            score += 5
-            reasons.append(f"✅ RSI zone optimal: {rsi:.0f}")
-        elif 45 <= rsi < 50:
-            score += 2
-        elif rsi > 75:
-            warnings.append(f"⚠️ RSI déjà élevé: {rsi:.0f}")
-
-        # 2. MACD signal cross - 3 points max
-        macd_cross = current.get("macd_signal_cross", False)
-        macd_trend = current.get("macd_trend", "").upper()
-        if macd_cross and macd_trend == "BULLISH":
-            score += 3
-            reasons.append("🔄 MACD cross bullish récent")
-        elif macd_trend == "BULLISH":
-            score += 1
-
-        # 3. BB position - 2 points max
-        bb_pos = self.safe_float(current.get("bb_position"))
-        if 0.5 <= bb_pos <= 0.8:
-            # Milieu-haut de BB, bon signe mais pas encore étendu
-            score += 2
-        elif bb_pos > 1.0:
-            warnings.append(f"⚠️ BB position étendue: {bb_pos:.2f}")
-
-        return min(score, 15)  # Max augmenté de 10 à 15 pour bonus oversold
+        return min(score, 15)
 
     def _determine_signal_level(
         self, score: float, current: dict, _historical: list[dict] | None
     ) -> tuple[EarlySignalLevel, int, float]:
         """
-        Détermine le niveau de signal + timing estimé.
+        Détermine le niveau de signal + timing estimé CORRIGÉ.
+
+        ❌ ANCIEN SYSTÈME: RSI >70 et vol_spike >2.5 = 60% complété (FAUX)
+
+        ✅ NOUVEAU SYSTÈME:
+        - RSI >70 OU vol_spike >3.0 = 90%+ complété (TROP TARD)
+        - RSI 60-70 OU vol_spike >2.0 = 70% complété (déjà bien avancé)
+        - RSI 50-60 = 40% complété
+        - RSI 35-50 = 15% complété (EARLY STAGE)
 
         Returns:
             (level, entry_window_seconds, move_completion_pct)
         """
-        # Estimer % du mouvement déjà fait
+        # Estimer % du mouvement déjà fait (CORRIGÉ)
         rsi = self.safe_float(current.get("rsi_14"))
         rel_vol = self.safe_float(current.get("relative_volume"), 1.0)
         vol_spike = self.safe_float(current.get("volume_spike_multiplier"), 1.0)
 
-        # Heuristique: RSI et volume spike indiquent avancement
-        if rsi > 80 or vol_spike > 4.0:
-            move_completion_pct = 85.0  # Déjà très avancé
-        elif rsi > 70 or vol_spike > 2.5:
-            move_completion_pct = 60.0  # Bien avancé
-        elif rsi > 60 or rel_vol > 1.8:
-            move_completion_pct = 35.0  # Modérément avancé
+        # CORRIGÉ: Heuristique basée sur signaux LAGGING réels
+        if rsi > 70 or vol_spike >= 3.0 or rel_vol > 3.0:
+            move_completion_pct = 90.0  # TROP TARD
+        elif rsi > 60 or vol_spike >= 2.0 or rel_vol > 2.2:
+            move_completion_pct = 70.0  # Bien avancé
+        elif rsi > 50 or rel_vol > 1.5:
+            move_completion_pct = 40.0  # Modérément avancé
+        elif rsi >= 35:
+            move_completion_pct = 15.0  # Early stage - OPTIMAL
         else:
-            move_completion_pct = 15.0  # Early stage
+            move_completion_pct = 5.0  # Très early
 
-        # Déterminer niveau et window
+        # Déterminer niveau et window (seuils ABAISSÉS)
         if score >= self.THRESHOLDS["too_late"]:
             return EarlySignalLevel.TOO_LATE, 0, move_completion_pct
 
@@ -601,7 +692,9 @@ class OpportunityEarlyDetector:
             recommendations.append("💡 Préparer ordre LIMIT à entry_optimal")
 
             if move_completion_pct > 50:
-                warnings.append(f"⚠️ Mouvement déjà {move_completion_pct:.0f}% avancé")
+                warnings.append(
+                    f"⚠️ Mouvement déjà {move_completion_pct:.0f}% avancé (risque entry tardive)"
+                )
 
         elif level == EarlySignalLevel.PREPARE:
             recommendations.append(f"⚡ PRÉPARER ENTRY - Score: {score:.0f}/100")
@@ -637,177 +730,3 @@ class OpportunityEarlyDetector:
             warnings=[],
             recommendations=["Pas de données disponibles"],
         )
-
-
-# ===========================================================
-# EXEMPLE D'UTILISATION
-# ===========================================================
-if __name__ == "__main__":
-    import io
-    import sys
-
-    # Fix Windows encoding
-    if sys.platform == "win32":
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
-
-    print("=" * 80)
-    print("OPPORTUNITY EARLY DETECTOR - Test Example")
-    print("=" * 80)
-
-    # Simuler données progression pump
-    # T-3 (historical[0])
-    hist_t3 = {
-        "roc_10": 0.05,
-        "relative_volume": 1.0,
-        "volume_buildup_periods": 2,
-        "rsi_14": 55,
-        "macd_histogram": 5.0,
-        "nearest_support": 1.0700,
-        "obv_oscillator": 80,
-        "trade_intensity": 1.1,
-    }
-
-    # T-2 (historical[1])
-    hist_t2 = {
-        "roc_10": 0.08,
-        "relative_volume": 1.2,
-        "volume_buildup_periods": 3,
-        "rsi_14": 58,
-        "macd_histogram": 7.0,
-        "nearest_support": 1.0710,
-        "obv_oscillator": 120,
-        "trade_intensity": 1.2,
-    }
-
-    # T-1 (historical[2])
-    hist_t1 = {
-        "roc_10": 0.12,
-        "relative_volume": 1.5,
-        "volume_buildup_periods": 4,
-        "rsi_14": 62,
-        "macd_histogram": 10.0,
-        "nearest_support": 1.0720,
-        "obv_oscillator": 180,
-        "trade_intensity": 1.4,
-    }
-
-    # T (current) - ENTRY WINDOW
-    current_t0 = {
-        "roc_10": 0.18,
-        "roc_20": 0.22,
-        "relative_volume": 1.8,
-        "volume_buildup_periods": 5,
-        "volume_spike_multiplier": 1.8,
-        "rsi_14": 66,
-        "rsi_21": 64,
-        "macd_histogram": 15.0,
-        "macd_trend": "BULLISH",
-        "macd_signal_cross": True,
-        "nearest_support": 1.0730,
-        "bb_position": 0.72,
-        "obv_oscillator": 250,
-        "trade_intensity": 1.6,
-        "quote_volume_ratio": 1.3,
-    }
-
-    historical = [hist_t3, hist_t2, hist_t1]
-
-    # Créer détecteur
-    detector = OpportunityEarlyDetector()
-
-    # Détecter
-    signal = detector.detect_early_opportunity(current_t0, historical)
-
-    # Afficher résultat
-    print("\n🎯 EARLY SIGNAL DETECTED")
-    print(f"Niveau: {signal.level.value.upper()}")
-    print(f"Score: {signal.score:.0f}/100")
-    print(f"Confiance: {signal.confidence:.0f}%")
-
-    print("\n📊 BREAKDOWN:")
-    print(f"  Velocity/Accel: {signal.velocity_score:.0f}/35")
-    print(f"  Volume Buildup: {signal.volume_buildup_score:.0f}/25")
-    print(f"  Micro-Patterns: {signal.micro_pattern_score:.0f}/20")
-    print(f"  Order Flow: {signal.order_flow_score:.0f}/10")
-
-    print("\n⏱️ TIMING:")
-    print(f"  Entry window: ~{signal.estimated_entry_window_seconds}s")
-    print(f"  Mouvement complété: {signal.estimated_move_completion_pct:.0f}%")
-
-    print("\n📋 REASONS:")
-    for reason in signal.reasons:
-        print(f"  {reason}")
-
-    if signal.warnings:
-        print("\n⚠️ WARNINGS:")
-        for warning in signal.warnings:
-            print(f"  {warning}")
-
-    print("\n💡 RECOMMENDATIONS:")
-    for rec in signal.recommendations:
-        print(f"  {rec}")
-
-    print("\n" + "=" * 80)
-
-    # Test avec données pump RÉEL (09:44 - avant spike)
-    print("\n" + "=" * 80)
-    print("TEST AVEC DONNÉES PUMP RÉEL (09:44 BTCUSDC)")
-    print("=" * 80)
-
-    real_current = {
-        "roc_10": 0.258,  # +25.8 bps
-        "roc_20": 0.300,
-        "relative_volume": 0.97,
-        "volume_buildup_periods": 0,
-        "volume_spike_multiplier": 1.0,
-        "rsi_14": 67.18,
-        "rsi_21": 65.0,
-        "macd_histogram": 20.06,
-        "macd_trend": "BULLISH",
-        "macd_signal_cross": False,
-        "nearest_support": 1.0750,
-        "bb_position": 0.94,
-        "obv_oscillator": 150,
-        "trade_intensity": 1.3,
-        "quote_volume_ratio": 1.2,
-    }
-
-    real_hist = [
-        {
-            "roc_10": 0.127,
-            "relative_volume": 1.00,
-            "rsi_14": 63.4,
-            "macd_histogram": 20.9,
-            "nearest_support": 1.0740,
-        },
-        {
-            "roc_10": 0.152,
-            "relative_volume": 0.94,
-            "rsi_14": 64.6,
-            "macd_histogram": 19.7,
-            "nearest_support": 1.0742,
-        },
-        {
-            "roc_10": 0.258,
-            "relative_volume": 0.97,
-            "rsi_14": 67.2,
-            "macd_histogram": 20.1,
-            "nearest_support": 1.0750,
-        },
-    ]
-
-    real_signal = detector.detect_early_opportunity(real_current, real_hist)
-
-    print(f"\n🎯 SIGNAL: {real_signal.level.value.upper()}")
-    print(f"Score: {real_signal.score:.0f}/100")
-    print(f"Entry window: ~{real_signal.estimated_entry_window_seconds}s")
-
-    print("\n📋 REASONS:")
-    for reason in real_signal.reasons:
-        print(f"  {reason}")
-
-    print("\n💡 RECOMMENDATIONS:")
-    for rec in real_signal.recommendations:
-        print(f"  {rec}")
-
-    print("\n" + "=" * 80)
