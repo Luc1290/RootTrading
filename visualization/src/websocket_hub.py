@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import WebSocket
 
-from visualization.src.data_manager import DataManager
+from src.data_manager import DataManager
 
 logger = logging.getLogger(__name__)
 

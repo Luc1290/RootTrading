@@ -265,7 +265,7 @@ class GapDetector:
             )
 
     async def detect_all_gaps(
-        self, symbols: list[str] | None = None, _lookback_hours: int = 24
+        self, symbols: list[str] | None = None, lookback_hours: int = 24
     ) -> dict:
         """
         Détection intelligente des gaps pour tous les symboles et timeframes:

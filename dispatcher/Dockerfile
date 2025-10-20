@@ -31,5 +31,5 @@ ENV PYTHONUNBUFFERED=1
 # Exposition du port
 EXPOSE 5004
 
-# Commande de démarrage
-CMD ["python", "dispatcher/src/main.py"]
+# Commande de démarrage (using -m to run as module for proper imports)
+CMD ["python", "-m", "dispatcher.src.main"]

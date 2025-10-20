@@ -32,6 +32,5 @@ ENV PYTHONUNBUFFERED=1
 # Exposition du port
 EXPOSE 8000
 
-# Commande de démarrage
-WORKDIR /app/portfolio/src
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Commande de démarrage (rester dans /app pour les imports Python)
+CMD ["uvicorn", "portfolio.src.api:app", "--host", "0.0.0.0", "--port", "8000"]

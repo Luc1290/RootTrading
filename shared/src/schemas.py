@@ -6,7 +6,7 @@ Utilise Pydantic pour définir et valider la structure des messages.
 from datetime import datetime, timezone
 from typing import Any
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from .enums import CycleStatus, OrderSide, OrderStatus, SignalStrength, TradeRole
 
@@ -24,11 +24,12 @@ class MarketData(BaseModel):
     volume: float
     timestamp: datetime | None = None
 
-    @validator("timestamp", pre=True, always=True)
-    def set_timestamp(self, v, values):
+    @field_validator("timestamp", mode="before")
+    @classmethod
+    def set_timestamp(cls, v, info):
         """Si timestamp n'est pas fourni, le calculer à partir de start_time."""
-        if v is None and "start_time" in values:
-            return datetime.fromtimestamp(values["start_time"] / 1000, tz=timezone.utc)
+        if v is None and info.data.get("start_time"):
+            return datetime.fromtimestamp(info.data["start_time"] / 1000, tz=timezone.utc)
         return v
 
 

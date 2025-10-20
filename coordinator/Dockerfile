@@ -33,4 +33,4 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 5003
 
 # Commande de démarrage
-CMD ["python", "coordinator/src/main.py"]
+CMD ["python", "-m", "coordinator.src.main"]

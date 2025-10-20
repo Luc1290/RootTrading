@@ -9,6 +9,7 @@ import signal
 import time
 from collections.abc import Callable
 
+import aiohttp
 from aiohttp import web
 
 # Configuration du logging centralisée
@@ -38,6 +39,12 @@ class SmartDataFetcher:
         logger.info("🧠 Démarrage du SmartDataFetcher...")
 
         try:
+            # 0. Initialiser la session HTTP du SimpleDataFetcher (nécessaire avant tout fetch)
+            self.simple_fetcher.session = aiohttp.ClientSession(
+                timeout=self.simple_fetcher.timeout
+            )
+            logger.info("📡 Session HTTP initialisée pour le remplissage de gaps")
+
             # 1. Initialiser le gap detector
             await self.gap_detector.initialize()
 

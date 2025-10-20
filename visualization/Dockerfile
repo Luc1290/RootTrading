@@ -50,5 +50,5 @@ ENV PYTHONPATH=/app
 # Expose port
 EXPOSE 5009
 
-# Run the application
-CMD ["python", "src/main.py"]
+# Run the application (using -m to run as module for proper imports)
+CMD ["python", "-m", "src.main"]

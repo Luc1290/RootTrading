@@ -33,4 +33,4 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 5002
 
 # Commande de démarrage
-CMD ["python", "trader/src/main.py"]
+CMD ["python", "-m", "trader.src.main"]

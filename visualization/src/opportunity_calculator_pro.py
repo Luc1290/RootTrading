@@ -15,12 +15,12 @@ Version: 2.1 - Professional Grade + Early Warning System
 import logging
 from dataclasses import dataclass
 
-from visualization.src.opportunity_early_detector import (
+from src.opportunity_early_detector import (
     EarlySignal,
     OpportunityEarlyDetector,
 )
-from visualization.src.opportunity_scoring import OpportunityScore, OpportunityScoring
-from visualization.src.opportunity_validator import (
+from src.opportunity_scoring import OpportunityScore, OpportunityScoring
+from src.opportunity_validator import (
     OpportunityValidator,
     ValidationSummary,
 )
@@ -803,12 +803,12 @@ class OpportunityCalculatorPro:
         self, symbol: str, current_price: float
     ) -> TradingOpportunity:
         """Crée une opportunité vide (pas de données)."""
-        from visualization.src.opportunity_scoring import (
+        from src.opportunity_scoring import (
             CategoryScore,
             OpportunityScore,
             ScoreCategory,
         )
-        from visualization.src.opportunity_validator import ValidationSummary
+        from src.opportunity_validator import ValidationSummary
 
         # Score vide
         zero_category = CategoryScore(

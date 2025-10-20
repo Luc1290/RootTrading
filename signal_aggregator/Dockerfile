@@ -41,4 +41,4 @@ ENV PYTHONUNBUFFERED=1
 
 # Attendre que les services soient prêts puis démarrer
 # NOUVEAU: Version simplifiée sans validators complexes - IMPORTS CORRIGÉS
-CMD ["python", "signal_aggregator/src/main_simple.py"]
+CMD ["python", "-m", "signal_aggregator.src.main_simple"]

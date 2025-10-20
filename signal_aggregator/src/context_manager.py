@@ -436,7 +436,12 @@ class ContextManager:
                     )
 
             # ENRICHISSEMENT: Ajouter indicateurs calculés manquants
-            self._enrich_indicators(indicators, symbol, timeframe, cursor)
+            # Créer un nouveau curseur car le précédent a été fermé
+            enrich_cursor = self.db_connection.cursor(cursor_factory=RealDictCursor)
+            try:
+                self._enrich_indicators(indicators, symbol, timeframe, enrich_cursor)
+            finally:
+                enrich_cursor.close()
 
             # Log temporaire pour debug
             logger.debug(
@@ -977,8 +982,8 @@ class ContextManager:
             # Chercher la dernière fois où le prix était proche de l'EMA20
             # (±0.5%)
             for i, row in enumerate(rows):
-                close_price = float(row[0]) if row[0] else 0
-                ema20 = float(row[1]) if row[1] else 0
+                close_price = float(row["close"]) if row["close"] else 0
+                ema20 = float(row["ema_26"]) if row["ema_26"] else 0
 
                 if close_price > 0 and ema20 > 0:
                     distance_pct = abs(close_price - ema20) / close_price

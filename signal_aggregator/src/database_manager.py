@@ -218,8 +218,16 @@ class DatabaseManager:
             if not timestamp_str:
                 return datetime.now(tz=timezone.utc)
 
-            # Essayer différents formats
+            # Essayer d'abord datetime.fromisoformat (Python 3.11+) qui gère ISO 8601 complet
+            try:
+                return datetime.fromisoformat(timestamp_str).replace(tzinfo=timezone.utc)
+            except (ValueError, AttributeError):
+                pass
+
+            # Essayer différents formats manuels
             formats = [
+                "%Y-%m-%dT%H:%M:%S.%f%z",  # ISO avec microsecondes et timezone
+                "%Y-%m-%dT%H:%M:%S%z",  # ISO avec timezone
                 "%Y-%m-%dT%H:%M:%S.%f",  # ISO avec microsecondes
                 "%Y-%m-%dT%H:%M:%S",  # ISO sans microsecondes
                 "%Y-%m-%d %H:%M:%S.%f",  # Format standard avec microsecondes
@@ -228,9 +236,11 @@ class DatabaseManager:
 
             for fmt in formats:
                 try:
-                    return datetime.strptime(timestamp_str, fmt).replace(
-                        tzinfo=timezone.utc
-                    )
+                    dt = datetime.strptime(timestamp_str, fmt)
+                    # Ajouter UTC si pas de timezone
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
                 except ValueError:
                     continue
 

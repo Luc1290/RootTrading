@@ -36,5 +36,5 @@ EXPOSE 5020
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5020/health').read()" || exit 1
 
-# Command to start the Market Analyzer service
-CMD ["python", "market_analyzer/src/main.py"]
+# Command to start the Market Analyzer service (using -m to run as module for proper imports)
+CMD ["python", "-m", "market_analyzer.src.main"]

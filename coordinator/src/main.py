@@ -14,7 +14,7 @@ from urllib.parse import urljoin
 import requests  # type: ignore
 from flask import Flask, jsonify
 
-from coordinator import Coordinator  # type: ignore
+from .coordinator import Coordinator
 from shared.src.redis_client import RedisClient
 
 # Ajouter le répertoire parent au path pour les imports

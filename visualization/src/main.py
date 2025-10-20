@@ -15,11 +15,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from notifications.telegram_service import get_notifier
-from visualization.src.chart_service import ChartService
-from visualization.src.data_manager import DataManager
-from visualization.src.opportunity_calculator_pro import OpportunityCalculatorPro
-from visualization.src.statistics_service import StatisticsService
-from visualization.src.websocket_hub import WebSocketHub
+from src.chart_service import ChartService
+from src.data_manager import DataManager
+from src.opportunity_calculator_pro import OpportunityCalculatorPro
+from src.statistics_service import StatisticsService
+from src.websocket_hub import WebSocketHub
 from shared.src.config import SYMBOLS
 
 # Ajouter le path pour accéder au module notifications
@@ -633,7 +633,7 @@ async def get_trading_opportunity(symbol: str):
                 current_price=current_price,
                 analyzer_data=analyzer_dict_1m,
                 higher_tf_data=analyzer_dict_5m,
-                signals_data=signals_dict,
+                _signals_data=signals_dict,
                 historical_data=historical_data,  # NOUVEAU: Pour early detector
             )
 

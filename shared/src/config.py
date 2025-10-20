@@ -60,6 +60,10 @@ TRADING_MODE = os.getenv(
     "TRADING_MODE"
 )  # 'demo' ou 'live' - reste dans .env car peut changer
 
+# Trading control - permet de désactiver l'exécution automatique des ordres
+# Les signaux continuent d'être stockés en DB même si TRADING_ENABLED=false
+TRADING_ENABLED = os.getenv("TRADING_ENABLED", "true").lower() in ("true", "1", "yes")
+
 # Configuration des canaux Redis
 CHANNEL_PREFIX = "roottrading"
 

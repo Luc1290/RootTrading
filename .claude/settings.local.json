@@ -5,7 +5,11 @@
       "Bash(cat E:/RootTrading/RootTrading/coordinator/Dockerfile)",
       "Bash(for service in analyzer coordinator portfolio signal_aggregator trader)",
       "Bash(do)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(docker exec roottrading-db-1 psql -U postgres -d trading -c \"SELECT COUNT(*) as total_records, MIN(time) as first_record, MAX(time) as last_record FROM analyzer_data WHERE symbol = ''AAVEUSDC'';\")",
+      "Bash(docker exec roottrading-db-1 psql -U postgres -d trading -c \"SELECT timeframe, COUNT(*) as count FROM analyzer_data WHERE symbol = ''AAVEUSDC'' GROUP BY timeframe ORDER BY timeframe;\")",
+      "Bash(docker exec roottrading-db-1 psql -U postgres -d trading -c \"SELECT time, timeframe, rsi_14, ema_12, ema_26, macd_line, bb_position, market_regime, signal_strength FROM analyzer_data WHERE symbol = ''AAVEUSDC'' AND timeframe = ''15m'' ORDER BY time DESC LIMIT 5;\")",
+      "Bash(docker exec roottrading-db-1 psql -U postgres -d trading -c \"SELECT time, timeframe, rsi_14, market_regime, regime_strength, signal_strength, trend_alignment, momentum_score FROM analyzer_data WHERE symbol = ''BTCUSDC'' AND timeframe = ''1h'' ORDER BY time DESC LIMIT 8;\")"
     ],
     "deny": [],
     "ask": []

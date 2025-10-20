@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 from typing import Any
 
-from shared.src.config import SYMBOLS
+from shared.src.config import SYMBOLS, TRADING_ENABLED
 from shared.src.db_pool import DBConnectionPool, DBContextManager
 from shared.src.enums import OrderSide, SignalStrength
 from shared.src.redis_client import RedisClient
@@ -495,6 +495,27 @@ class Coordinator:
 
                 return
 
+            # Vérifier si le trading automatique est activé
+            if not TRADING_ENABLED:
+                logger.warning(
+                    f"⚠️ TRADING DÉSACTIVÉ - Signal traité mais ordre NON créé: "
+                    f"{signal.side} {quantity:.8f} {signal.symbol}"
+                )
+
+                # Marquer le signal comme traité en DB (signal stocké mais pas tradé)
+                self.stats["signals_processed"] += 1
+                if signal.metadata and "db_id" in signal.metadata:
+                    db_id = signal.metadata["db_id"]
+                    if self._mark_signal_as_processed(db_id):
+                        logger.info(f"✅ Signal {db_id} stocké en DB (trading désactivé)")
+                    else:
+                        logger.warning(
+                            f"Impossible de marquer le signal {db_id} comme traité"
+                        )
+                else:
+                    logger.warning("Pas de db_id dans les métadonnées du signal")
+                return
+
             # Préparer l'ordre pour le trader (MARKET pour exécution immédiate)
             side_value = (
                 signal.side.value if hasattr(signal.side, "value") else str(signal.side)
@@ -605,6 +626,9 @@ class Coordinator:
                         False,
                         f"Cycle déjà actif pour {signal.symbol}: {active_cycle}",
                     )
+
+                # Toutes les vérifications BUY sont passées
+                return True, "OK"
 
             else:  # SELL
                 # FILTRE TRAILING SELL: Vérifier si on doit vendre maintenant

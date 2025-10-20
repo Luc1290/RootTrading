@@ -360,7 +360,7 @@ services:
       - CMD
       - python
       - -c
-      - import urllib.request; urllib.request.urlopen('http://localhost:5013/health').read()
+      - import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()
       interval: 180s
       timeout: 10s
       retries: 3
@@ -459,6 +459,7 @@ services:
     - WAIT_FOR_KAFKA=true
     - WAIT_FOR_DB=true
     - WAIT_FOR=trader:8080,portfolio:8000,
+    - TRADING_ENABLED=${TRADING_ENABLED:-false}  # Désactivé par défaut pour la sécurité
     env_file: .env
     restart: 'no'
     depends_on:

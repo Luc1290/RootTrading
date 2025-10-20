@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 
-from visualization.src.data_manager import DataManager
+from src.data_manager import DataManager
 
 logger = logging.getLogger(__name__)
 

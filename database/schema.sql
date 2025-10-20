@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS analyzer_data (
     
     -- Métadonnées
     analysis_timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    analyzer_version VARCHAR(10) DEFAULT '1.0',
+    analyzer_version VARCHAR(20) DEFAULT '1.0',
     
     -- === MOYENNES MOBILES AVANCÉES ===
     wma_20 DECIMAL(20,8),          -- Weighted Moving Average

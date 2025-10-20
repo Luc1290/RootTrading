@@ -36,5 +36,5 @@ EXPOSE 5010
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5010/health').read()" || exit 1
 
-# Start command
-CMD ["python", "gateway/src/main_simple.py"]
+# Start command (using -m to run as module for proper imports)
+CMD ["python", "-m", "gateway.src.main_simple"]

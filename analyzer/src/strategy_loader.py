@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from strategies.base_strategy import BaseStrategy  # type: ignore[import-not-found]
+from analyzer.strategies.base_strategy import BaseStrategy
 
 # Ajouter le répertoire parent au path pour les imports dynamiques
 analyzer_root = str((Path(__file__).parent / "..").resolve())
@@ -65,7 +65,7 @@ class StrategyLoader:
         """
         try:
             # Import dynamique du module
-            module_path = f"strategies.{strategy_name}"
+            module_path = f"analyzer.strategies.{strategy_name}"
             module = importlib.import_module(module_path)
 
             # Recherche de la classe de stratégie dans le module
@@ -136,7 +136,7 @@ class StrategyLoader:
         # Invalider les modules déjà importés pour forcer le rechargement
         modules_to_remove = []
         for module_name in sys.modules:
-            if module_name.startswith("strategies."):
+            if module_name.startswith("analyzer.strategies."):
                 modules_to_remove.append(module_name)
 
         for module_name in modules_to_remove:

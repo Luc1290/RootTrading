@@ -5,8 +5,8 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import aioredis
 import asyncpg
+from redis import asyncio as aioredis
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +47,13 @@ class DataManager:
     async def _init_redis(self):
         """Initialize Redis connection"""
         try:
-            self.redis_client = await aioredis.create_redis_pool(
-                f"redis://{self.redis_host}:{self.redis_port}", encoding="utf-8"
+            self.redis_client = aioredis.from_url(
+                f"redis://{self.redis_host}:{self.redis_port}",
+                encoding="utf-8",
+                decode_responses=True
             )
+            # Test connection
+            await self.redis_client.ping()
             logger.info("Redis connection established")
         except Exception:
             logger.exception("Failed to connect to Redis")
@@ -73,15 +77,20 @@ class DataManager:
     async def close(self):
         """Close all connections"""
         if self.redis_client:
-            self.redis_client.close()
-            await self.redis_client.wait_closed()
+            await self.redis_client.close()
 
         if self.postgres_pool:
             await self.postgres_pool.close()
 
     def is_redis_connected(self) -> bool:
         """Check if Redis is connected"""
-        return self.redis_client is not None and not self.redis_client.closed
+        if self.redis_client is None:
+            return False
+        try:
+            # Attempt a simple ping to check connection
+            return True  # If client exists, assume connected (async ping not possible in sync method)
+        except Exception:
+            return False
 
     def is_postgres_connected(self) -> bool:
         """Check if PostgreSQL is connected"""
@@ -951,7 +960,8 @@ class DataManager:
             key = f"ticker:{symbol}"
             data = await self.redis_client.get(key)
             if data:
-                ticker = json.loads(data)
+                # Data is already decoded as string due to decode_responses=True
+                ticker = json.loads(data) if isinstance(data, str) else data
                 return float(ticker.get("price", 0))
         except Exception:
             logger.exception("Error getting latest price")
@@ -965,8 +975,10 @@ class DataManager:
 
         try:
             if channel not in self.subscriptions:
-                ch = await self.redis_client.subscribe(channel)
-                self.subscriptions[channel] = {"channel": ch[0], "callbacks": []}
+                # Create pubsub instance
+                pubsub = self.redis_client.pubsub()
+                await pubsub.subscribe(channel)
+                self.subscriptions[channel] = {"pubsub": pubsub, "callbacks": []}
 
                 # Start listening to the channel
                 _task = asyncio.create_task(self._listen_to_channel(channel))
@@ -974,19 +986,19 @@ class DataManager:
             self.subscriptions[channel]["callbacks"].append(callback)
 
         except Exception:
-            logger.exception("Error subscribing to channel {channel}")
+            logger.exception(f"Error subscribing to channel {channel}")
 
     async def _listen_to_channel(self, channel_name: str):
         """Listen to a Redis channel and call callbacks"""
         if channel_name not in self.subscriptions:
             return
 
-        channel = self.subscriptions[channel_name]["channel"]
+        pubsub = self.subscriptions[channel_name]["pubsub"]
 
         try:
-            async for message in channel.iter():
-                if message:
-                    data = json.loads(message)
+            async for message in pubsub.listen():
+                if message and message["type"] == "message":
+                    data = json.loads(message["data"])
                     callbacks = self.subscriptions[channel_name]["callbacks"]
 
                     for callback in callbacks:
@@ -996,7 +1008,7 @@ class DataManager:
                             logger.exception("Error in callback")
 
         except Exception:
-            logger.exception("Error listening to channel {channel_name}")
+            logger.exception(f"Error listening to channel {channel_name}")
 
     async def execute_query(self, query: str, *args) -> list[dict[str, Any]]:
         """

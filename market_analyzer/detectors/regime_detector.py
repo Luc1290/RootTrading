@@ -110,7 +110,7 @@ class RegimeDetector:
         closes: list[float] | np.ndarray,
         volumes: list[float] | np.ndarray,
         symbol: str | None = None,
-        _include_analysis: bool = True,
+        include_analysis: bool = True,
         enable_cache: bool = True,
     ) -> MarketRegime:
         """

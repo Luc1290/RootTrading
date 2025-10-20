@@ -37,4 +37,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5012/health').read()" || exit 1
 
 # Start command
-CMD ["python", "analyzer/src/main.py"]
+CMD ["python", "-m", "analyzer.src.main"]

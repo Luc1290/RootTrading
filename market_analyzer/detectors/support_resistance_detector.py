@@ -782,7 +782,7 @@ class SupportResistanceDetector:
         )
 
     def _calculate_trendline(
-        self, prices: np.ndarray, _trend_type: str = "support"
+        self, prices: np.ndarray, trend_type: str = "support"
     ) -> dict | None:
         """Calcule une ligne de tendance par régression linéaire."""
         try:
