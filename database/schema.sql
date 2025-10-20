@@ -226,6 +226,7 @@ SELECT create_hypertable('analyzer_data', 'time', if_not_exists => TRUE);
 
 -- Index optimisés pour les requêtes fréquentes
 CREATE INDEX IF NOT EXISTS analyzer_data_symbol_time_idx ON analyzer_data (symbol, time DESC);
+CREATE INDEX IF NOT EXISTS analyzer_data_symbol_timeframe_time_idx ON analyzer_data (symbol, timeframe, time DESC);  -- OPTIMISATION: lookup rapide pour market_analyzer
 CREATE INDEX IF NOT EXISTS analyzer_data_regime_idx ON analyzer_data (market_regime, regime_strength);
 CREATE INDEX IF NOT EXISTS analyzer_data_timeframe_idx ON analyzer_data (timeframe, time DESC);
 CREATE INDEX IF NOT EXISTS analyzer_data_pattern_idx ON analyzer_data (pattern_detected, pattern_confidence);

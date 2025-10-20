@@ -1,14 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "file_system_access",
-      "network_access",
-      "execute_code",
-      "install_packages",
-      "access_environment_variables",
-      "access_clipboard",
-      "use_gpu"
-    ]
+      "Bash(python market_analyzer/tests/test_order_validation.py)"
+    ],
+    "deny": [],
+    "ask": []
   },
   "framework": "superclaude",
   "framework_path": "E:\\RootTrading\\RootTrading\\.claude\\frameworks\\superclaude",

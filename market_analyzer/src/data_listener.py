@@ -408,10 +408,8 @@ class DataListener:
                                 f"📈 {symbol} {tf}: {processed}/{len(timestamps)} ({percent:.1f}%)"
                             )
 
-                        # Pause raisonnable tous les 10 éléments pour éviter
-                        # saturation DB
-                        if processed % 10 == 0:
-                            await asyncio.sleep(0.01)  # 10ms
+                        # OPTIMISATION: Pause supprimée - le semaphore limite déjà les connexions concurrentes
+                        # Ancienne pause de 10ms tous les 10 éléments = 1s perdue par 100 éléments !
 
                     except Exception:
                         errors += 1

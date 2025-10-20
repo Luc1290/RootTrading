@@ -53,6 +53,10 @@ services:
     container_name: roottrading-kafka-1
     ports:
     - 9092:9092
+    # Limites ressources (syntaxe v2/v3 compatible docker-compose)
+    mem_limit: 1.5g
+    mem_reservation: 512m
+    cpus: 1.0
     entrypoint: |
       sh -c "
         echo 'Vérification cohérence cluster Kafka/ZooKeeper...'
@@ -119,23 +123,19 @@ services:
       # Les producteurs actifs renouvellent automatiquement leur ID
       KAFKA_TRANSACTIONAL_ID_EXPIRATION_MS: 86400000  # 24 heures
       KAFKA_PRODUCER_ID_EXPIRATION_MS: 86400000  # 24 heures
-      # Nettoyage automatique
+      # Nettoyage automatique et gestion de la taille
       KAFKA_LOG_CLEANUP_POLICY: delete
       KAFKA_LOG_RETENTION_HOURS: 24
+      KAFKA_LOG_RETENTION_BYTES: 1073741824          # Max 1GB par partition
+      KAFKA_LOG_SEGMENT_BYTES: 268435456             # Segments de 256MB
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 300000  # Vérification toutes les 5 min
+      KAFKA_LOG_SEGMENT_DELETE_DELAY_MS: 60000       # Suppression après 1 min
       # Auto-nettoyage au démarrage
       KAFKA_DELETE_TOPIC_ENABLE: true
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
     volumes:
     - kafka-data:/var/lib/kafka/data
     restart: 'no'
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 1.5G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -149,6 +149,10 @@ services:
   db:
     image: timescale/timescaledb:latest-pg14
     container_name: roottrading-db-1
+    # Limites ressources (syntaxe v2/v3 compatible docker-compose)
+    mem_limit: 3g
+    mem_reservation: 1g
+    cpus: 2.0
     environment:
       POSTGRES_USER: ${PGUSER:-postgres}
       POSTGRES_PASSWORD: ${PGPASSWORD:-postgres}
@@ -168,14 +172,6 @@ services:
     ports:
     - 5432:5432
     restart: 'no'
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 3G
-        reservations:
-          cpus: '1.0'
-          memory: 1G
     healthcheck:
       test:
       - CMD-SHELL
@@ -224,6 +220,10 @@ services:
     build:
       context: .
       dockerfile: market_analyzer/Dockerfile
+    # Limites ressources (syntaxe v2/v3 compatible docker-compose)
+    mem_limit: 2g
+    mem_reservation: 512m
+    cpus: 3.0
     ports:
     - 5020:5020
     environment:
@@ -232,14 +232,6 @@ services:
     - WAIT_FOR_DB=true
     env_file: .env
     restart: 'no'
-    deploy:
-      resources:
-        limits:
-          cpus: '3.0'
-          memory: 2G
-        reservations:
-          cpus: '1.5'
-          memory: 512M
     depends_on:
       redis:
         condition: service_healthy
@@ -303,6 +295,10 @@ services:
     build:
       context: .
       dockerfile: analyzer/Dockerfile
+    # Limites ressources (syntaxe v2/v3 compatible docker-compose)
+    mem_limit: 1g
+    mem_reservation: 256m
+    cpus: 2.0
     ports:
     - 5012:5012
     environment:
@@ -311,14 +307,6 @@ services:
     - WAIT_FOR_DB=true
     env_file: .env
     restart: 'no'
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 256M
     depends_on:
       redis:
         condition: service_healthy
@@ -348,6 +336,10 @@ services:
     build:
       context: .
       dockerfile: signal_aggregator/Dockerfile
+    # Limites ressources (syntaxe v2/v3 compatible docker-compose)
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: 0.5
     ports:
     - 5013:5013
     environment:
@@ -356,14 +348,6 @@ services:
     - WAIT_FOR_DB=true
     env_file: .env
     restart: 'no'
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
     depends_on:
       redis:
         condition: service_healthy
@@ -506,27 +490,16 @@ services:
     build:
       context: .
       dockerfile: visualization/Dockerfile
+    # Limites ressources (syntaxe v2/v3 compatible docker-compose)
+    mem_limit: 4g
+    mem_reservation: 1g
+    cpus: 2.5
     ports:
     - 5009:5009
     environment:
-    - REDIS_HOST=redis
-    - REDIS_PORT=6379
-    - POSTGRES_HOST=db
-    - POSTGRES_PORT=5432
-    - POSTGRES_DB=trading
-    - POSTGRES_USER=postgres
-    - POSTGRES_PASSWORD=postgres
     - VISUALIZATION_PORT=5009
     env_file: .env
     restart: 'no'
-    deploy:
-      resources:
-        limits:
-          cpus: '2.5'
-          memory: 4G
-        reservations:
-          cpus: '1.0'
-          memory: 1G
     depends_on:
       redis:
         condition: service_healthy
