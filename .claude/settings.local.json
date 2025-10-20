@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python market_analyzer/tests/test_order_validation.py)"
+      "Bash(python market_analyzer/tests/test_order_validation.py)",
+      "Bash(cat E:/RootTrading/RootTrading/coordinator/Dockerfile)",
+      "Bash(for service in analyzer coordinator portfolio signal_aggregator trader)",
+      "Bash(do)",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []

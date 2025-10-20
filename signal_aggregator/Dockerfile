@@ -1,26 +1,12 @@
-FROM python:3.10-slim
+# ============================================================================
+# ROOT TRADING - Signal Aggregator Service (OPTIMIZED)
+# ============================================================================
+# Utilise l'image de base avec TA-Lib précompilé et Python 3.11
+# ============================================================================
+
+FROM roottrading-base:latest
 
 WORKDIR /app
-
-# Install build dependencies including TA-Lib
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    g++ \
-    build-essential \
-    librdkafka-dev \
-    wget \
-    make \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install TA-Lib from source
-RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz && \
-    tar -xzf ta-lib-0.4.0-src.tar.gz && \
-    cd ta-lib/ && \
-    ./configure --prefix=/usr && \
-    make && \
-    make install && \
-    cd .. && \
-    rm -rf ta-lib ta-lib-0.4.0-src.tar.gz
 
 # Copy shared requirements first
 COPY requirements-shared.txt /app/
@@ -48,6 +34,10 @@ COPY shared /app/shared
 
 # Copy signal_aggregator code
 COPY signal_aggregator /app/signal_aggregator
+
+# Configuration de l'environnement Python
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
 
 # Attendre que les services soient prêts puis démarrer
 # NOUVEAU: Version simplifiée sans validators complexes - IMPORTS CORRIGÉS

@@ -5,7 +5,7 @@
 # Réutilisable par analyzer et market_analyzer pour accélérer les builds
 # ============================================================================
 
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 LABEL maintainer="Root Trading Team"
 LABEL description="Base image with TA-Lib precompiled"
@@ -27,7 +27,7 @@ RUN wget -q http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz &&
     tar -xzf ta-lib-0.4.0-src.tar.gz && \
     cd ta-lib/ && \
     ./configure --prefix=/usr && \
-    make -j$(nproc) && \
+    make && \
     make install && \
     cd .. && \
     rm -rf ta-lib ta-lib-0.4.0-src.tar.gz

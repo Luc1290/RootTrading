@@ -1,13 +1,12 @@
-FROM python:3.10-slim
+# ============================================================================
+# ROOT TRADING - Dispatcher Service (OPTIMIZED)
+# ============================================================================
+# Utilise l'image de base avec Python 3.11 et dépendances communes
+# ============================================================================
+
+FROM roottrading-base:latest
 
 WORKDIR /app
-
-# Mise à jour du système et installation des dépendances
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    build-essential \
-    librdkafka-dev \
-    && rm -rf /var/lib/apt/lists/*
 
 # Copie des requirements et installation
 COPY requirements-shared.txt /app/
@@ -24,6 +23,10 @@ COPY shared /app/shared
 
 # Copie du code du service
 COPY dispatcher /app/dispatcher
+
+# Configuration de l'environnement Python
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
 
 # Exposition du port
 EXPOSE 5004

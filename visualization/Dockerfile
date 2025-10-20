@@ -10,15 +10,15 @@ RUN npm install
 COPY visualization/frontend ./
 RUN npm run build
 
-# Python stage
-FROM python:3.10-slim
+# ============================================================================
+# Python stage - ROOT TRADING - Visualization Service (OPTIMIZED)
+# ============================================================================
+# Utilise l'image de base avec Python 3.11 et dépendances communes
+# ============================================================================
+
+FROM roottrading-base:latest
 
 WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
 
 # Copy shared requirements first
 COPY requirements-shared.txt /app/

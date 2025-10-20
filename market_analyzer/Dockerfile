@@ -25,6 +25,10 @@ COPY shared /app/shared
 # Copy market_analyzer code
 COPY market_analyzer /app/market_analyzer
 
+# Configuration de l'environnement Python
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
 # Expose API port
 EXPOSE 5020
 

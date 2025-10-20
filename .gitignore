@@ -2,7 +2,7 @@
 /exports/
 CLAUDE.md
 /.claude/
-/debug/
+/doc_debug/
 /.vscode/
 /.mypy_cache/
 /.ruff_cache/

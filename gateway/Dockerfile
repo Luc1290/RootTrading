@@ -1,18 +1,12 @@
 # ============================================================================
 # ROOT TRADING - Gateway Service (OPTIMIZED)
 # ============================================================================
-# Service simple sans TA-Lib - websockets + kafka uniquement
+# Utilise l'image de base avec Python 3.11 et dépendances communes
 # ============================================================================
 
-FROM python:3.10-slim
+FROM roottrading-base:latest
 
 WORKDIR /app
-
-# Install minimal build dependencies (pour confluent-kafka)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    librdkafka-dev \
-    && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements files (layer cache optimization)
 COPY requirements-shared.txt /app/
@@ -30,6 +24,10 @@ COPY shared /app/shared
 
 # Copy gateway code
 COPY gateway /app/gateway
+
+# Configuration de l'environnement Python
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
 
 # Expose port
 EXPOSE 5010

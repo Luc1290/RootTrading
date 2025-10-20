@@ -25,6 +25,10 @@ COPY shared /app/shared
 # Copy analyzer code
 COPY analyzer /app/analyzer
 
+# Configuration de l'environnement Python
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
 # Expose port
 EXPOSE 5012
 
