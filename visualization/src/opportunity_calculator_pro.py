@@ -1,20 +1,25 @@
 """
-Opportunity Calculator PRO FIXED - Professional Trading System CORRIGÉ
-Orchestre scoring + validation CORRIGÉS pour EARLY ENTRY (acheter AVANT le pump)
+Opportunity Calculator PRO - INSTITUTIONAL SCALPING
+Orchestre scoring + validation pour scalping intraday avec indicateurs institutionnels
 
-CORRECTIONS MAJEURES:
-1. Import des modules FIXED avec logique inversée
-2. Décision STRICTE: Rejette overbought, volume spikes, momentum élevé
-3. Early detection PRIORITAIRE: Signaux early peuvent trigger entry même avec score modéré
-4. Risk management CONSERVATEUR: R/R minimum 1.8, position sizing prudent
+VERSION 4.0 - REFONTE COMPLÈTE:
+1. Scoring institutionnel: VWAP (25%), EMA (20%), Volume (20%), RSI (15%), Bollinger (10%), MACD (5%), S/R (5%)
+2. Validation MINIMALISTE: Seule la qualité des données est bloquante
+3. PAS de rejets arbitraires: RSI >70, volume >3x, ROC >0.8 ACCEPTÉS si score institutionnel bon
+4. Décision basée UNIQUEMENT sur score: 70+ = BUY_NOW, 60-70 = BUY_DCA, 50-60 = WAIT, <50 = AVOID
+5. Support/Résistance: JAMAIS bloquant, informatif seulement
 
-Architecture CORRIGÉE:
-1. OpportunityEarlyDetector FIXED: Détection AVANT pump (ROC faible, volume buildup)
-2. OpportunityScoring FIXED: Score setup formation (RSI 35-55, pas 60-75)
-3. OpportunityValidator FIXED: Validation STRICTE (rejette overbought/spikes)
-4. Décision finale: BUY_NOW / BUY_DCA / WAIT / AVOID (avec rejet strict conditions tardives)
+Architecture:
+1. OpportunityScoring v4.0: Indicateurs institutionnels avec pondération scalping
+2. OpportunityValidator v4.0: Validation data quality + cohérence (non-bloquante)
+3. OpportunityEarlyDetector: Optionnel, boost confiance mais pas obligatoire
+4. Décision finale: Basée sur score institutionnel sans restrictions arbitraires
 
-Version: 3.0 - True Early Entry System (FIXED)
+ALIGNÉ AVEC:
+- opportunity_scoring.py v4.0 (7 catégories institutionnelles)
+- opportunity_validator.py v4.0 (validation minimaliste)
+
+Version: 4.0 - Institutional Scalping System
 """
 
 import logging
@@ -93,20 +98,22 @@ class TradingOpportunity:
 
 class OpportunityCalculatorPro:
     """
-    Calculateur professionnel d'opportunités CORRIGÉ.
+    Calculateur professionnel d'opportunités - INSTITUTIONAL SCALPING v4.0.
 
-    CHANGEMENTS vs ancien système:
-    - Utilise modules FIXED avec logique inversée (early entry, pas late entry)
-    - Rejette strictement conditions overbought/spike
-    - Priorité aux signaux early detector
-    - Risk management conservateur (R/R 1.8+ minimum)
+    PHILOSOPHIE:
+    - Scoring institutionnel avec 7 catégories pondérées
+    - PAS de rejets arbitraires (RSI >70, volume >3x, etc. acceptés)
+    - Validation UNIQUEMENT sur qualité données (pas sur valeurs indicateurs)
+    - Décision basée UNIQUEMENT sur score institutionnel global
+    - Support/Résistance: informatif, jamais bloquant
     """
 
     def __init__(self, enable_early_detection: bool = True):
-        """Initialise le calculateur professionnel CORRIGÉ.
+        """Initialise le calculateur professionnel v4.0.
 
         Args:
             enable_early_detection: Active le système early warning (défaut: True)
+                                   Optionnel, booste confiance mais pas obligatoire
         """
         self.scorer = OpportunityScoring()
         self.validator = OpportunityValidator()
@@ -132,23 +139,27 @@ class OpportunityCalculatorPro:
         historical_data: list[dict] | None = None,
     ) -> TradingOpportunity:
         """
-        Calcule une opportunité de trading complète CORRIGÉE pour EARLY ENTRY.
+        Calcule une opportunité de trading complète - INSTITUTIONAL SCALPING v4.0.
 
         Args:
             symbol: Symbole (e.g. BTCUSDC)
             current_price: Prix actuel
-            analyzer_data: analyzer_data complet (108 indicateurs)
-            higher_tf_data: Données timeframe supérieur pour validation
+            analyzer_data: analyzer_data complet (75 indicateurs disponibles)
+            higher_tf_data: Données timeframe supérieur (optionnel, non utilisé en v4.0)
             signals_data: (optionnel) Données signaux externes
-            historical_data: Liste des 5-10 dernières périodes pour early detection
+            historical_data: Liste des 5-10 dernières périodes pour early detection (optionnel)
 
         Returns:
-            TradingOpportunity avec action BUY uniquement si AVANT le pump
+            TradingOpportunity avec action basée sur score institutionnel:
+            - 70+ = BUY_NOW
+            - 60-70 = BUY_DCA
+            - 50-60 = WAIT
+            - <50 = AVOID
         """
         if not analyzer_data:
             return self._create_no_data_opportunity(symbol, current_price)
 
-        # === ÉTAPE 0: EARLY DETECTION (PRIORITAIRE) ===
+        # === ÉTAPE 0: EARLY DETECTION (OPTIONNEL) ===
         early_signal = None
         is_early_entry = False
 
@@ -157,7 +168,7 @@ class OpportunityCalculatorPro:
                 current_data=analyzer_data, historical_data=historical_data
             )
 
-            # Early signal ENTRY_NOW/PREPARE avec score 45+ = entry early confirmée
+            # Early signal peut booster confiance mais n'est pas obligatoire
             if early_signal.level in [
                 EarlySignalLevel.ENTRY_NOW,
                 EarlySignalLevel.PREPARE,
@@ -167,15 +178,15 @@ class OpportunityCalculatorPro:
                     f"🚀 Early entry detected for {symbol}: {early_signal.level.value} (score: {early_signal.score:.0f})"
                 )
 
-        # === ÉTAPE 1: SCORING CORRIGÉ ===
+        # === ÉTAPE 1: SCORING INSTITUTIONNEL ===
         score = self.scorer.calculate_opportunity_score(analyzer_data, current_price)
 
-        # === ÉTAPE 2: VALIDATION STRICTE ===
+        # === ÉTAPE 2: VALIDATION MINIMALISTE (data quality seulement) ===
         validation = self.validator.validate_opportunity(
             analyzer_data, current_price, higher_tf_data
         )
 
-        # === ÉTAPE 3: DÉCISION STRICTE (rejette late entries) ===
+        # === ÉTAPE 3: DÉCISION BASÉE SUR SCORE (pas de rejets arbitraires) ===
         action, confidence, reasons, warnings, recommendations = self._make_decision(
             score, validation, analyzer_data, early_signal, is_early_entry
         )
@@ -244,7 +255,7 @@ class OpportunityCalculatorPro:
             raw_analyzer_data=analyzer_data,
         )
 
-    def _make_decision(  # noqa: PLR0911 - Multiple returns acceptable for decision logic
+    def _make_decision(
         self,
         score: OpportunityScore,
         validation: ValidationSummary,
@@ -253,10 +264,13 @@ class OpportunityCalculatorPro:
         is_early_entry: bool,
     ) -> tuple[str, float, list[str], list[str], list[str]]:
         """
-        Prend décision finale CORRIGÉE (rejette late entries strictement).
+        Prend décision finale basée sur scoring institutionnel.
 
-        ❌ ANCIEN SYSTÈME: Acceptait RSI 60-75, volume spikes
-        ✅ NOUVEAU SYSTÈME: Rejette RSI >70, volume spike >3x, momentum élevé
+        VERSION 4.0 - INSTITUTIONAL SCALPING:
+        - PAS de rejets arbitraires (RSI >70, volume >3x, etc.)
+        - Décision basée UNIQUEMENT sur score institutionnel
+        - Validation: SEULE la qualité des données est bloquante
+        - Warnings informatifs mais pas bloquants
 
         Returns:
             (action, confidence, reasons, warnings, recommendations)
@@ -264,174 +278,106 @@ class OpportunityCalculatorPro:
         reasons = []
         warnings = []
 
-        # === REJET STRICT CONDITIONS LATE ===
-        rsi = self.safe_float(analyzer_data.get("rsi_14"))
-        vol_spike = self.safe_float(analyzer_data.get("volume_spike_multiplier"), 1.0)
-        rel_volume = self.safe_float(analyzer_data.get("relative_volume"), 1.0)
-        roc_10 = self.safe_float(analyzer_data.get("roc_10"))
-
-        # REJET: Overbought
-        if rsi > 70:
-            return (
-                "AVOID",
-                0.0,
-                [f"❌ RSI OVERBOUGHT: {rsi:.0f} - TROP TARD pour entry"],
-                ["Mouvement déjà avancé, risque correction"],
-                ["Attendre pullback ou prochaine opportunité"],
-            )
-
-        # REJET: Volume spike (pic atteint)
-        if vol_spike >= 3.0 or rel_volume > 3.0:
-            return (
-                "AVOID",
-                0.0,
-                [
-                    f"❌ VOLUME SPIKE: {vol_spike:.1f}x - PIC ATTEINT",
-                    "Mouvement déjà explosé",
-                ],
-                ["Entry tardive = high risk"],
-                ["Attendre consolidation"],
-            )
-
-        # REJET: Momentum trop élevé
-        if roc_10 > 0.8:
-            return (
-                "AVOID",
-                0.0,
-                [
-                    f"❌ MOMENTUM ÉLEVÉ: ROC {roc_10*100:.2f}% - Déjà accéléré",
-                    "Entry late = chasing",
-                ],
-                ["Risque d'acheter au top"],
-                ["Laisser passer, attendre setup"],
-            )
-
-        # === VALIDATION STRICTE ===
+        # === VALIDATION: Seule la QUALITÉ DES DONNÉES est bloquante ===
         if not validation.all_passed:
-            failed_msg = " | ".join(validation.blocking_issues[:3]) if validation.blocking_issues else "Validation failed"
+            # all_passed = False signifie DATA_QUALITY insuffisante
+            failed_msg = " | ".join(validation.blocking_issues[:3]) if validation.blocking_issues else "Données insuffisantes"
             return (
                 "AVOID",
                 0.0,
-                [f"Validation echouee: {failed_msg}"],
+                [f"❌ Validation échouée: {failed_msg}"],
                 validation.warnings,
-                ["Corriger problemes avant entry"],
+                ["Corriger qualité données avant entry"],
             )
 
-        # === DÉCISION BASÉE SUR EARLY SIGNAL ===
-        # Early signal ENTRY_NOW avec score decent = BUY_NOW
+        # Récupérer warnings de validation (informatifs, pas bloquants)
+        warnings.extend(validation.warnings)
+
+        # === DÉCISION BASÉE SUR EARLY SIGNAL (optionnel) ===
+        # Early signal peut booster confiance mais n'est pas obligatoire
         if is_early_entry and early_signal:
             if early_signal.level == EarlySignalLevel.ENTRY_NOW:
-                confidence = min(85.0, early_signal.confidence)
-                reasons.extend(
-                    [
-                        f"🚀 EARLY ENTRY WINDOW: {early_signal.level.value}",
-                        f"Early score: {early_signal.score:.0f}/100",
-                        f"Setup score: {score.total_score:.0f}/100",
-                    ]
-                )
-                reasons.extend(early_signal.reasons[:3])  # Top 3 reasons
+                confidence_boost = min(10.0, early_signal.confidence * 0.15)
+                reasons.append(f"🚀 Early signal: {early_signal.level.value} (+{confidence_boost:.0f}pts)")
+                reasons.extend(early_signal.reasons[:2])
 
-                return (
-                    "BUY_NOW",
-                    confidence,
-                    reasons,
-                    [*early_signal.warnings, *warnings],
-                    ["Entry IMMÉDIATE recommandée", "Setup early confirmé", *early_signal.recommendations[:2]],
-                )
+            elif early_signal.level == EarlySignalLevel.PREPARE:
+                confidence_boost = min(5.0, early_signal.confidence * 0.1)
+                reasons.append(f"⚡ Préparation: {early_signal.level.value} (+{confidence_boost:.0f}pts)")
 
-            if early_signal.level == EarlySignalLevel.PREPARE:
-                confidence = min(75.0, early_signal.confidence)
-                reasons.extend(
-                    [
-                        f"⚡ PRÉPARER ENTRY: {early_signal.level.value}",
-                        f"Early score: {early_signal.score:.0f}/100",
-                        f"Setup score: {score.total_score:.0f}/100",
-                    ]
-                )
-                reasons.extend(early_signal.reasons[:3])
+        # === DÉCISION BASÉE SUR SCORE INSTITUTIONNEL ===
 
-                return (
-                    "BUY_DCA",
-                    confidence,
-                    reasons,
-                    [*early_signal.warnings, *warnings],
-                    ["Préparer entry progressive", "Window dans 30-60s", *early_signal.recommendations[:2]],
-                )
+        # Score 70+ = BUY_NOW (High confidence)
+        if score.total_score >= 70:
+            confidence = min(95.0, score.total_score)
+            reasons.append(f"✅ Score institutionnel ÉLEVÉ: {score.total_score:.0f}/100")
 
-        # === DÉCISION BASÉE SUR SCORE CORRIGÉ ===
-        # Score 70+ avec validation = BUY_NOW
-        if score.total_score >= 70 and validation.overall_score >= 75:
-            confidence = min(score.total_score, validation.overall_score)
-            reasons.append(f"✅ Score élevé: {score.total_score:.0f}/100")
-            reasons.append(f"✅ Validation: {validation.overall_score:.0f}%")
+            # Détail des forces
+            if score.category_scores.get("vwap_position", 0) >= 80:
+                reasons.append("✅ Position VWAP excellente (institutionnelle)")
+            if score.category_scores.get("ema_trend", 0) >= 75:
+                reasons.append("✅ Trend EMA fort confirmé")
+            if score.category_scores.get("volume", 0) >= 75:
+                reasons.append("✅ Volume confirme le mouvement")
 
-            # Vérifier que setup est vraiment EARLY
-            if rsi <= 60 and vol_spike < 2.0:
-                reasons.append("✅ Setup EARLY confirmé (RSI/volume optimal)")
-                return (
-                    "BUY_NOW",
-                    confidence,
-                    reasons,
-                    warnings,
-                    ["Entry recommandée", "Setup optimal détecté"],
-                )
-
-            warnings.append(
-                f"⚠️ Setup modéré: RSI {rsi:.0f}, vol {vol_spike:.1f}x"
-            )
             return (
-                "BUY_DCA",
-                confidence * 0.9,
+                "BUY_NOW",
+                confidence,
                 reasons,
                 warnings,
-                ["Entry progressive recommandée", "Setup acceptable mais pas optimal"],
+                ["✅ Entry recommandée - Setup institutionnel confirmé", "Entrée immédiate avec SL défini"],
             )
 
-        # Score 60-70 = BUY_DCA
-        if score.total_score >= 60 and validation.overall_score >= 65:
-            confidence = min(score.total_score, validation.overall_score) * 0.85
-            reasons.append(f"📊 Score acceptable: {score.total_score:.0f}/100")
+        # Score 60-70 = BUY_DCA (Good opportunity, progressive entry)
+        if score.total_score >= 60:
+            confidence = min(85.0, score.total_score * 1.1)
+            reasons.append(f"📊 Score institutionnel BON: {score.total_score:.0f}/100")
 
-            if rsi <= 55:
-                reasons.append("✅ RSI optimal pour entry early")
-                return (
-                    "BUY_DCA",
-                    confidence,
-                    reasons,
-                    warnings,
-                    ["Entry progressive", "Surveiller évolution"],
-                )
+            # Identifier points forts
+            if score.category_scores.get("vwap_position", 0) >= 60:
+                reasons.append("✅ VWAP favorable")
+            if score.category_scores.get("rsi_momentum", 0) >= 60:
+                reasons.append("✅ RSI dans zone optimale")
 
-            warnings.append(f"⚠️ RSI modéré: {rsi:.0f}")
             return (
-                "WAIT",
-                confidence * 0.8,
+                "BUY_DCA",
+                confidence,
                 reasons,
-                [*warnings, "Setup acceptable mais attendre confirmation"],
-                ["Surveiller évolution", "Préparer entry si amélioration"],
+                warnings,
+                ["📊 Entry progressive recommandée", "Échelonner sur 2-3 positions"],
             )
 
-        # Score 50-60 = WAIT
+        # Score 50-60 = WAIT (Promising but needs confirmation)
         if score.total_score >= 50:
-            confidence = score.total_score * 0.7
+            confidence = score.total_score * 0.8
+            reasons.append(f"⏸️ Score institutionnel MODÉRÉ: {score.total_score:.0f}/100")
+
+            # Identifier ce qui manque
+            weak_categories = [
+                cat for cat, cat_score in score.category_scores.items() if cat_score < 50
+            ]
+            if weak_categories:
+                reasons.append(f"⚠️ Catégories faibles: {', '.join(weak_categories[:3])}")
+
             return (
                 "WAIT",
                 confidence,
-                [
-                    f"⏸️ Score modéré: {score.total_score:.0f}/100",
-                    "Setup en formation",
-                ],
-                [*warnings, "Score insuffisant pour entry"],
-                ["Surveiller évolution", "Attendre amélioration"],
+                reasons,
+                warnings,
+                ["⏸️ Attendre amélioration", "Surveiller évolution VWAP/EMA"],
             )
 
-        # Score <50 = AVOID
+        # Score <50 = AVOID (Poor setup)
+        confidence = score.total_score * 0.5
+        reasons.append(f"❌ Score institutionnel FAIBLE: {score.total_score:.0f}/100")
+        reasons.append("Setup non formé selon critères institutionnels")
+
         return (
             "AVOID",
-            score.total_score * 0.5,
-            [f"❌ Score faible: {score.total_score:.0f}/100", "Pas de setup"],
-            [*warnings, "Setup non formé"],
-            ["Continuer scan", "Attendre meilleur setup"],
+            confidence,
+            reasons,
+            warnings,
+            ["❌ Pas d'entry recommandée", "Continuer scan pour meilleur setup"],
         )
 
     def _calculate_entry_prices(
@@ -445,7 +391,7 @@ class OpportunityCalculatorPro:
         """
         # Entry optimal = légèrement en dessous (limit order)
         nearest_support = self.safe_float(analyzer_data.get("nearest_support"))
-        atr = self.safe_float(analyzer_data.get("atr"))
+        atr = self.safe_float(analyzer_data.get("atr_14"))
 
         if action in ["BUY_NOW", "BUY_DCA"]:
             # Optimal = entre current et support, ou current - 0.15% ATR
@@ -473,7 +419,7 @@ class OpportunityCalculatorPro:
         Returns:
             (tp1, tp2, tp3, (tp1_pct, tp2_pct, tp3_pct))
         """
-        atr = self.safe_float(analyzer_data.get("atr"))
+        atr = self.safe_float(analyzer_data.get("atr_14"))
         nearest_resistance = self.safe_float(analyzer_data.get("nearest_resistance"))
 
         # TP1 conservateur: 0.6 ATR ou résistance
@@ -503,7 +449,7 @@ class OpportunityCalculatorPro:
         Returns:
             (stop_loss, sl_percent, sl_basis)
         """
-        atr = self.safe_float(analyzer_data.get("atr"))
+        atr = self.safe_float(analyzer_data.get("atr_14"))
         nearest_support = self.safe_float(analyzer_data.get("nearest_support"))
 
         # SL = support - 0.3 ATR ou current - 0.8 ATR
@@ -590,6 +536,82 @@ class OpportunityCalculatorPro:
             urgency = "NO_RUSH"
 
         return hold_time, urgency
+
+    def to_dict(self, opportunity: TradingOpportunity) -> dict:
+        """
+        Convertit TradingOpportunity en dict pour l'API.
+
+        Args:
+            opportunity: TradingOpportunity à convertir
+
+        Returns:
+            Dict sérialisable pour réponse API
+        """
+        # Extraire les indicateurs bruts pour affichage frontend
+        analyzer_data = opportunity.raw_analyzer_data
+        indicators = {
+            "rsi": self.safe_float(analyzer_data.get("rsi_14")),
+            "mfi": self.safe_float(analyzer_data.get("mfi_14")),
+            "adx": self.safe_float(analyzer_data.get("adx_14")),
+            "atr": self.safe_float(analyzer_data.get("atr_14")),
+            "volume_spike": self.safe_float(analyzer_data.get("volume_spike_multiplier"), 1.0),
+            "relative_volume": self.safe_float(analyzer_data.get("relative_volume"), 1.0),
+            "bb_position": self.safe_float(analyzer_data.get("bb_position")),
+            "macd_histogram": self.safe_float(analyzer_data.get("macd_histogram")),
+        }
+
+        return {
+            "symbol": opportunity.symbol,
+            "action": opportunity.action,
+            "confidence": round(opportunity.confidence, 2),
+            "score": asdict(opportunity.score),
+            "validation": asdict(opportunity.validation),
+            "early_signal": asdict(opportunity.early_signal) if opportunity.early_signal else None,
+            "is_early_entry": opportunity.is_early_entry,
+            "indicators": indicators,  # NOUVEAU: Indicateurs pour frontend
+            "pricing": {
+                "current_price": opportunity.current_price,
+                "entry_optimal": opportunity.entry_price_optimal,
+                "entry_aggressive": opportunity.entry_price_aggressive,
+            },
+            "targets": {
+                "tp1": opportunity.tp1,
+                "tp1_percent": round(opportunity.tp1_percent, 2),
+                "tp2": opportunity.tp2,
+                "tp2_percent": round(opportunity.tp2_percent, 2),
+                "tp3": opportunity.tp3,
+                "tp3_percent": round(opportunity.tp3_percent, 2) if opportunity.tp3_percent else None,
+            },
+            "stop_loss": {
+                "price": opportunity.stop_loss,
+                "percent": round(opportunity.stop_loss_percent, 2),
+                "basis": opportunity.stop_loss_basis,
+            },
+            "risk": {
+                "rr_ratio": round(opportunity.rr_ratio, 2),
+                "level": opportunity.risk_level,
+                "max_position_size_pct": round(opportunity.max_position_size_pct, 2),
+            },
+            "timing": {
+                "estimated_hold_time": opportunity.estimated_hold_time,
+                "entry_urgency": opportunity.entry_urgency,
+            },
+            "context": {
+                "market_regime": opportunity.market_regime,
+                "volume_context": opportunity.volume_context,
+                "volatility_regime": opportunity.volatility_regime,
+            },
+            "messages": {
+                "reasons": opportunity.reasons,
+                "warnings": opportunity.warnings,
+                "recommendations": opportunity.recommendations,
+            },
+            "raw_data": {
+                "score_details": opportunity.raw_score_details,
+                "validation_details": opportunity.raw_validation_details,
+                "analyzer_data": opportunity.raw_analyzer_data,  # NOUVEAU: Pour debugging
+            },
+        }
 
     def _create_no_data_opportunity(
         self, symbol: str, current_price: float

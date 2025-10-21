@@ -626,6 +626,14 @@ async def get_trading_opportunity(symbol: str):
                             fallback_data["nearest_support"]
                         )
 
+            # Log pour debugging
+            logger.debug(
+                f"Calculating opportunity for {symbol}: "
+                f"analyzer_1m keys: {list(analyzer_dict_1m.keys())[:10]}, "
+                f"has_5m: {analyzer_dict_5m is not None}, "
+                f"has_historical: {historical_data is not None and len(historical_data) if historical_data else 0}"
+            )
+
             # Calculer l'opportunité via le calculateur PRO (avec contexte 5m +
             # early detection)
             opportunity = services.opportunity_calculator.calculate_opportunity(
@@ -635,6 +643,14 @@ async def get_trading_opportunity(symbol: str):
                 higher_tf_data=analyzer_dict_5m,
                 _signals_data=signals_dict,
                 historical_data=historical_data,  # NOUVEAU: Pour early detector
+            )
+
+            # Log du résultat
+            logger.debug(
+                f"Opportunity calculated for {symbol}: "
+                f"action={opportunity.action}, "
+                f"score={opportunity.score.total_score:.1f}, "
+                f"confidence={opportunity.confidence:.1f}"
             )
 
             # Convertir en dict pour l'API

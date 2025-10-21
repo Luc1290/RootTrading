@@ -43,9 +43,9 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity: o
     return ((targetPrice - currentPrice) / currentPrice) * 100;
   };
 
-  const tp1Raw = typeof opp.targets?.tp1 === 'object' ? opp.targets.tp1 : { price: opp.targets?.tp1 || 0, percent: 0 };
-  const tp2Raw = typeof opp.targets?.tp2 === 'object' ? opp.targets.tp2 : { price: opp.targets?.tp2 || 0, percent: 0 };
-  const slRaw = typeof opp.stopLoss === 'object' ? opp.stopLoss : { price: opp.stopLoss || 0, percent: 0 };
+  const tp1Raw = typeof opp.targets?.tp1 === 'object' ? opp.targets.tp1 : { price: opp.targets?.tp1 || 0, percent: opp.targets?.tp1_percent || 0 };
+  const tp2Raw = typeof opp.targets?.tp2 === 'object' ? opp.targets.tp2 : { price: opp.targets?.tp2 || 0, percent: opp.targets?.tp2_percent || 0 };
+  const slRaw = typeof opp.stop_loss === 'object' ? opp.stop_loss : (typeof opp.stopLoss === 'object' ? opp.stopLoss : { price: opp.stop_loss?.price || opp.stopLoss || 0, percent: opp.stop_loss?.percent || 0 });
 
   // Fallback: calculer percent si manquant
   const tp1 = {
@@ -79,11 +79,10 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity: o
   };
 
   // Trier les scores par valeur décroissante
-  const sortedScores = opp.categoryScores
-    ? Object.entries(opp.categoryScores).sort(([, a]: [string, any], [, b]: [string, any]) => {
-        return (b.score || 0) - (a.score || 0);
-      })
-    : [];
+  const categoryScores = opp.score?.category_scores || opp.categoryScores || {};
+  const sortedScores = Object.entries(categoryScores).sort(([, a]: [string, any], [, b]: [string, any]) => {
+    return (b.score || 0) - (a.score || 0);
+  });
 
   // Lien Binance
   const baseAsset = opp.symbol.replace('USDC', '');
@@ -115,7 +114,7 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity: o
               grade === 'C' ? 'text-yellow-400' :
               grade === 'D' ? 'text-orange-400' : 'text-gray-400'
             }`}>
-              {opp.score?.total?.toFixed(0) || 0}
+              {opp.score?.total_score?.toFixed(0) || opp.score?.total?.toFixed(0) || 0}
               <span className="text-sm text-gray-500">/100</span>
             </div>
             <div className="text-xs text-gray-400">Grade {grade}</div>
@@ -234,8 +233,8 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity: o
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-400">Régime</span>
-                <span className={`text-sm font-bold ${getRegimeColor(opp.regime)}`}>
-                  {(opp.regime || 'N/A').replace('TRENDING_', '').replace('BREAKOUT_', '')}
+                <span className={`text-sm font-bold ${getRegimeColor(opp.context?.market_regime || opp.regime)}`}>
+                  {((opp.context?.market_regime || opp.regime) || 'N/A').replace('TRENDING_', '').replace('BREAKOUT_', '')}
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -247,7 +246,7 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity: o
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-400">Volatilité</span>
                 <span className="text-sm font-bold text-white">
-                  {opp.categoryScores?.volatility?.score?.toFixed(0) || 'N/A'}
+                  {opp.context?.volatility_regime?.toUpperCase() || categoryScores?.volatility?.score?.toFixed(0) || 'N/A'}
                 </span>
               </div>
             </div>
@@ -313,23 +312,23 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity: o
               <div>
                 <div className="text-xs text-gray-500">RSI</div>
                 <div className={`text-lg font-bold ${
-                  (opp.rsi || 0) > 70 ? 'text-orange-400' :
-                  (opp.rsi || 0) < 30 ? 'text-blue-400' : 'text-white'
+                  (opp.indicators?.rsi || 0) > 70 ? 'text-orange-400' :
+                  (opp.indicators?.rsi || 0) < 30 ? 'text-blue-400' : 'text-white'
                 }`}>
-                  {opp.rsi?.toFixed(0) || 'N/A'}
+                  {opp.indicators?.rsi?.toFixed(0) || 'N/A'}
                 </div>
               </div>
               <div>
                 <div className="text-xs text-gray-500">MFI</div>
-                <div className="text-lg font-bold text-white">{opp.mfi?.toFixed(0) || 'N/A'}</div>
+                <div className="text-lg font-bold text-white">{opp.indicators?.mfi?.toFixed(0) || 'N/A'}</div>
               </div>
               <div>
                 <div className="text-xs text-gray-500">ADX</div>
-                <div className="text-lg font-bold text-white">{opp.adx?.toFixed(1) || 'N/A'}</div>
+                <div className="text-lg font-bold text-white">{opp.indicators?.adx?.toFixed(1) || 'N/A'}</div>
               </div>
               <div>
                 <div className="text-xs text-gray-500">Volume</div>
-                <div className="text-lg font-bold text-white">{opp.volumeRatio?.toFixed(2)}x</div>
+                <div className="text-lg font-bold text-white">{opp.indicators?.volume_spike?.toFixed(2)}x</div>
               </div>
             </div>
           </div>

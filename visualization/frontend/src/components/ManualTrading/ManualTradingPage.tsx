@@ -62,7 +62,19 @@ interface TradingOpportunity {
     no_resistance: boolean;
   };
 
-  // Données techniques
+  // Indicateurs techniques (format PRO)
+  indicators?: {
+    rsi?: number;
+    mfi?: number;
+    adx?: number;
+    atr?: number;
+    volume_spike?: number;
+    relative_volume?: number;
+    bb_position?: number;
+    macd_histogram?: number;
+  };
+
+  // Données techniques (ancien format - rétrocompatibilité)
   signals24h: number;
   signalsConfidence: number;
   volumeRatio: number;
@@ -94,7 +106,33 @@ interface TradingOpportunity {
   entryZone: { min: number; max: number };
   targets: { tp1: number | { price: number; percent: number }; tp2: number | { price: number; percent: number }; tp3?: number | { price: number; percent: number } };
   stopLoss: number | { price: number; percent: number };
+  stop_loss?: { price: number; percent: number }; // Alternative format
   recommendedSize: { min: number; max: number };
+
+  // Context
+  context?: {
+    market_regime?: string;
+    volume_context?: string;
+    volatility_regime?: string;
+  };
+
+  // Early Entry
+  is_early_entry?: boolean;
+  early_signal?: {
+    level?: string;
+    score?: number;
+    confidence?: number;
+    velocity_score?: number;
+    acceleration_score?: number;
+    volume_buildup_score?: number;
+    micro_pattern_score?: number;
+    order_flow_score?: number;
+    estimated_entry_window_seconds?: number;
+    estimated_move_completion_pct?: number;
+    reasons?: string[];
+    warnings?: string[];
+    recommendations?: string[];
+  };
 
   // Action
   action: 'BUY_NOW' | 'BUY_DCA' | 'EARLY_ENTRY' | 'WAIT' | 'AVOID' | 'WAIT_HIGHER_TF' | 'WAIT_QUALITY_GATE';
@@ -213,6 +251,12 @@ function ManualTradingPage() {
               validationDetails,
               pricing: signalsData.pricing,
               risk: signalsData.risk,
+              indicators: signalsData.indicators,
+              context: signalsData.context,
+
+              // Early Entry
+              is_early_entry: signalsData.is_early_entry,
+              early_signal: signalsData.early_signal,
 
               // Ancien système (rétrocompatibilité)
               conditions: signalsData.conditions,
@@ -233,6 +277,7 @@ function ManualTradingPage() {
               entryZone: { min: entryOptimal, max: entryAggressive },
               targets: { tp1, tp2, tp3 },
               stopLoss,
+              stop_loss: signalsData.stop_loss,
               recommendedSize: signalsData.risk ?
                 { min: capitalSize * (signalsData.risk.max_position_size_pct / 100) * 0.8, max: capitalSize * (signalsData.risk.max_position_size_pct / 100) } :
                 { min: 3000, max: 7000 },

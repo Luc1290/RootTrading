@@ -1,40 +1,27 @@
 """
-Opportunity Early Detector FIXED - True Leading Indicator System
-Détecte les pumps AVANT qu'ils démarrent (cherche les SETUPS, pas les confirmations)
+Opportunity Early Detector - INSTITUTIONAL SCALPING
+Détecteur optionnel pour boost de confiance basé sur patterns de formation
 
-CORRECTIONS MAJEURES:
-1. Vélocité INVERSÉE: ROC faible/négatif = SETUP (momentum disponible)
-   - Ancien: ROC >0.25% = MAX score (déjà en pump!)
-   - Nouveau: ROC -0.5 à +0.2% = MAX score (momentum flat, prêt à exploser)
+VERSION 4.0 - REFONTE COMPLÈTE:
+1. OPTIONNEL: Ce module booste la confiance mais n'est PAS obligatoire
+2. PAS de rejets: RSI >70, volume >3x sont des WARNINGS, pas des blocages
+3. Scoring informatif: Détecte patterns de buildup mais ne bloque pas
+4. Compatible avec scoring institutionnel v4.0
 
-2. Accélération INVERSÉE: Changement de momentum faible = SETUP
-   - Ancien: +0.10% delta = MAX score (déjà accéléré!)
-   - Nouveau: -0.05 à +0.03% delta = MAX score (pas encore accéléré)
+PHILOSOPHIE:
+- Détecte patterns de consolidation/buildup avant mouvement
+- Ajoute +5-10pts de confiance si patterns détectés
+- JAMAIS bloquant, toujours informatif
+- Basé sur analyse multi-périodes (historical_data requis)
 
-3. Volume SETUP prioritaire: Buildup progressif, pas spike
-   - Ancien: rel_volume >2.0x = MAX score (pic atteint!)
-   - Nouveau: rel_volume 1.2-1.8x progressif = MAX score (buildup)
-   - Nouveau: rel_volume >3.0x = REJECTION (trop tard)
+Indicateurs analysés:
+- Velocity & Acceleration: ROC et sa dérivée
+- Volume Buildup: Progression volume progressive
+- Micro-patterns: Higher lows, RSI climbing
+- Order Flow: OBV, trade intensity
 
-4. RSI SETUP optimal: Sortie oversold, pas overbought
-   - Ancien: RSI 50-65 avec RSI climbing = bonus
-   - Nouveau: RSI 35-55 avec sortie oversold <35 = gros bonus
-   - Nouveau: RSI >70 = REJECTION (overbought = trop tard)
-
-5. Seuils STRICTS pour early entry:
-   - WATCH: 30+ (au lieu de 40+)
-   - PREPARE: 45+ (au lieu de 55+)
-   - ENTRY_NOW: 55+ (au lieu de 65+)
-   - TOO_LATE: 75+ (au lieu de 85+)
-
-Architecture:
-- Focus TRUE LEADING indicators (setup formation, not confirmation)
-- Multi-timepoint analysis (detect buildup patterns)
-- Micro-patterns détection (consolidation before breakout)
-- Conservative scoring (reject late entries)
-
-Objectif: Signaler AVANT le pump démarre, pas pendant/après
-Version: 2.0 - True Early Warning (FIXED)
+Aligné avec opportunity_scoring.py v4.0 (pas de rejets arbitraires)
+Version: 4.0 - Institutional Scalping (Optional Boost)
 """
 
 import logging
@@ -79,21 +66,23 @@ class EarlySignal:
 
 class OpportunityEarlyDetector:
     """
-    Détecteur précoce d'opportunités CORRIGÉ.
+    Détecteur précoce d'opportunités - INSTITUTIONAL SCALPING v4.0.
 
-    CHANGEMENTS vs ancien système:
-    - Cherche momentum FLAT/FAIBLE (prêt à exploser) au lieu de momentum FORT (déjà explosé)
-    - Prioritise volume BUILDUP (progression) au lieu de volume SPIKE (pic)
-    - Cherche RSI 35-55 (sortie oversold) au lieu de RSI 60-75 (overbought)
-    - Rejette overbought conditions (RSI >70, volume spike >3x)
+    OPTIONNEL: Booste confiance mais ne bloque jamais.
+
+    CHANGEMENTS vs v2.0:
+    - PAS de rejets: RSI >70, volume >3x sont WARNINGS seulement
+    - Score informatif: Détecte patterns mais n'impose pas de décision
+    - Compatible avec scoring institutionnel (pas de contradictions)
+    - Fonction: Détecter patterns de buildup/consolidation avant mouvement
     """
 
-    # Seuils pour early detection (ABAISSÉS pour détecter AVANT le pump)
+    # Seuils pour signaux informatifs (pas bloquants)
     THRESHOLDS = {
-        "watch": 30,  # Score 30+ = worth watching (au lieu de 40+)
-        "prepare": 45,  # Score 45+ = prepare entry (au lieu de 55+)
-        "entry_now": 55,  # Score 55+ = entry window NOW (au lieu de 65+)
-        "too_late": 75,  # Score 75+ = déjà trop tard (au lieu de 85+)
+        "watch": 30,  # Score 30+ = worth watching
+        "prepare": 45,  # Score 45+ = prepare entry
+        "entry_now": 55,  # Score 55+ = entry window
+        "too_late": 75,  # Score 75+ = mouvement avancé (WARNING, pas BLOCAGE)
     }
 
     def __init__(self):
@@ -361,13 +350,13 @@ class OpportunityEarlyDetector:
         # 2. Volume progression - 10 points max
         rel_vol = self.safe_float(current.get("relative_volume"), 1.0)
 
-        # REJET si volume spike (pic atteint)
+        # WARNING si volume spike (informatif, pas bloquant)
         vol_spike = self.safe_float(current.get("volume_spike_multiplier"), 1.0)
         if vol_spike >= 3.0 or rel_vol > 3.0:
             warnings.append(
-                f"❌ VOLUME SPIKE: {vol_spike:.1f}x / {rel_vol:.1f}x - PIC ATTEINT, TROP TARD"
+                f"⚠️ VOLUME SPIKE: {vol_spike:.1f}x / {rel_vol:.1f}x - Mouvement déjà avancé"
             )
-            return score  # Stop scoring, c'est trop tard
+            # Continue scoring, c'est juste une info
 
         if historical and len(historical) >= 3:
             # Calculer progression volume
@@ -486,12 +475,12 @@ class OpportunityEarlyDetector:
         if current_rsi > 0:
             recent_rsis.append(current_rsi)
 
-        # REJET si RSI overbought
+        # WARNING si RSI overbought (informatif, pas bloquant)
         if current_rsi > 70:
             warnings.append(
-                f"❌ RSI OVERBOUGHT: {current_rsi:.0f} - TROP TARD pour early entry"
+                f"⚠️ RSI OVERBOUGHT: {current_rsi:.0f} - Mouvement déjà avancé"
             )
-            return score  # Stop scoring
+            # Continue scoring, c'est juste une info
 
         if len(recent_rsis) >= 3:
             # RSI en progression ET dans zone EARLY (35-55)
