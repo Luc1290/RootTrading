@@ -370,7 +370,9 @@ class OpportunityCalculatorPro:
                 cat for cat, cat_score in score.category_scores.items() if cat_score.score < 50
             ]
             if weak_categories:
-                reasons.append(f"⚠️ Catégories faibles: {', '.join(weak_categories[:3])}")
+                # Convertir les enums ScoreCategory en strings
+                weak_cat_names = [cat.value if hasattr(cat, 'value') else str(cat) for cat in weak_categories[:3]]
+                reasons.append(f"⚠️ Catégories faibles: {', '.join(weak_cat_names)}")
 
             return (
                 "WAIT",
