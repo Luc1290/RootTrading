@@ -2,6 +2,11 @@
 Opportunity Early Detector - INSTITUTIONAL SCALPING
 Détecteur optionnel pour boost de confiance basé sur patterns de formation
 
+VERSION 4.1 - AMÉLIORATIONS:
+1. Warnings volume spike contextualisés avec RSI/ROC (CRITIQUE)
+2. Warnings RSI >70 contextualisés avec ADX/MACD
+3. Volume 3x+ acceptable si RSI <60 (breakout institutionnel early)
+
 VERSION 4.0 - REFONTE COMPLÈTE:
 1. OPTIONNEL: Ce module booste la confiance mais n'est PAS obligatoire
 2. PAS de rejets: RSI >70, volume >3x sont des WARNINGS, pas des blocages
@@ -350,13 +355,29 @@ class OpportunityEarlyDetector:
         # 2. Volume progression - 10 points max
         rel_vol = self.safe_float(current.get("relative_volume"), 1.0)
 
-        # WARNING si volume spike (informatif, pas bloquant)
+        # WARNING si volume spike - v4.1 CONTEXTUALISÉ avec RSI/ROC
         vol_spike = self.safe_float(current.get("volume_spike_multiplier"), 1.0)
         if vol_spike >= 3.0 or rel_vol > 3.0:
-            warnings.append(
-                f"⚠️ VOLUME SPIKE: {vol_spike:.1f}x / {rel_vol:.1f}x - Mouvement déjà avancé"
-            )
-            # Continue scoring, c'est juste une info
+            # CONTEXTUALISER: Volume 3x+ n'est "trop tard" QUE si RSI et ROC aussi élevés
+            rsi = self.safe_float(current.get("rsi_14"))
+            roc = self.safe_float(current.get("roc_10"))
+
+            if rsi > 70 and roc > 0.005:  # ROC >0.5%
+                # TOUS les signaux lagging élevés = VRAIMENT trop tard
+                warnings.append(
+                    f"❌ VOLUME SPIKE {vol_spike:.1f}x + RSI {rsi:.0f} + ROC {roc*100:.2f}% - TROP TARD"
+                )
+            elif rsi > 60 or roc > 0.003:  # ROC >0.3%
+                # Signaux modérément élevés = breakout avancé mais pas trop tard
+                warnings.append(
+                    f"⚠️ Volume {vol_spike:.1f}x + RSI {rsi:.0f} - Breakout avancé"
+                )
+            else:
+                # Volume spike mais RSI/ROC modérés = BREAKOUT INSTITUTIONNEL EARLY
+                warnings.append(
+                    f"ℹ️ Volume spike {vol_spike:.1f}x mais RSI {rsi:.0f} / ROC {roc*100:.2f}% modérés - Potentiel breakout early"
+                )
+            # Continue scoring, c'est juste une info contextuelle
 
         if historical and len(historical) >= 3:
             # Calculer progression volume
@@ -475,12 +496,28 @@ class OpportunityEarlyDetector:
         if current_rsi > 0:
             recent_rsis.append(current_rsi)
 
-        # WARNING si RSI overbought (informatif, pas bloquant)
+        # WARNING si RSI overbought - v4.1 CONTEXTUALISÉ avec trend strength
         if current_rsi > 70:
-            warnings.append(
-                f"⚠️ RSI OVERBOUGHT: {current_rsi:.0f} - Mouvement déjà avancé"
-            )
-            # Continue scoring, c'est juste une info
+            # RSI >70 n'est problématique QUE si trend fort déjà établi (ADX élevé)
+            adx = self.safe_float(current.get("adx_14"))
+            macd_hist = self.safe_float(current.get("macd_histogram"))
+
+            if current_rsi > 80 and adx > 35 and macd_hist > 15:
+                # RSI très élevé + trend fort confirmé = TROP TARD
+                warnings.append(
+                    f"❌ RSI EXTREME {current_rsi:.0f} + ADX {adx:.0f} + MACD {macd_hist:.1f} - TROP TARD"
+                )
+            elif current_rsi > 75 and adx > 30:
+                # RSI élevé + trend modéré = déjà bien avancé
+                warnings.append(
+                    f"⚠️ RSI {current_rsi:.0f} + ADX {adx:.0f} - Mouvement avancé"
+                )
+            else:
+                # RSI >70 mais ADX faible = DÉBUT de trend fort (acceptable)
+                warnings.append(
+                    f"ℹ️ RSI {current_rsi:.0f} mais ADX {adx:.0f} - Début trend fort possible"
+                )
+            # Continue scoring, c'est juste une info contextuelle
 
         if len(recent_rsis) >= 3:
             # RSI en progression ET dans zone EARLY (35-55)

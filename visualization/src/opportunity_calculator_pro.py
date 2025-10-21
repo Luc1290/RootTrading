@@ -2,6 +2,12 @@
 Opportunity Calculator PRO - INSTITUTIONAL SCALPING
 Orchestre scoring + validation pour scalping intraday avec indicateurs institutionnels
 
+VERSION 4.1 - AMÉLIORATIONS:
+1. Targets adaptatifs selon score (75+ = ambitieux, 60-75 = standards, <60 = conservateurs)
+2. Intégration améliorations scoring v4.1 (OBV, S/R 10%)
+3. Intégration améliorations validator v4.1 (pullbacks VWAP/EMA)
+4. Intégration early detector v4.1 (warnings contextualisés)
+
 VERSION 4.0 - REFONTE COMPLÈTE:
 1. Scoring institutionnel: VWAP (25%), EMA (20%), Volume (20%), RSI (15%), Bollinger (10%), MACD (5%), S/R (5%)
 2. Validation MINIMALISTE: Seule la qualité des données est bloquante
@@ -35,6 +41,7 @@ from src.opportunity_validator import (
     OpportunityValidator,
     ValidationSummary,
 )
+from src.adaptive_targets import AdaptiveTargetSystem, AdaptiveTargets
 
 logger = logging.getLogger(__name__)
 
@@ -108,18 +115,24 @@ class OpportunityCalculatorPro:
     - Support/Résistance: informatif, jamais bloquant
     """
 
-    def __init__(self, enable_early_detection: bool = True):
-        """Initialise le calculateur professionnel v4.0.
+    def __init__(self, enable_early_detection: bool = True, use_adaptive_targets: bool = True):
+        """Initialise le calculateur professionnel v4.1.
 
         Args:
             enable_early_detection: Active le système early warning (défaut: True)
                                    Optionnel, booste confiance mais pas obligatoire
+            use_adaptive_targets: Active le système de targets adaptatifs (défaut: True)
+                                 v4.1 - Targets basés sur score, volatilité, et timeframe
         """
         self.scorer = OpportunityScoring()
         self.validator = OpportunityValidator()
         self.early_detector = (
             OpportunityEarlyDetector() if enable_early_detection else None
         )
+        self.adaptive_targets = (
+            AdaptiveTargetSystem() if use_adaptive_targets else None
+        )
+        self.use_adaptive_targets = use_adaptive_targets
 
     @staticmethod
     def safe_float(value, default=0.0):
@@ -354,7 +367,7 @@ class OpportunityCalculatorPro:
 
             # Identifier ce qui manque
             weak_categories = [
-                cat for cat, cat_score in score.category_scores.items() if cat_score < 50
+                cat for cat, cat_score in score.category_scores.items() if cat_score.score < 50
             ]
             if weak_categories:
                 reasons.append(f"⚠️ Catégories faibles: {', '.join(weak_categories[:3])}")
@@ -414,25 +427,109 @@ class OpportunityCalculatorPro:
         self, current_price: float, analyzer_data: dict, score: OpportunityScore
     ) -> tuple[float, float, float | None, tuple[float, float, float | None]]:
         """
-        Calcule targets TP1/TP2/TP3 CONSERVATEURS.
+        Calcule targets TP1/TP2/TP3 ADAPTATIFS.
+
+        v4.1 - AMÉLIORATION MAJEURE avec AdaptiveTargetSystem:
+        - NOUVEAU: Système institutionnel multi-dimensionnel
+        - Adapte selon: Score + Volatilité (ATR normalisé) + Timeframe + Régime
+        - Score 80+ = AGGRESSIVE, 65-80 = STANDARD, <65 = CONSERVATIVE
+        - Volatilité: ATR normalisé applique multiplicateur 0.8x à 1.3x
+        - Timeframe: 1m=0.7x, 5m=1.0x, 15m=1.3x, 1h=1.6x
+        - Régime: TRENDING_BULL=1.1x, RANGING=0.85x, BREAKOUT=1.2x, etc.
+        - Fallback: Ancien système ATR si adaptive_targets désactivé
 
         Returns:
             (tp1, tp2, tp3, (tp1_pct, tp2_pct, tp3_pct))
         """
         atr = self.safe_float(analyzer_data.get("atr_14"))
+
+        # === v4.1: ADAPTIVE TARGET SYSTEM (Institutionnel) ===
+        if self.use_adaptive_targets and self.adaptive_targets:
+            try:
+                # Récupérer contexte de marché
+                timeframe = analyzer_data.get("timeframe", "5m")
+                regime = analyzer_data.get("market_regime", None)
+
+                # Calculer targets adaptatifs
+                adaptive_targets = self.adaptive_targets.calculate_targets(
+                    entry_price=current_price,
+                    score=score.total_score,
+                    atr=atr,
+                    timeframe=timeframe,
+                    regime=regime,
+                    side="BUY"  # TODO: Supporter SELL aussi
+                )
+
+                # Valider les targets
+                is_valid, reason = self.adaptive_targets.validate_targets(
+                    adaptive_targets, current_price
+                )
+
+                if is_valid:
+                    logger.info(
+                        f"✅ Adaptive targets: Profile={adaptive_targets.profile_used.value}, "
+                        f"R/R={adaptive_targets.risk_reward_ratio:.2f}, "
+                        f"Vol={adaptive_targets.volatility_multiplier:.2f}x, "
+                        f"TF={adaptive_targets.timeframe_multiplier:.2f}x"
+                    )
+
+                    return (
+                        adaptive_targets.tp1,
+                        adaptive_targets.tp2,
+                        adaptive_targets.tp3,
+                        (
+                            adaptive_targets.adjusted_tp1_pct * 100,
+                            adaptive_targets.adjusted_tp2_pct * 100,
+                            adaptive_targets.adjusted_tp3_pct * 100 if adaptive_targets.tp3 else None
+                        )
+                    )
+                else:
+                    logger.warning(
+                        f"⚠️ Adaptive targets invalid ({reason}), falling back to ATR-based"
+                    )
+            except Exception as e:
+                logger.error(f"❌ Error in adaptive targets: {e}, falling back to ATR-based")
+
+        # === FALLBACK: Ancien système ATR-based (v4.0) ===
         nearest_resistance = self.safe_float(analyzer_data.get("nearest_resistance"))
 
-        # TP1 conservateur: 0.6 ATR ou résistance
-        if nearest_resistance > current_price:
-            tp1 = min(current_price + (0.6 * atr), nearest_resistance)
+        # Déterminer multiplicateurs ATR selon score institutionnel
+        if score.total_score >= 75:
+            # Setup FORT : targets ambitieux
+            tp1_mult = 0.8
+            tp2_mult = 1.3
+            tp3_mult = 1.8
+            use_tp3 = True
+        elif score.total_score >= 60:
+            # Setup BON : targets standards
+            tp1_mult = 0.7
+            tp2_mult = 1.1
+            tp3_mult = 1.5
+            use_tp3 = True
         else:
-            tp1 = current_price + (0.6 * atr)
+            # Setup MOYEN/FAIBLE : targets conservateurs
+            tp1_mult = 0.6
+            tp2_mult = 0.9
+            tp3_mult = 0.0
+            use_tp3 = False
 
-        # TP2: 1.0 ATR
-        tp2 = current_price + (1.0 * atr)
+        # TP1 : Considérer résistance si proche
+        tp1_target = current_price + (tp1_mult * atr)
+        if nearest_resistance > current_price:
+            res_dist = nearest_resistance - current_price
+            # Si résistance proche (<1.5 ATR), l'utiliser comme TP1 si approprié
+            if res_dist < (1.5 * atr) and res_dist > (0.4 * atr):
+                tp1 = min(tp1_target, nearest_resistance * 0.995)  # Légèrement avant résistance
+            else:
+                tp1 = tp1_target
+        else:
+            tp1 = tp1_target
 
-        # TP3: 1.5 ATR si score >75
-        tp3 = current_price + (1.5 * atr) if score.total_score > 75 else None
+        # TP2 : Plus ambitieux
+        tp2 = current_price + (tp2_mult * atr)
+
+        # TP3 : Seulement si setup fort
+        tp3 = current_price + (tp3_mult * atr) if use_tp3 else None
 
         tp1_pct = ((tp1 - current_price) / current_price) * 100
         tp2_pct = ((tp2 - current_price) / current_price) * 100

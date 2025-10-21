@@ -1,6 +1,11 @@
 """
 Opportunity Scoring System - INSTITUTIONAL SCALPING INDICATORS
-Version: 4.0 - Professional intraday scalping avec indicateurs reconnus
+Version: 4.1 - Professional intraday scalping avec indicateurs reconnus
+
+AMÉLIORATIONS v4.1:
+1. Volume avec direction OBV (CRITIQUE) - Détecte selling pressure
+2. Support/Résistance augmenté à 10% (vs 5%) + logique intelligente
+3. Scoring S/R avec resistance_strength et break_probability
 
 INDICATEURS UTILISÉS (7 essentiels):
 1. VWAP - Price vs VWAP (THE most institutional indicator)
@@ -68,14 +73,15 @@ class OpportunityScoring:
     """Système de scoring INSTITUTIONNEL pour scalping intraday."""
 
     # Pondérations SCALPING (basé sur l'importance réelle)
+    # v4.1 - Support/Résistance augmenté de 5% à 10% (critique pour scalping)
     DEFAULT_WEIGHTS = {
         ScoreCategory.VWAP_POSITION: 0.25,  # LE PLUS IMPORTANT pour institutionnels
-        ScoreCategory.EMA_TREND: 0.20,  # Trend court terme essentiel
+        ScoreCategory.EMA_TREND: 0.18,  # Trend court terme essentiel (réduit de 20% à 18%)
         ScoreCategory.VOLUME: 0.20,  # Confirmation obligatoire
-        ScoreCategory.RSI_MOMENTUM: 0.15,  # Oversold/overbought
+        ScoreCategory.RSI_MOMENTUM: 0.12,  # Oversold/overbought (réduit de 15% à 12%)
         ScoreCategory.BOLLINGER: 0.10,  # Squeeze/expansion
         ScoreCategory.MACD: 0.05,  # Confirmation secondaire
-        ScoreCategory.SUPPORT_RESISTANCE: 0.05,  # Informatif, non bloquant
+        ScoreCategory.SUPPORT_RESISTANCE: 0.10,  # AUGMENTÉ: Critique pour entries/exits (5% → 10%)
     }
 
     def __init__(self):
@@ -317,12 +323,20 @@ class OpportunityScoring:
         )
 
     def _score_volume_scalping(self, ad: dict, weight: float) -> CategoryScore:
-        """Score VOLUME - Confirmation essentielle pour scalping."""
+        """
+        Score VOLUME - Confirmation essentielle pour scalping.
+
+        v4.1 - AMÉLIORATION CRITIQUE:
+        - Intègre OBV oscillator pour direction volume (acheteur vs vendeur)
+        - Volume élevé + OBV négatif = SELLING PRESSURE (pénalité)
+        - Volume élevé + OBV positif = BUYING PRESSURE (bonus)
+        """
         details: dict[str, float] = {}
         issues: list[str] = []
         score = 0.0
 
         rel_volume = self.safe_float(ad.get("relative_volume"), 1.0)
+        obv_osc = self.safe_float(ad.get("obv_oscillator"))
 
         # SCALPING: Volume >0.8x acceptable, >1.2x bon
         if rel_volume > 2.0:
@@ -347,7 +361,58 @@ class OpportunityScoring:
         score = vol_score
         details["relative_volume"] = vol_score
 
-        confidence = 100.0
+        # === AMÉLIORATION v4.1: OBV DIRECTION ===
+        # CRITIQUE: Volume élevé sans OBV positif = potentiel SELLOFF
+        if obv_osc != 0:  # OBV disponible
+            details["obv_oscillator"] = obv_osc
+
+            # Volume élevé (>1.5x) : Vérifier DIRECTION
+            if rel_volume > 1.5:
+                if obv_osc > 100:
+                    # EXCELLENT: Volume acheteur fort
+                    score += 10
+                    issues.append(f"🔥 OBV très positif ({obv_osc:.0f}) - Buying pressure confirmée!")
+                elif obv_osc > 50:
+                    # BON: Volume acheteur modéré
+                    score += 5
+                    issues.append(f"✅ OBV positif ({obv_osc:.0f}) - Acheteurs présents")
+                elif obv_osc > -50:
+                    # NEUTRE: Volume mixte
+                    issues.append(f"ℹ️ OBV neutre ({obv_osc:.0f}) - Volume non directionnel")
+                elif obv_osc > -100:
+                    # ATTENTION: Volume élevé mais OBV négatif modéré
+                    score -= 15
+                    issues.append(f"⚠️ OBV négatif ({obv_osc:.0f}) malgré volume {rel_volume:.1f}x - Prudence!")
+                else:
+                    # DANGER: Volume élevé + OBV très négatif = SELLOFF
+                    score -= 30
+                    issues.append(f"❌ OBV très négatif ({obv_osc:.0f}) + volume {rel_volume:.1f}x - SELLING PRESSURE!")
+                    details["selling_pressure_detected"] = True
+
+            # Volume modéré (1.0-1.5x) : Bonus/malus léger selon OBV
+            elif rel_volume > 1.0:
+                if obv_osc > 100:
+                    score += 5
+                    issues.append(f"✅ OBV fort ({obv_osc:.0f}) - Accumulation")
+                elif obv_osc < -100:
+                    score -= 10
+                    issues.append(f"⚠️ OBV négatif ({obv_osc:.0f}) - Distribution")
+
+            # Volume faible (<1.0x) : OBV très positif peut compenser
+            else:
+                if obv_osc > 150:
+                    score += 8
+                    issues.append(f"💡 Volume faible mais OBV très positif ({obv_osc:.0f}) - Accumulation silencieuse")
+        else:
+            # OBV non disponible : warning
+            issues.append("ℹ️ OBV indisponible - Direction volume non vérifiable")
+            details["obv_available"] = False
+
+        # Cap score à 100
+        score = min(score, 100.0)
+        score = max(score, 0.0)  # Empêcher score négatif
+
+        confidence = 100.0 if obv_osc != 0 else 70.0  # Confiance réduite sans OBV
 
         return CategoryScore(
             category=ScoreCategory.VOLUME,
@@ -494,9 +559,12 @@ class OpportunityScoring:
 
     def _score_sr_simple(self, ad: dict, current_price: float, weight: float) -> CategoryScore:
         """
-        Score S/R - SIMPLIFIÉ et NON BLOQUANT.
+        Score S/R - AMÉLIORÉ v4.1.
 
-        Juste informatif, ne bloque jamais.
+        Non bloquant mais avec scoring intelligent:
+        - Résistance proche forte (strength >0.7) = pénalité
+        - Support proche = bonus sécurité
+        - Break probability intégré
         """
         details: dict[str, float] = {}
         issues: list[str] = []
@@ -504,29 +572,91 @@ class OpportunityScoring:
 
         nearest_resistance = self.safe_float(ad.get("nearest_resistance"))
         nearest_support = self.safe_float(ad.get("nearest_support"))
+        resistance_strength = self.safe_float(ad.get("resistance_strength"))
+        support_strength = self.safe_float(ad.get("support_strength"))
+        break_probability = self.safe_float(ad.get("break_probability"), 0.5)
 
+        # === RÉSISTANCE ANALYSIS ===
         if nearest_resistance > 0 and current_price > 0:
             res_dist_pct = ((nearest_resistance - current_price) / current_price) * 100
+            details["resistance_distance_pct"] = res_dist_pct
+            details["resistance_strength"] = resistance_strength
 
-            if res_dist_pct > 3.0:
+            if res_dist_pct < 0:
+                # Prix AU DESSUS résistance = BREAKOUT confirmé
+                score = 100.0
+                issues.append(f"🔥 BREAKOUT confirmé: +{abs(res_dist_pct):.1f}% au dessus résistance!")
+                details["breakout_confirmed"] = True
+
+            elif res_dist_pct < 0.5:
+                # Très proche (<0.5%) : Dépend de strength et break_probability
+                if resistance_strength > 0.7:
+                    # Résistance FORTE proche = DANGER
+                    score = 45.0
+                    issues.append(f"⚠️ Résistance FORTE à {res_dist_pct:.1f}% (strength {resistance_strength:.2f}) - Risque rejet")
+                    details["strong_resistance_near"] = True
+                elif break_probability > 0.65:
+                    # Résistance faible + haute break prob = OK
+                    score = 75.0
+                    issues.append(f"✅ Résistance faible proche ({res_dist_pct:.1f}%) - Break probable ({break_probability*100:.0f}%)")
+                else:
+                    # Résistance moyenne proche
+                    score = 60.0
+                    issues.append(f"⚠️ Résistance à {res_dist_pct:.1f}% - Prudence recommandée")
+
+            elif res_dist_pct < 1.5:
+                # Proche (0.5-1.5%) : Potentiel breakout ou rejet
+                if resistance_strength < 0.5:
+                    score = 85.0
+                    issues.append(f"✅ Résistance faible à {res_dist_pct:.1f}% - Breakout potentiel")
+                else:
+                    score = 70.0
+                    issues.append(f"Résistance à {res_dist_pct:.1f}% (strength {resistance_strength:.2f})")
+
+            elif res_dist_pct < 3.0:
+                # Marge modérée (1.5-3%)
+                score = 90.0
+                issues.append(f"✅ Résistance à {res_dist_pct:.1f}% - Marge correcte")
+
+            else:
+                # Espace libre (>3%)
                 score = 100.0
                 issues.append(f"✅ Résistance loin ({res_dist_pct:.1f}%) - Espace libre")
-            elif res_dist_pct > 1.5:
-                score = 80.0
-                issues.append(f"Résistance à {res_dist_pct:.1f}%")
-            else:
-                score = 60.0
-                issues.append(f"ℹ️ Résistance proche ({res_dist_pct:.1f}%) - Potentiel breakout")
 
-            details["resistance_distance_pct"] = res_dist_pct
-
+        # === SUPPORT ANALYSIS (BONUS) ===
         if nearest_support > 0 and current_price > nearest_support:
             sup_dist_pct = ((current_price - nearest_support) / current_price) * 100
-            if sup_dist_pct < 2.0:
-                issues.append(f"Support proche ({sup_dist_pct:.1f}%) - Filet sécurité")
-                details["support_distance_pct"] = sup_dist_pct
+            details["support_distance_pct"] = sup_dist_pct
+            details["support_strength"] = support_strength
 
-        confidence = 60.0
+            if sup_dist_pct < 1.0:
+                # Support très proche = Filet sécurité EXCELLENT
+                if support_strength > 0.6:
+                    score = min(score + 10, 100)  # Bonus jusqu'à 100 max
+                    issues.append(f"🛡️ Support FORT proche ({sup_dist_pct:.1f}%) - Filet sécurité excellent")
+                    details["strong_support_near"] = True
+                else:
+                    score = min(score + 5, 100)
+                    issues.append(f"Support proche ({sup_dist_pct:.1f}%) - Filet sécurité")
+
+            elif sup_dist_pct < 2.5:
+                # Support proche raisonnable
+                if support_strength > 0.5:
+                    score = min(score + 5, 100)
+                    issues.append(f"Support à {sup_dist_pct:.1f}% - Protection correcte")
+
+        elif nearest_support <= 0 or current_price <= nearest_support:
+            # Pas de support détecté ou prix SOUS support
+            issues.append("⚠️ Pas de support proche - SL sera basé sur ATR")
+            details["no_support"] = True
+
+        # === BREAK PROBABILITY (informatif) ===
+        if break_probability > 0:
+            details["break_probability"] = break_probability
+            if break_probability > 0.70:
+                issues.append(f"💡 Break probability élevée: {break_probability*100:.0f}%")
+
+        confidence = 85.0 if (resistance_strength > 0 or support_strength > 0) else 60.0
 
         return CategoryScore(
             category=ScoreCategory.SUPPORT_RESISTANCE,

@@ -1,8 +1,13 @@
 """
 Opportunity Validator - INSTITUTIONAL SCALPING
-Version: 4.0 - Validation pour scalping intraday avec indicateurs institutionnels
+Version: 4.1 - Validation pour scalping intraday avec indicateurs institutionnels
 
-REFONTE COMPLÈTE:
+AMÉLIORATIONS v4.1:
+1. Tolérance pullbacks sains VWAP/EMA (CRITIQUE) - Ne rejette plus bons entries
+2. Détection consolidation EMA7-EMA12 comme setup valide
+3. Warnings contextualisés selon gaps
+
+REFONTE COMPLÈTE v4.0:
 1. Aligné avec opportunity_scoring.py v4.0 (VWAP, EMA, Volume, RSI, Bollinger, MACD, S/R)
 2. Validation NON-BLOQUANTE sur résistances (<1.5% ignorées)
 3. RSI réaliste: 30-75 acceptable (pas strict 35-55)
@@ -277,25 +282,67 @@ class OpportunityValidator:
         warnings = []
         score = 100.0
 
-        # 1. Cohérence VWAP <-> EMA
+        # 1. Cohérence VWAP <-> EMA - v4.1 AMÉLIORÉ: Tolérance pullbacks sains
         vwap = self.safe_float(ad.get("vwap_10"))
         ema7 = self.safe_float(ad.get("ema_7"))
+        ema12 = self.safe_float(ad.get("ema_12"))
         current_price = self.safe_float(ad.get("current_price"))
 
         if vwap > 0 and ema7 > 0 and current_price > 0:
             above_vwap = current_price > vwap
             above_ema7 = current_price > ema7
+            above_ema12 = current_price > ema12 if ema12 > 0 else above_ema7
 
-            # Incohérence: au dessus VWAP mais sous EMA7
+            # === CAS 1: Prix > VWAP mais < EMA7 ===
             if above_vwap and not above_ema7:
-                warnings.append("⚠️ Incohérence: prix > VWAP mais < EMA7")
-                score -= 15
-                details["vwap_ema_incoherent"] = True
-            # Incohérence inverse
+                # Vérifier si c'est un PULLBACK SAIN ou incohérence réelle
+                vwap_ema_gap_pct = abs((vwap - ema7) / ema7) * 100 if ema7 > 0 else 0
+                price_ema7_gap_pct = abs((ema7 - current_price) / ema7) * 100 if ema7 > 0 else 0
+
+                # PULLBACK SAIN: Prix très proche EMA7 (<0.3%) ET gap VWAP/EMA7 faible (<0.5%)
+                if price_ema7_gap_pct < 0.3 and vwap_ema_gap_pct < 0.5:
+                    # C'est une CONSOLIDATION saine sur EMA7 après breakout VWAP
+                    details["healthy_pullback_to_ema7"] = True
+                    warnings.append("ℹ️ Pullback sain sur EMA7 (prix > VWAP) - Setup valide")
+
+                # PULLBACK MODÉRÉ: Prix entre EMA7 et EMA12, toujours > VWAP
+                elif above_ema12 and vwap_ema_gap_pct < 1.0:
+                    # Consolidation entre EMA7 et EMA12 = acceptable
+                    details["consolidation_above_ema12"] = True
+                    warnings.append("ℹ️ Consolidation EMA7-EMA12 (prix > VWAP) - Acceptable")
+                    score -= 5  # Pénalité légère seulement
+
+                else:
+                    # Vraie incohérence: Prix loin sous EMA7 mais au dessus VWAP
+                    warnings.append(
+                        f"⚠️ Incohérence: prix > VWAP (+{((current_price-vwap)/vwap)*100:.2f}%) "
+                        f"mais < EMA7 (-{price_ema7_gap_pct:.2f}%)"
+                    )
+                    score -= 15
+                    details["vwap_ema_incoherent"] = True
+
+                details["vwap_ema_gap_pct"] = vwap_ema_gap_pct
+                details["price_ema7_gap_pct"] = price_ema7_gap_pct
+
+            # === CAS 2: Prix < VWAP mais > EMA7 ===
             elif not above_vwap and above_ema7:
-                warnings.append("⚠️ Incohérence: prix < VWAP mais > EMA7")
-                score -= 15
-                details["vwap_ema_incoherent"] = True
+                # Incohérence inverse (moins critique mais à noter)
+                vwap_price_gap_pct = abs((vwap - current_price) / current_price) * 100
+
+                if vwap_price_gap_pct < 0.3:
+                    # Prix très proche VWAP, acceptable
+                    warnings.append("ℹ️ Prix proche VWAP (< EMA7) - Consolidation")
+                    score -= 5  # Pénalité légère
+                    details["near_vwap_consolidation"] = True
+                else:
+                    warnings.append(
+                        f"⚠️ Incohérence: prix < VWAP (-{vwap_price_gap_pct:.2f}%) "
+                        f"mais > EMA7"
+                    )
+                    score -= 15
+                    details["vwap_ema_incoherent"] = True
+
+            # === CAS 3: Cohérence normale ===
             else:
                 details["vwap_ema_coherent"] = True
 

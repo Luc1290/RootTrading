@@ -25,9 +25,9 @@ class TelegramNotifier:
         self.db_connection = db_connection
 
         # Anti-spam: tracker des dernières notifications par symbole
-        self._last_notification: dict[str, datetime] = {}
+        self._last_notification: dict[str, dict] = {}  # Stocke {timestamp, action, score}
         self._cooldown_minutes = (
-            5  # Cooldown de 5 minutes entre notifications pour le même symbole
+            5  # Cooldown de 5 minutes entre notifications similaires
         )
 
         if not self.bot_token or not self.chat_id:
@@ -35,15 +35,50 @@ class TelegramNotifier:
                 "TELEGRAM_BOT_TOKEN et TELEGRAM_CHAT_ID doivent être définis dans .env"
             )
 
-    def _can_send_notification(self, symbol: str) -> bool:
-        """Vérifie si on peut envoyer une notification (anti-spam)"""
+    def _can_send_notification(self, symbol: str, action: str, score: float) -> tuple[bool, str]:  # noqa: PLR0911
+        """
+        Vérifie si on peut envoyer une notification (anti-spam intelligent)
+        Returns:
+            tuple[bool, str]: (peut_envoyer, raison)
+        """
+        # Première notification pour ce symbole
         if symbol not in self._last_notification:
-            return True
+            return True, "Première notification"
 
-        time_since_last = (
-            datetime.now(tz=timezone.utc) - self._last_notification[symbol]
-        )
-        return time_since_last > timedelta(minutes=self._cooldown_minutes)
+        last_notif = self._last_notification[symbol]
+        last_time = last_notif["timestamp"]
+        last_action = last_notif["action"]
+        last_score = last_notif["score"]
+
+        time_since_last = datetime.now(tz=timezone.utc) - last_time
+        time_remaining = timedelta(minutes=self._cooldown_minutes) - time_since_last
+
+        # PRIORITÉ 1: Toujours envoyer les EARLY_ENTRY (urgents)
+        if action == "EARLY_ENTRY":
+            return True, "EARLY_ENTRY toujours prioritaire"
+
+        # PRIORITÉ 2: Changement d'action significatif
+        if action != last_action:
+            # BUY_DCA → BUY_NOW est une escalade importante
+            if last_action == "BUY_DCA" and action == "BUY_NOW":
+                return True, f"Escalade {last_action} → {action}"
+            # BUY_NOW → BUY_DCA peut indiquer une faiblesse
+            if last_action == "BUY_NOW" and action == "BUY_DCA":
+                return True, f"Changement {last_action} → {action}"
+
+        # PRIORITÉ 3: Changement de score significatif (>15 points)
+        score_diff = abs(score - last_score)
+        if score_diff > 15:
+            return True, f"Changement de score significatif: {score_diff:.0f} points"
+
+        # PRIORITÉ 4: Cooldown standard si conditions similaires
+        if time_since_last > timedelta(minutes=self._cooldown_minutes):
+            return True, "Cooldown expiré"
+
+        # Cooldown actif
+        minutes_remaining = int(time_remaining.total_seconds() / 60)
+        seconds_remaining = int(time_remaining.total_seconds() % 60)
+        return False, f"Cooldown actif ({minutes_remaining}m{seconds_remaining}s restantes)"
 
     def send_buy_signal(
         self,
@@ -85,10 +120,15 @@ class TelegramNotifier:
         Returns:
             True si notification envoyée, False sinon
         """
-        # Vérifier anti-spam
-        if not self._can_send_notification(symbol):
-            logger.info(f"⏸️ Notification ignorée pour {symbol} (cooldown actif)")
+        # Vérifier anti-spam intelligent
+        can_send, reason = self._can_send_notification(symbol, action, score)
+        if not can_send:
+            logger.info(f"⏸️ {symbol}: {reason}")
             return False
+
+        # Log la raison de l'envoi si c'est une exception au cooldown
+        if "prioritaire" in reason or "Changement" in reason or "Escalade" in reason:
+            logger.info(f"📬 {symbol}: Envoi autorisé - {reason}")
 
         # Construire le message
         message = self._build_message(
@@ -109,6 +149,28 @@ class TelegramNotifier:
             early_signal,
         )
 
+        # Créer les boutons inline pour Binance
+        base_asset = symbol.replace("USDC", "").replace("USDT", "").replace("BUSD", "")
+        quote_asset = "USDC" if "USDC" in symbol else ("USDT" if "USDT" in symbol else "BUSD")
+
+        # 2 boutons: App (deeplink) et Web (fallback)
+        inline_keyboard = {
+            "inline_keyboard": [
+                [
+                    # Bouton 1: Deeplink app mobile (iOS/Android)
+                    {
+                        "text": "📱 App",
+                        "url": f"https://app.binance.com/en/trade/{base_asset}_{quote_asset}"
+                    },
+                    # Bouton 2: Web desktop/fallback
+                    {
+                        "text": "🌐 Web",
+                        "url": f"https://www.binance.com/en/trade/{base_asset}_{quote_asset}?type=spot"
+                    }
+                ]
+            ]
+        }
+
         # Envoyer la notification
         try:
             response = requests.post(
@@ -118,12 +180,18 @@ class TelegramNotifier:
                     "text": message,
                     "parse_mode": "HTML",
                     "disable_web_page_preview": True,
+                    "reply_markup": inline_keyboard,
                 },
                 timeout=10,
             )
 
             if response.status_code == 200:
-                self._last_notification[symbol] = datetime.now(tz=timezone.utc)
+                # Stocker timestamp, action et score pour cooldown intelligent
+                self._last_notification[symbol] = {
+                    "timestamp": datetime.now(tz=timezone.utc),
+                    "action": action,
+                    "score": score,
+                }
                 logger.info(f"✅ Notification Telegram envoyée pour {symbol}")
 
                 # Stocker le signal en DB
@@ -408,8 +476,25 @@ SL: {format_price(stop_loss)} ({sl_loss:.2f}%)
             return response.status_code == 200
 
 
-# Instance globale
-_notifier: TelegramNotifier | None = None
+class _NotifierSingleton:
+    """Singleton pour gérer l'instance unique du TelegramNotifier"""
+    _instance: TelegramNotifier | None = None
+
+    @classmethod
+    def get_instance(cls, db_connection=None) -> TelegramNotifier:
+        """
+        Retourne l'instance du notifier (singleton).
+
+        Args:
+            db_connection: Connexion PostgreSQL (psycopg2) pour stocker les signaux.
+                          Si fournie, met à jour la connexion de l'instance existante.
+        """
+        if cls._instance is None:
+            cls._instance = TelegramNotifier(db_connection=db_connection)
+        elif db_connection is not None:
+            # Mettre à jour la connexion DB si fournie
+            cls._instance.db_connection = db_connection
+        return cls._instance
 
 
 def get_notifier(db_connection=None) -> TelegramNotifier:
@@ -418,12 +503,5 @@ def get_notifier(db_connection=None) -> TelegramNotifier:
 
     Args:
         db_connection: Connexion PostgreSQL (psycopg2) pour stocker les signaux.
-                      Si fournie, met à jour la connexion de l'instance existante.
     """
-    global _notifier
-    if _notifier is None:
-        _notifier = TelegramNotifier(db_connection=db_connection)
-    elif db_connection is not None:
-        # Mettre à jour la connexion DB si fournie
-        _notifier.db_connection = db_connection
-    return _notifier
+    return _NotifierSingleton.get_instance(db_connection)

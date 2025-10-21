@@ -716,10 +716,8 @@ async def get_trading_opportunity(symbol: str):
                         logger.info(
                             f"✅ Signal Telegram envoyé et stocké pour {symbol}"
                         )
-                    else:
-                        logger.warning(
-                            f"⚠️ Signal Telegram non envoyé pour {symbol} (cooldown ou erreur)"
-                        )
+                    # Note: Le TelegramNotifier gère déjà les logs détaillés (cooldown, raison, etc.)
+                    # Pas besoin de logger ici pour éviter les doublons
 
                 except Exception as e:
                     logger.error(
