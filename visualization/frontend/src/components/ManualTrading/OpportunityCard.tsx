@@ -320,17 +320,61 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity: o
               </div>
               <div>
                 <div className="text-xs text-gray-500">MFI</div>
-                <div className="text-lg font-bold text-white">{opp.indicators?.mfi?.toFixed(0) || 'N/A'}</div>
+                <div className={`text-lg font-bold ${
+                  (opp.indicators?.mfi || 0) > 80 ? 'text-orange-400' :
+                  (opp.indicators?.mfi || 0) < 20 ? 'text-blue-400' : 'text-white'
+                }`}>
+                  {opp.indicators?.mfi?.toFixed(0) || 'N/A'}
+                </div>
               </div>
               <div>
                 <div className="text-xs text-gray-500">ADX</div>
-                <div className="text-lg font-bold text-white">{opp.indicators?.adx?.toFixed(1) || 'N/A'}</div>
+                <div className={`text-lg font-bold ${
+                  (opp.indicators?.adx || 0) > 25 ? 'text-green-400' : 'text-gray-400'
+                }`}>
+                  {opp.indicators?.adx?.toFixed(1) || 'N/A'}
+                </div>
               </div>
               <div>
                 <div className="text-xs text-gray-500">Volume</div>
-                <div className="text-lg font-bold text-white">{opp.indicators?.volume_spike?.toFixed(2)}x</div>
+                <div className={`text-lg font-bold ${
+                  (opp.indicators?.volume_spike || 0) > 2 ? 'text-green-400' : 'text-white'
+                }`}>
+                  {opp.indicators?.volume_spike?.toFixed(2)}x
+                </div>
               </div>
             </div>
+
+            {/* v5.0 - Nouveaux indicateurs */}
+            {(opp.raw_data?.analyzer_data?.pattern_detected || opp.raw_data?.analyzer_data?.confluence_score) && (
+              <div className="mt-3 pt-3 border-t border-gray-700 grid grid-cols-2 gap-3">
+                {opp.raw_data?.analyzer_data?.pattern_detected && opp.raw_data.analyzer_data.pattern_detected !== 'NORMAL' && (
+                  <div className="col-span-2">
+                    <div className="text-xs text-gray-500">Pattern v5.0</div>
+                    <div className={`text-sm font-bold ${
+                      opp.raw_data.analyzer_data.pattern_detected.includes('SPIKE') ? 'text-green-400' :
+                      opp.raw_data.analyzer_data.pattern_detected === 'DUMP' ? 'text-red-400' : 'text-yellow-400'
+                    }`}>
+                      {opp.raw_data.analyzer_data.pattern_detected}
+                      {opp.raw_data.analyzer_data.pattern_confidence > 0 && (
+                        <span className="text-xs ml-1">({(opp.raw_data.analyzer_data.pattern_confidence * 100).toFixed(0)}%)</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {opp.raw_data?.analyzer_data?.confluence_score && (
+                  <div>
+                    <div className="text-xs text-gray-500">Confluence</div>
+                    <div className={`text-lg font-bold ${
+                      opp.raw_data.analyzer_data.confluence_score > 60 ? 'text-green-400' :
+                      opp.raw_data.analyzer_data.confluence_score > 40 ? 'text-yellow-400' : 'text-gray-400'
+                    }`}>
+                      {opp.raw_data.analyzer_data.confluence_score.toFixed(0)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -388,13 +432,23 @@ const getActionBg = (action: string): string => {
 
 const getCategoryName = (key: string): string => {
   const names: Record<string, string> = {
-    'trend': 'Tendance',
+    // v5.0 - 9 categories
+    'vwap_position': 'VWAP',
+    'pattern_detection': 'Pattern',
+    'ema_trend': 'Trend EMA',
+    'volume_flow': 'Volume Flow',
+    'confluence': 'Confluence',
     'momentum': 'Momentum',
+    'bollinger': 'Bollinger',
+    'volume_profile': 'Vol Profile',
+    'macd': 'MACD',
+    // v4.1 legacy
+    'trend': 'Tendance',
     'volume': 'Volume',
     'volatility': 'Volatilité',
     'support_resistance': 'S/R',
-    'pattern': 'Pattern',
-    'confluence': 'Confluence'
+    'rsi_momentum': 'RSI',
+    'pattern': 'Pattern'
   };
   return names[key] || key;
 };

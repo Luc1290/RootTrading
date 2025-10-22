@@ -15,9 +15,6 @@ COPY requirements-shared.txt /app/
 COPY signal_aggregator/requirements.txt /app/
 RUN sed -i 's|-r ../requirements-shared.txt|-r /app/requirements-shared.txt|g' /app/requirements.txt
 
-# Install NumPy first at a compatible version
-RUN pip install --no-cache-dir numpy==1.23.5
-
 # Install other dependencies but exclude TA-Lib
 RUN pip install --no-cache-dir -r /app/requirements-shared.txt && \
     grep -v "ta-lib" /app/requirements.txt | pip install --no-cache-dir -r /dev/stdin

@@ -13,13 +13,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-
-from notifications.telegram_service import get_notifier
 from src.chart_service import ChartService
 from src.data_manager import DataManager
 from src.opportunity_calculator_pro import OpportunityCalculatorPro
 from src.statistics_service import StatisticsService
 from src.websocket_hub import WebSocketHub
+
+from notifications.telegram_service import get_notifier
 from shared.src.config import SYMBOLS
 
 # Ajouter le path pour accéder au module notifications
@@ -450,10 +450,14 @@ async def get_available_symbols():
 @app.get("/api/configured-symbols")
 async def get_configured_symbols():
     """Get list of configured trading symbols from shared config"""
-    try:
-        # Vérifier que SYMBOLS est accessible et valide
+    def _ensure_symbols():
+        # Vérifier que SYMBOLS est accessible et valide, lever une exception si non
         if not SYMBOLS:
             raise ValueError("SYMBOLS configuration is empty")
+        return SYMBOLS
+
+    try:
+        symbols = _ensure_symbols()
     except Exception:
         logger.exception("Error getting configured symbols")
         # Fallback avec symboles par défaut en cas d'erreur
@@ -462,17 +466,14 @@ async def get_configured_symbols():
             "ETHUSDC",
             "SOLUSDC",
             "XRPUSDC",
-            "ADAUSDC",
-            "AVAXUSDC",
             "LINKUSDC",
-            "AAVEUSDC",
-            "SUIUSDC",
-            "LDOUSDC",
+            "ATOMUSDC",
+            "TAOUSDC"
         ]
         logger.info(f"Using fallback symbols: {default_symbols}")
         return {"symbols": default_symbols}
     else:
-        return {"symbols": SYMBOLS}
+        return {"symbols": symbols}
 
 
 @app.get("/api/trading-opportunities/{symbol}")
