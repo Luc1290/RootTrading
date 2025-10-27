@@ -454,6 +454,79 @@ CREATE INDEX IF NOT EXISTS portfolio_balances_asset_timestamp_idx ON portfolio_b
 CREATE INDEX IF NOT EXISTS portfolio_balances_total_idx ON portfolio_balances(total) WHERE total > 0;
 
 -- =====================================================
+-- TABLE CLAUDE_ANALYSIS_LOG - ANALYSES CLAUDE AI
+-- =====================================================
+
+-- Table pour stocker l'historique des analyses Claude AI
+CREATE TABLE IF NOT EXISTS claude_analysis_log (
+    -- Identifiants
+    id BIGSERIAL,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    symbol VARCHAR(20) NOT NULL,
+
+    -- Résultat de l'analyse
+    score INTEGER NOT NULL CHECK (score >= 0 AND score <= 100),
+    action VARCHAR(20) NOT NULL CHECK (action IN ('GO_LONG', 'GO_SHORT', 'ATTENDRE', 'NO_TRADE')),
+    analysis_text TEXT NOT NULL,
+
+    -- Données contextuelles (JSONB pour flexibilité)
+    macro_context JSONB,              -- ATH/ATL, range position, momentum
+    multi_timeframe_data JSONB,       -- Données 1m/5m/15m
+    signal_consensus JSONB,           -- Buy/sell signals consensus
+    recent_candles JSONB,             -- Last 10 candles
+
+    -- Métriques d'analyse
+    is_impatience_detected BOOLEAN,   -- Est-ce que Claude a détecté de l'impatience?
+    edge_probability DECIMAL(5,2),    -- Probabilité d'edge (0-100%)
+    confidence_level VARCHAR(20),     -- FAIBLE/MODÉRÉE/ÉLEVÉE/TRÈS ÉLEVÉE
+    risk_level VARCHAR(20),           -- FAIBLE/MODÉRÉ/ÉLEVÉ
+
+    -- Setup de trading (si applicable)
+    entry_price DECIMAL(20,8),
+    target1_price DECIMAL(20,8),
+    target1_pct DECIMAL(5,2),
+    target2_price DECIMAL(20,8),
+    target2_pct DECIMAL(5,2),
+    stop_loss_price DECIMAL(20,8),
+    stop_loss_pct DECIMAL(5,2),
+    risk_reward_ratio DECIMAL(10,4),
+
+    -- Timing
+    timing_action VARCHAR(30),        -- IMMÉDIAT/ATTENDRE X MIN/NO TRADE
+
+    -- Métadonnées API
+    processing_time_seconds DECIMAL(10,4),
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    total_tokens INTEGER,
+    model_version VARCHAR(50),
+
+    -- Métadonnées système
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    metadata JSONB,                   -- Autres métadonnées flexibles
+
+    -- Contraintes (PRIMARY KEY avec timestamp pour hypertable)
+    PRIMARY KEY (timestamp, id),
+    CONSTRAINT claude_analysis_symbol_check CHECK (symbol ~ '^[A-Z0-9]+$')
+);
+
+-- Convertir en hypertable pour TimescaleDB
+SELECT create_hypertable('claude_analysis_log', 'timestamp', if_not_exists => TRUE);
+
+-- Index optimisés pour claude_analysis_log
+CREATE INDEX IF NOT EXISTS claude_analysis_symbol_time_idx ON claude_analysis_log (symbol, timestamp DESC);
+CREATE INDEX IF NOT EXISTS claude_analysis_action_idx ON claude_analysis_log (action, timestamp DESC);
+CREATE INDEX IF NOT EXISTS claude_analysis_impatience_idx ON claude_analysis_log (is_impatience_detected, timestamp DESC);
+CREATE INDEX IF NOT EXISTS claude_analysis_score_idx ON claude_analysis_log (score DESC, timestamp DESC);
+CREATE INDEX IF NOT EXISTS claude_analysis_edge_idx ON claude_analysis_log (edge_probability DESC, timestamp DESC);
+CREATE INDEX IF NOT EXISTS claude_analysis_macro_gin_idx ON claude_analysis_log USING GIN (macro_context);
+CREATE INDEX IF NOT EXISTS claude_analysis_mtf_gin_idx ON claude_analysis_log USING GIN (multi_timeframe_data);
+CREATE INDEX IF NOT EXISTS claude_analysis_metadata_gin_idx ON claude_analysis_log USING GIN (metadata);
+
+-- Politique de rétention (garder 6 mois d'analyses)
+SELECT add_retention_policy('claude_analysis_log', INTERVAL '6 months', if_not_exists => TRUE);
+
+-- =====================================================
 -- COMMENTAIRES POUR DOCUMENTATION
 -- =====================================================
 
@@ -471,6 +544,7 @@ COMMENT ON TABLE telegram_signals IS 'Signaux de trading envoyés via Telegram a
 COMMENT ON TABLE strategy_configs IS 'Configuration des stratégies de trading';
 COMMENT ON TABLE positions IS 'Suivi des positions ouvertes et fermées';
 COMMENT ON TABLE portfolio_balances IS 'Historique des balances du portefeuille par asset';
+COMMENT ON TABLE claude_analysis_log IS 'Historique des analyses de trading générées par Claude AI avec détection d''impatience et contexte macro';
 
 -- =====================================================
 -- TRIGGERS POUR UPDATED_AT

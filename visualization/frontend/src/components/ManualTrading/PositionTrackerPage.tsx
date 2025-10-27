@@ -110,7 +110,10 @@ function PositionTrackerPage() {
               : `${Math.floor(elapsedMinutes / 60)}h ${elapsedMinutes % 60}min`;
 
             // Calculer stop-loss recommandé depuis le prix d'entrée
-            const recommendedStopLoss = signalData?.stop_loss || (pos.entryPrice * 0.992); // -0.8% par défaut
+            const stopLossValue = signalData?.stop_loss;
+            const recommendedStopLoss = typeof stopLossValue === 'number' && !isNaN(stopLossValue)
+              ? stopLossValue
+              : (pos.entryPrice * 0.992); // -0.8% par défaut
             const stopLossPercent = ((recommendedStopLoss - pos.entryPrice) / pos.entryPrice) * 100;
 
             return {
@@ -134,11 +137,17 @@ function PositionTrackerPage() {
             };
           } catch (err) {
             console.error(`Error loading price for ${pos.symbol}:`, err);
+            // Calculer stop-loss par défaut même en cas d'erreur
+            const defaultStopLoss = pos.entryPrice * 0.992; // -0.8% par défaut
+            const defaultStopLossPercent = ((defaultStopLoss - pos.entryPrice) / pos.entryPrice) * 100;
+
             return {
               ...pos,
               currentPrice: pos.entryPrice,
               pnlPercent: 0,
-              pnlUsdc: 0
+              pnlUsdc: 0,
+              recommendedStopLoss: defaultStopLoss,
+              stopLossPercent: defaultStopLossPercent
             };
           }
         })
@@ -433,14 +442,14 @@ function PositionTrackerPage() {
                   <div className="text-lg font-bold text-gray-300 mt-1">
                     {pos.entryPrice.toFixed(8)} USDC
                   </div>
-                  {pos.recommendedStopLoss && (
+                  {pos.recommendedStopLoss != null && typeof pos.recommendedStopLoss === 'number' && (
                     <div className="mt-2 pt-2 border-t border-gray-700">
                       <div className="text-xs text-red-400">🛑 Stop-Loss</div>
                       <div className="text-sm font-bold text-red-400">
                         {pos.recommendedStopLoss.toFixed(8)}
                       </div>
                       <div className="text-xs text-gray-500">
-                        ({pos.stopLossPercent?.toFixed(2)}%)
+                        ({(pos.stopLossPercent ?? 0).toFixed(2)}%)
                       </div>
                     </div>
                   )}

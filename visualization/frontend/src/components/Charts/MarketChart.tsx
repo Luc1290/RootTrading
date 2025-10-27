@@ -1,10 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { createChart, ColorType, IChartApi, ISeriesApi, CandlestickData, LineData, Time, LineStyle } from 'lightweight-charts';
+import { createChart, ColorType, IChartApi, ISeriesApi, CandlestickData, LineData, Time } from 'lightweight-charts';
 import { useChartStore } from '@/stores/useChartStore';
-import { useChart } from '@/hooks/useChart';
 import { formatNumber } from '@/utils';
-import { apiService } from '@/services/api';
-import type { TradeCycle } from '@/components/Cycles/CyclesPage';
 
 interface MarketChartProps {
   height?: number;
@@ -21,8 +18,6 @@ function MarketChart({ height = 750, useStore }: MarketChartProps) {
     ema99?: ISeriesApi<'Line'>;
   }>({});
 
-  // État pour les signaux Telegram
-  const [telegramSignals, setTelegramSignals] = useState<any[]>([]);
 
   // État pour l'infobulle des signaux
   const [tooltip, setTooltip] = useState<{
@@ -55,26 +50,6 @@ function MarketChart({ height = 750, useStore }: MarketChartProps) {
   // const [tradeCycles, setTradeCycles] = useState<TradeCycle[]>([]);
   // const cycleSeriesRef = useRef<(ISeriesApi<'Line'> | ISeriesApi<'Area'>)[]>([]);
 
-  // Récupérer les signaux Telegram
-  useEffect(() => {
-    const fetchTelegramSignals = async () => {
-      try {
-        console.log('[MarketChart] Fetching Telegram signals for', config.symbol);
-        const response = await apiService.getTelegramSignals(config.symbol, 72); // 72h pour capturer plus de signaux
-        console.log('[MarketChart] Telegram signals received:', response.signals);
-        setTelegramSignals(response.signals || []);
-      } catch (error) {
-        console.error('[MarketChart] Error fetching Telegram signals:', error);
-      }
-    };
-
-    if (config.symbol) {
-      fetchTelegramSignals();
-      // Rafraîchir toutes les 30 secondes
-      const interval = setInterval(fetchTelegramSignals, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [config.symbol]);
 
   // Configuration de la précision basée sur le symbole
   const getPriceFormat = () => {
@@ -392,40 +367,7 @@ function MarketChart({ height = 750, useStore }: MarketChartProps) {
       size: 1,
     }));
 
-    // Créer les marqueurs pour les signaux Telegram (cercles dorés)
-    const telegramMarkers = telegramSignals.map((signal: any) => {
-      const signalTime = Math.floor(new Date(signal.timestamp).getTime() / 1000);
-      const marker = {
-        time: signalTime,
-        position: signal.side === 'BUY' ? 'belowBar' as const : 'aboveBar' as const,
-        color: '#FFD700', // Or
-        shape: 'circle' as const,
-        text: `TG ${signal.action} (Score: ${signal.score})`,
-        size: 3, // Plus grand pour être visible
-      };
-      console.log('[MarketChart] Created Telegram marker:', {
-        ...marker,
-        signalTimestamp: signal.timestamp,
-        signalTimeUnix: signalTime,
-        signalDate: new Date(signalTime * 1000).toISOString()
-      });
-      return marker;
-    });
-
-    // Log des timestamps de marché pour comparaison
-    if (marketData?.timestamps && marketData.timestamps.length > 0) {
-      const firstMarketTime = Math.floor(new Date(marketData.timestamps[0]).getTime() / 1000);
-      const lastMarketTime = Math.floor(new Date(marketData.timestamps[marketData.timestamps.length - 1]).getTime() / 1000);
-      console.log('[MarketChart] Market data time range:', {
-        first: new Date(firstMarketTime * 1000).toISOString(),
-        last: new Date(lastMarketTime * 1000).toISOString(),
-        firstUnix: firstMarketTime,
-        lastUnix: lastMarketTime,
-        totalCandles: marketData.timestamps.length
-      });
-    }
-
-    console.log('[MarketChart] Total markers - Buy:', buyMarkers.length, 'Sell:', sellMarkers.length, 'Telegram:', telegramMarkers.length);
+    console.log('[MarketChart] Total markers - Buy:', buyMarkers.length, 'Sell:', sellMarkers.length);
 
     // Créer un mapping des signaux par timestamp pour la recherche rapide
     // Utiliser un tableau pour chaque timestamp pour gérer les signaux multiples
@@ -447,8 +389,8 @@ function MarketChart({ height = 750, useStore }: MarketChartProps) {
 
     // Log removed for performance
 
-    // Appliquer tous les marqueurs à la série candlestick (incluant Telegram)
-    const allMarkers = [...buyMarkers, ...sellMarkers, ...telegramMarkers].sort((a, b) => (a.time as number) - (b.time as number));
+    // Appliquer tous les marqueurs à la série candlestick
+    const allMarkers = [...buyMarkers, ...sellMarkers].sort((a, b) => (a.time as number) - (b.time as number));
     console.log('[MarketChart] Setting', allMarkers.length, 'total markers on chart');
     candlestickSeriesRef.current.setMarkers(allMarkers as any);
 
@@ -494,7 +436,7 @@ function MarketChart({ height = 750, useStore }: MarketChartProps) {
         setTooltip(prev => ({ ...prev, isPinned: false, visible: false }));
       }
     });
-  }, [signals, config.signalFilter, telegramSignals]);
+  }, [signals, config.signalFilter]);
   
   // Cycles désactivés pour performance
   // useEffect(() => {
